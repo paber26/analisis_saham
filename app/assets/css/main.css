@@ -1,0 +1,58 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    font-family: 'Inter', sans-serif;
+    background-color: #020617; /* bg-slate-950 */
+    color: #f8fafc; /* text-slate-50 */
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Outfit', sans-serif;
+  }
+}
+
+/* Custom Scrollbar for dark theme */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #020617; /* bg-slate-950 */
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1e293b; /* bg-slate-800 */
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #334155; /* bg-slate-700 */
+}
+
+/* Custom styles for glow effects */
+.glow-card {
+  position: relative;
+  background: rgba(15, 23, 42, 0.6); /* bg-slate-900/60 */
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(51, 65, 85, 0.4); /* border-slate-700/40 */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.glow-card:hover {
+  border-color: rgba(16, 185, 129, 0.3); /* border-emerald-500/30 */
+  box-shadow: 0 0 20px -5px rgba(16, 185, 129, 0.1);
+  transform: translateY(-2px);
+}
+
+.glow-card-red:hover {
+  border-color: rgba(244, 63, 94, 0.3); /* border-rose-500/30 */
+  box-shadow: 0 0 20px -5px rgba(244, 63, 94, 0.1);
+  transform: translateY(-2px);
+}

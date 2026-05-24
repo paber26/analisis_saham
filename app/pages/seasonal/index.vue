@@ -144,46 +144,7 @@ const ihsgSeasonalStats = computed(() => {
 </script>
 
 <template>
-  <div class="min-h-screen pb-16 bg-slate-950 text-slate-100 flex flex-col">
-    <!-- Navigation Header -->
-    <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30 px-6 py-4">
-      <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
-        <!-- Logo -->
-        <div class="flex items-center gap-3">
-          <div class="p-2 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl shadow-lg shadow-emerald-500/10">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-          <div>
-            <h1 class="text-xl font-bold text-slate-50 tracking-tight flex items-center gap-2">
-              Seasonal IDX <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">INDONESIA</span>
-            </h1>
-            <p class="text-xs text-slate-400">Analisis Pola Historis Musiman Saham BEI</p>
-          </div>
-        </div>
-
-        <!-- Docs Link Button -->
-        <div class="flex items-center gap-4">
-          <a 
-            href="/docs.html"
-            target="_blank"
-            class="flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-emerald-400 bg-slate-900 border border-slate-800 rounded-xl hover:bg-slate-850 hover:border-slate-700 hover:text-emerald-350 transition-all shadow-md shadow-emerald-500/5 group"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-emerald-500 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-            </svg>
-            <span>Panduan Integrasi API & Data</span>
-          </a>
-          
-          <div class="text-right hidden lg:block border-l border-slate-800 pl-4">
-            <p class="text-xs text-slate-500">Workspace: analisis_saham</p>
-            <p class="text-xs text-slate-400">Indikator Terkini</p>
-          </div>
-        </div>
-      </div>
-    </header>
-
+  <div class="pb-16 bg-slate-950 text-slate-100 flex flex-col flex-grow">
     <!-- Main Content Container -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-8 flex-grow w-full space-y-6">
       

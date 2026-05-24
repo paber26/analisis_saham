@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dokumentasi Data & Integrasi API - Seasonal Saham</title>
+  <!-- Outfit & Inter Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS CDN for presentation styling -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Outfit', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #020617;
+      color: #f1f5f9;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #020617;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #1e293b;
+      border-radius: 9999px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #334155;
+    }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+  </style>
+</head>
+<body class="font-sans antialiased selection:bg-emerald-500/30 selection:text-emerald-200 custom-scrollbar">
+
+  <div class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-30 px-6 py-4">
+      <div class="max-w-5xl mx-auto flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <div class="p-2 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-lg font-bold text-slate-50 tracking-tight font-display">Dokumentasi Integrasi Data</h1>
+            <p class="text-xs text-slate-400">Panduan Arsitektur & Langkah Koneksi API Riil</p>
+          </div>
+        </div>
+        <a href="/seasonal" class="text-xs bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-slate-850 px-3 py-1.5 rounded-lg transition-colors font-medium">
+          &larr; Kembali ke Dashboard
+        </a>
+      </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-5xl mx-auto px-6 py-10 flex-grow w-full space-y-8">
+      
+      <!-- Section 1: Intro -->
+      <section class="bg-slate-900/40 border border-slate-850 rounded-2xl p-6">
+        <h2 class="text-xl font-bold font-display text-slate-100 mb-2">1. Bagaimana Data Saat Ini Diperoleh?</h2>
+        <p class="text-slate-300 text-sm leading-relaxed mb-4">
+          Sesuai dengan spesifikasi awal proyek (non-API & non-database), seluruh data historis saham saat ini diperoleh dari **data lokal statis** (*mock/dummy data*) yang disimulasikan di dalam file:
+          <a href="file:///Users/bernaldonapitupulu/Documents/Allinodev/analisis_saham/app/data/seasonalStocks.ts" class="text-emerald-400 hover:underline">app/data/seasonalStocks.ts</a>.
+        </p>
+        <div class="bg-slate-950 rounded-xl p-4 border border-slate-850">
+          <h3 class="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Metodologi Pembuatan Data</h3>
+          <ul class="list-disc pl-5 text-xs text-slate-400 space-y-2 leading-relaxed">
+            <li>
+              <strong class="text-slate-350">Seed-Based PRNG:</strong> Data dihasilkan menggunakan algoritma generator acak deterministik (memakai fungsi sinus dengan seed konstan). Ini menjamin bahwa angka return yang diperoleh akan selalu sama setiap kali halaman di-refresh, menjaga stabilitas tampilan grafik.
+            </li>
+            <li>
+              <strong class="text-slate-350">Box-Muller Transform:</strong> Digunakan untuk menghasilkan sebaran data return dengan distribusi normal. Formula ini sangat umum dipakai untuk memodelkan volatilitas harga saham riil.
+            </li>
+            <li>
+              <strong class="text-slate-350">Efek Musiman (Seasonal Bias):</strong> Agar mendekati karakteristik bursa Indonesia (IHSG), kami menyuntikkan parameter tambahan (*bias*) ke bulan-bulan spesifik, seperti:
+              <ul class="list-circle pl-5 mt-1 space-y-1">
+                <li>Desember: Ditambah bias positif kuat (efek <em class="text-emerald-500">Window Dressing</em>).</li>
+                <li>Mei: Ditambah bias negatif (pola musiman historis <em class="text-rose-500">"Sell in May and Go Away"</em>).</li>
+                <li>Januari: Ditambah bias positif (efek <em class="text-emerald-500">January Effect</em>).</li>
+              </ul>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- Section 2: Data Structure -->
+      <section class="bg-slate-900/40 border border-slate-850 rounded-2xl p-6">
+        <h2 class="text-xl font-bold font-display text-slate-100 mb-2">2. Struktur Model Data (TypeScript)</h2>
+        <p class="text-slate-300 text-sm leading-relaxed mb-4">
+          Struktur data yang digunakan oleh kalkulator dan komponen didefinisikan secara statis di file 
+          <a href="file:///Users/bernaldonapitupulu/Documents/Allinodev/analisis_saham/app/types/seasonal.ts" class="text-emerald-400 hover:underline">app/types/seasonal.ts</a>:
+        </p>
+        <pre class="bg-slate-950 text-xs text-slate-300 p-4 rounded-xl border border-slate-850 overflow-x-auto"><code><span class="text-emerald-500">// Representasi satu baris data historis bulanan</span>
+export interface StockMonthlyData {
+  year: number;
+  month: number; // 1 s.d. 12
+  returnVal: number; // Nilai persentase return (misal: 4.5 untuk +4.5%)
+}
+
+<span class="text-emerald-500">// Representasi satu kesatuan entitas saham</span>
+export interface StockData {
+  code: string; // Kode ticker saham (contoh: 'BBCA', 'IHSG')
+  name: string; // Nama lengkap emiten (contoh: 'PT Bank Central Asia Tbk')
+  history: StockMonthlyData[]; // Koleksi data historis
+}</code></pre>
+      </section>
+
+      <!-- Section 3: Integration Plan -->
+      <section class="bg-slate-900/40 border border-slate-850 rounded-2xl p-6 space-y-4">
+        <h2 class="text-xl font-bold font-display text-slate-100">3. Rencana Migrasi ke API Riil (Produksi)</h2>
+        <p class="text-slate-300 text-sm leading-relaxed">
+          Untuk menghubungkan dashboard ini dengan bursa data sesungguhnya, Anda dapat menggunakan API penyedia data keuangan seperti **Yahoo Finance (melalui library backend)**, **Goapi.id (spesialis IHSG/saham lokal)**, atau **EOD Historical Data**.
+        </p>
+
+        <div class="space-y-3">
+          <h3 class="text-sm font-semibold text-slate-200">Arsitektur Aliran Data yang Direkomendasikan:</h3>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div class="p-4 bg-slate-950 rounded-xl border border-slate-850 flex flex-col justify-between">
+              <div>
+                <span class="text-emerald-400 font-bold block mb-1">LANGKAH 1: Server Route</span>
+                <p class="text-slate-400 leading-relaxed">Buat server endpoint lokal di Nuxt 4 untuk mengambil data dari API eksternal (mencegah isu CORS browser dan melindungi API Key Anda).</p>
+              </div>
+              <span class="text-slate-500 mt-2">File: server/api/stocks.ts</span>
+            </div>
+            <div class="p-4 bg-slate-950 rounded-xl border border-slate-850 flex flex-col justify-between">
+              <div>
+                <span class="text-emerald-400 font-bold block mb-1">LANGKAH 2: Caching Data</span>
+                <p class="text-slate-400 leading-relaxed">Simpan respons API di memori cache server sementara (misal: 1 hari) untuk mengurangi beban kuota API eksternal Anda.</p>
+              </div>
+              <span class="text-slate-500 mt-2">Fitur: useStorage() Nitro</span>
+            </div>
+            <div class="p-4 bg-slate-950 rounded-xl border border-slate-850 flex flex-col justify-between">
+              <div>
+                <span class="text-emerald-400 font-bold block mb-1">LANGKAH 3: Front-End Fetch</span>
+                <p class="text-slate-400 leading-relaxed">Gunakan komposabel bawaan Nuxt untuk memuat data dari server endpoint dan perbarui state reaktif halaman.</p>
+              </div>
+              <span class="text-slate-500 mt-2">Fitur: useFetch()</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <h3 class="text-sm font-semibold text-slate-200">Implementasi Server Route (`server/api/seasonal.ts`):</h3>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            Berikut adalah rancangan kode server route Nuxt untuk mengambil data riil dari API eksternal dan memformatnya agar sesuai dengan tipe data dashboard:
+          </p>
+          <pre class="bg-slate-950 text-xs text-slate-300 p-4 rounded-xl border border-slate-850 overflow-x-auto"><code>import { defineEventHandler, getQuery } from 'h3';
+
+export default defineEventHandler(async (event) => {
+  const query = getQuery(event);
+  const stockCode = (query.code as string) || 'BBCA';
+
+  <span class="text-emerald-500">// Contoh request ke pihak ketiga (misal: Goapi.id)</span>
+  const apiKey = process.env.STOCK_API_KEY;
+  const apiUrl = `https://api.goapi.id/v1/stock/idx/${stockCode}/historical?api_key=${apiKey}`;
+
+  try {
+    const rawData = await $fetch&lt;any&gt;(apiUrl);
+    
+    <span class="text-emerald-500">// Transformasikan format respons API mentah menjadi tipe StockMonthlyData[]</span>
+    const formattedHistory = rawData.data.results.map((item: any) => {
+      const date = new Date(item.date);
+      return {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1,
+        returnVal: Number(item.return_percentage)
+      };
+    });
+
+    return {
+      code: stockCode,
+      name: rawData.data.name,
+      history: formattedHistory
+    };
+  } catch (error) {
+    return createError({
+      statusCode: 500,
+      statusMessage: 'Gagal mengambil data dari server penyedia.',
+    });
+  }
+});</code></pre>
+        </div>
+
+        <div class="mt-6 space-y-4">
+          <h3 class="text-sm font-semibold text-slate-200">Koneksi pada Halaman Front-End (`app/pages/seasonal/index.vue`):</h3>
+          <p class="text-slate-300 text-xs leading-relaxed">
+            Pada bagian script halaman utama, Anda tinggal menukar pemanggilan array lokal menjadi fungsi async fetch:
+          </p>
+          <pre class="bg-slate-950 text-xs text-slate-300 p-4 rounded-xl border border-slate-850 overflow-x-auto"><code>&lt;script setup lang="ts"&gt;
+const selectedStockCode = ref('BBCA');
+
+<span class="text-emerald-500">// Panggil server route Nuxt secara reaktif setiap kali selectedStockCode berubah</span>
+const { data: activeStock, pending, error } = await useFetch(() => `/api/seasonal`, {
+  params: { code: selectedStockCode }
+});
+&lt;/script&gt;</code></pre>
+        </div>
+      </section>
+
+      <!-- Section 4: Risk Alert -->
+      <section class="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/10 text-slate-350">
+        <div class="flex gap-4 items-start">
+          <div class="p-1 bg-rose-500/15 text-rose-400 rounded-lg flex-shrink-0 mt-0.5">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4.5 w-4.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+            </svg>
+          </div>
+          <div>
+            <h5 class="text-sm font-semibold text-rose-400 mb-1">Catatan Penting Penggunaan</h5>
+            <p class="text-xs leading-relaxed text-slate-400">
+              Dokumen ini dirancang sebagai panduan pengembangan internal untuk mempermudah transisi dari tahap purwarupa (prototype) lokal ke tahap produksi dengan integrasi API komersial. Selalu lindungi rahasia kunci API eksternal Anda menggunakan berkas lingkungan <code>.env</code> dan jangan pernah menyebarkan kunci rahasia di dalam bundle client-side Anda.
+            </p>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950 py-6 text-center text-xs text-slate-500">
+      &copy; 2026 Antigravity Seasonal Saham. All rights reserved.
+    </footer>
+  </div>
+
+</body>
+</html>

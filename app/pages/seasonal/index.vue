@@ -10,7 +10,7 @@ import {
 
 // Page Title and SEO Meta
 useHead({
-  title: 'Seasonal Saham Analytics - Pola Performa Historis',
+  title: 'Seasonal Saham Indonesia (IDX) - Pola Performa Historis',
   meta: [
     { name: 'description', content: 'Analisis pola musiman pergerakan harga saham Indonesia berdasarkan data historis bulanan, kuartalan, dan tahunan.' }
   ]
@@ -29,9 +29,9 @@ watch(selectedStockCode, (newCode) => {
     activeSymbol.value = newCode;
     searchSymbolQuery.value = '';
   } else {
-    // Default to US stock AAPL when custom search is selected
-    searchSymbolQuery.value = 'AAPL';
-    activeSymbol.value = 'AAPL';
+    // Default to Indonesian stock BUMI when custom search is selected
+    searchSymbolQuery.value = 'BUMI';
+    activeSymbol.value = 'BUMI';
   }
 });
 
@@ -151,9 +151,9 @@ const ihsgSeasonalStats = computed(() => {
           </div>
           <div>
             <h1 class="text-xl font-bold text-slate-50 tracking-tight flex items-center gap-2">
-              Antigravity Seasonal <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">PRO</span>
+              Seasonal IDX <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">INDONESIA</span>
             </h1>
-            <p class="text-xs text-slate-400">Analisis Pola Historis Musiman Saham</p>
+            <p class="text-xs text-slate-400">Analisis Pola Historis Musiman Saham BEI</p>
           </div>
         </div>
 
@@ -188,29 +188,88 @@ const ihsgSeasonalStats = computed(() => {
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           <!-- Stock Selector -->
           <div class="flex flex-col gap-2">
-            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Ticker Preset</label>
+            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Saham / Indeks</label>
             <select 
               id="stockSelect"
               v-model="selectedStockCode"
               class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
             >
-              <option v-for="stock in seasonalStocks.filter(s => s.code !== 'IHSG')" :key="stock.code" :value="stock.code">
-                {{ stock.code }} - {{ stock.name }}
-              </option>
               <option value="IHSG">IHSG - Indeks Harga Saham Gabungan</option>
-              <option value="CUSTOM">Cari Simbol Kustom...</option>
+              
+              <optgroup label="Perbankan & Keuangan">
+                <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
+                <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
+                <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
+                <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
+                <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Energi & Tambang">
+                <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
+                <option value="PTBA">PTBA - Bukit Asam Tbk</option>
+                <option value="BUMI">BUMI - Bumi Resources Tbk</option>
+                <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
+                <option value="HRUM">HRUM - Harum Energy Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Infrastruktur & Telko">
+                <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
+                <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
+                <option value="EXCL">EXCL - XL Axiata Tbk</option>
+                <option value="JSMR">JSMR - Jasa Marga Tbk</option>
+                <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Konsumer Non-Primer (Siklikal/Ritel)">
+                <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
+                <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
+                <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
+                <option value="MYOR">MYOR - Mayora Indah Tbk</option>
+                <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk (Ace Hardware)</option>
+              </optgroup>
+              
+              <optgroup label="Barang Baku & Logam">
+                <option value="ANTM">ANTM - Aneka Tambang Tbk</option>
+                <option value="INCO">INCO - Vale Indonesia Tbk</option>
+                <option value="TPIA">TPIA - Chandra Asri Pacific Tbk</option>
+                <option value="KRAS">KRAS - Krakatau Steel Tbk</option>
+                <option value="MDKA">MDKA - Merdeka Gold Copper Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Industri & Otomotif">
+                <option value="ASII">ASII - Astra International Tbk</option>
+                <option value="UNTR">UNTR - United Tractors Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Teknologi & Digital">
+                <option value="GOTO">GOTO - GoTo Gojek Tokopedia Tbk</option>
+                <option value="BUKA">BUKA - Bukalapak.com Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Kesehatan & Farmasi">
+                <option value="KLBF">KLBF - Kalbe Farma Tbk</option>
+                <option value="MIKA">MIKA - Mitra Keluarga Karyasehat Tbk</option>
+              </optgroup>
+              
+              <optgroup label="Properti & Real Estate">
+                <option value="BSDE">BSDE - Bumi Serpong Damai Tbk</option>
+                <option value="PWON">PWON - Pakuwon Jati Tbk</option>
+                <option value="SMRA">SMRA - Summarecon Agung Tbk</option>
+              </optgroup>
+              
+              <option value="CUSTOM">Cari Kode Saham IDX Lainnya...</option>
             </select>
           </div>
 
           <!-- Custom Symbol Search (Only show if CUSTOM is selected) -->
           <div v-if="selectedStockCode === 'CUSTOM'" class="flex flex-col gap-2">
-            <label for="customSearch" class="text-xs font-semibold text-slate-400">Simbol Kustom (misal: AAPL, BUMI.JK)</label>
+            <label for="customSearch" class="text-xs font-semibold text-slate-400">Simbol Kustom (contoh: BUMI, GOTO)</label>
             <div class="flex gap-2">
               <input 
                 id="customSearch"
                 v-model="searchSymbolQuery"
                 type="text"
-                placeholder="Ticker (e.g. AAPL, BUMI.JK)"
+                placeholder="Kode Saham (misal: BUMI, GOTO)"
                 @keyup.enter="handleCustomSearch"
                 class="flex-grow min-w-0 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
               />
@@ -306,14 +365,14 @@ const ihsgSeasonalStats = computed(() => {
           <div class="flex-grow">
             <h5 class="text-base font-bold text-rose-400 mb-1">Gagal Memuat Data Saham</h5>
             <p class="text-sm text-rose-300/90 mb-4 leading-relaxed">
-              Simbol Ticker <strong class="text-rose-100 font-bold">"{{ activeSymbol }}"</strong> gagal diambil dari Yahoo Finance. Silakan periksa kembali penulisan ticker Anda (saham Indonesia memerlukan akhiran <code>.JK</code>, contoh: <code>BUMI.JK</code> atau <code>GOTO.JK</code>).
+              Kode Saham <strong class="text-rose-100 font-bold">"{{ activeSymbol }}"</strong> gagal diambil dari Yahoo Finance. Pastikan kode saham terdaftar di Bursa Efek Indonesia (IDX) (contoh: <code>BUMI</code>, <code>GOTO</code>, atau <code>ASII</code>).
             </p>
             <button 
               type="button"
               @click="selectedStockCode = 'BBCA'"
-              class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
+              class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-455 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
             >
-              Kembali ke Ticker BBCA
+              Kembali ke Saham BBCA
             </button>
           </div>
         </div>

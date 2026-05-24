@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   let symbol = rawSymbol.toUpperCase().trim();
   if (symbol === 'IHSG') {
     symbol = '^JKSE';
-  } else if (/^[A-Z]{4}$/.test(symbol)) {
+  } else if (!symbol.endsWith('.JK') && !symbol.startsWith('^')) {
     symbol = `${symbol}.JK`;
   }
 

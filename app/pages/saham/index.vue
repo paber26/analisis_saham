@@ -576,8 +576,8 @@ const chartOption = computed(() => {
         </section>
 
         <!-- Massive Chart Box -->
-        <section class="glow-card p-2 rounded-2xl flex-grow overflow-hidden flex flex-col min-h-[580px] bg-[#020617] border border-slate-900">
-          <div class="flex-grow w-full h-full min-h-[540px] relative">
+        <section class="glow-card p-2 rounded-2xl bg-[#020617] border border-slate-900">
+          <div class="w-full h-[540px] relative">
             <ClientOnly>
               <VChart :option="chartOption" class="w-full h-full" autoresize />
               <template #fallback>

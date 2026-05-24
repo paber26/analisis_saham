@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { seasonalStocks, ihsgData } from '../../data/seasonalStocks';
+import { ref, computed, watch } from 'vue';
+import { seasonalStocks } from '../../data/seasonalStocks';
 import type { PeriodType } from '../../types/seasonal';
 import {
-  filterStockData,
-  getAvailableYears,
   calculateSeasonalStats,
   calculateDashboardSummary,
   generateInsights
@@ -22,22 +20,58 @@ useHead({
 const selectedStockCode = ref('BBCA');
 const selectedPeriodType = ref<PeriodType>('monthly');
 
-// Find active stock and its year boundaries
-const activeStock = computed(() => {
-  return seasonalStocks.find(s => s.code === selectedStockCode.value) || seasonalStocks[0];
+const searchSymbolQuery = ref('');
+const activeSymbol = ref('BBCA');
+
+// Sync activeSymbol when dropdown changes
+watch(selectedStockCode, (newCode) => {
+  if (newCode !== 'CUSTOM') {
+    activeSymbol.value = newCode;
+    searchSymbolQuery.value = '';
+  } else {
+    // Default to US stock AAPL when custom search is selected
+    searchSymbolQuery.value = 'AAPL';
+    activeSymbol.value = 'AAPL';
+  }
+});
+
+const handleCustomSearch = () => {
+  const query = searchSymbolQuery.value.trim().toUpperCase();
+  if (query) {
+    activeSymbol.value = query;
+  }
+};
+
+// Fetch active stock data dynamically from API
+const { 
+  data: fetchedStockData, 
+  pending: isStockPending, 
+  error: stockError 
+} = await useFetch<any>(() => '/api/seasonal', {
+  params: { symbol: activeSymbol },
+  watch: [activeSymbol]
+});
+
+// Fetch IHSG benchmark data dynamically from API (constant symbol 'IHSG')
+const {
+  data: fetchedIhsgData,
+  pending: isIhsgPending
+} = await useFetch<any>('/api/seasonal', {
+  params: { symbol: 'IHSG' }
 });
 
 const allAvailableYears = computed(() => {
-  return getAvailableYears(activeStock.value);
+  if (!fetchedStockData.value || !fetchedStockData.value.history) return [];
+  const years = fetchedStockData.value.history.map((h: any) => h.year);
+  return Array.from(new Set(years)).sort((a: any, b: any) => a - b);
 });
 
 // Year range filters
 const startYear = ref(2015);
 const endYear = ref(2025);
 
-// Sync year bounds when stock changes
-watch(activeStock, (newStock) => {
-  const years = getAvailableYears(newStock);
+// Sync year bounds when fetched stock data updates
+watch(allAvailableYears, (years) => {
   if (years.length > 0) {
     startYear.value = Math.max(years[0], startYear.value);
     endYear.value = Math.min(years[years.length - 1], endYear.value);
@@ -48,24 +82,29 @@ watch(activeStock, (newStock) => {
   }
 }, { immediate: true });
 
-// Filtered Stock Data
-const filteredData = computed(() => {
-  return filterStockData(
-    seasonalStocks,
-    selectedStockCode.value,
-    startYear.value,
-    endYear.value
+// Filtered Active Stock History
+const filteredHistory = computed(() => {
+  if (!fetchedStockData.value || !fetchedStockData.value.history) return [];
+  return fetchedStockData.value.history.filter(
+    (h: any) => h.year >= startYear.value && h.year <= endYear.value
+  );
+});
+
+// Filtered IHSG History
+const filteredIhsgHistory = computed(() => {
+  if (!fetchedIhsgData.value || !fetchedIhsgData.value.history) return [];
+  return fetchedIhsgData.value.history.filter(
+    (h: any) => h.year >= startYear.value && h.year <= endYear.value
   );
 });
 
 // Computed seasonal metrics
 const seasonalStats = computed(() => {
-  if (!filteredData.value) return [];
-  return calculateSeasonalStats(filteredData.value.history, selectedPeriodType.value);
+  return calculateSeasonalStats(filteredHistory.value, selectedPeriodType.value);
 });
 
 const dashboardSummary = computed(() => {
-  if (!filteredData.value || seasonalStats.value.length === 0) {
+  if (seasonalStats.value.length === 0) {
     return {
       avgReturn: 0,
       winRate: 0,
@@ -76,34 +115,25 @@ const dashboardSummary = computed(() => {
   }
   return calculateDashboardSummary(
     seasonalStats.value,
-    filteredData.value.history,
+    filteredHistory.value,
     selectedPeriodType.value
   );
 });
 
 const insights = computed(() => {
-  if (!filteredData.value) return [];
+  if (!fetchedStockData.value) return [];
   return generateInsights(
-    filteredData.value.code,
-    filteredData.value.name,
+    fetchedStockData.value.code,
+    fetchedStockData.value.name,
     seasonalStats.value,
     dashboardSummary.value,
-    filteredData.value.history,
+    filteredHistory.value,
     selectedPeriodType.value
   );
 });
 
-// Compute IHSG comparison statistics
-const ihsgFilteredData = computed(() => {
-  return {
-    code: 'IHSG',
-    name: 'Indeks Harga Saham Gabungan',
-    history: ihsgData.history.filter(h => h.year >= startYear.value && h.year <= endYear.value)
-  };
-});
-
 const ihsgSeasonalStats = computed(() => {
-  return calculateSeasonalStats(ihsgFilteredData.value.history, selectedPeriodType.value);
+  return calculateSeasonalStats(filteredIhsgHistory.value, selectedPeriodType.value);
 });
 </script>
 
@@ -155,19 +185,43 @@ const ihsgSeasonalStats = computed(() => {
       <section class="glow-card rounded-2xl p-6">
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Pengaturan Analisis</h2>
         
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
           <!-- Stock Selector -->
           <div class="flex flex-col gap-2">
-            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Saham</label>
+            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Ticker Preset</label>
             <select 
               id="stockSelect"
               v-model="selectedStockCode"
               class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
             >
-              <option v-for="stock in seasonalStocks" :key="stock.code" :value="stock.code">
+              <option v-for="stock in seasonalStocks.filter(s => s.code !== 'IHSG')" :key="stock.code" :value="stock.code">
                 {{ stock.code }} - {{ stock.name }}
               </option>
+              <option value="IHSG">IHSG - Indeks Harga Saham Gabungan</option>
+              <option value="CUSTOM">Cari Simbol Kustom...</option>
             </select>
+          </div>
+
+          <!-- Custom Symbol Search (Only show if CUSTOM is selected) -->
+          <div v-if="selectedStockCode === 'CUSTOM'" class="flex flex-col gap-2">
+            <label for="customSearch" class="text-xs font-semibold text-slate-400">Simbol Kustom (misal: AAPL, BUMI.JK)</label>
+            <div class="flex gap-2">
+              <input 
+                id="customSearch"
+                v-model="searchSymbolQuery"
+                type="text"
+                placeholder="Ticker (e.g. AAPL, BUMI.JK)"
+                @keyup.enter="handleCustomSearch"
+                class="flex-grow min-w-0 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+              <button 
+                type="button"
+                @click="handleCustomSearch"
+                class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-colors whitespace-nowrap"
+              >
+                Cari
+              </button>
+            </div>
           </div>
 
           <!-- Period Type Selector -->
@@ -207,7 +261,8 @@ const ihsgSeasonalStats = computed(() => {
             <select 
               id="yearStart"
               v-model="startYear"
-              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+              :disabled="allAvailableYears.length === 0"
+              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-50"
             >
               <option 
                 v-for="year in allAvailableYears.filter(y => y <= endYear)" 
@@ -225,7 +280,8 @@ const ihsgSeasonalStats = computed(() => {
             <select 
               id="yearEnd"
               v-model="endYear"
-              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+              :disabled="allAvailableYears.length === 0"
+              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors disabled:opacity-50"
             >
               <option 
                 v-for="year in allAvailableYears.filter(y => y >= startYear)" 
@@ -239,53 +295,86 @@ const ihsgSeasonalStats = computed(() => {
         </div>
       </section>
 
-      <!-- Summary Info Cards -->
-      <section v-if="filteredData">
-        <SeasonalSummaryCards 
-          :summary="dashboardSummary" 
-          :period-type="selectedPeriodType" 
-        />
-      </section>
+      <!-- Error State Warning -->
+      <div v-if="stockError" class="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/20 text-rose-200">
+        <div class="flex gap-4 items-start">
+          <div class="p-2 bg-rose-500/10 text-rose-400 rounded-xl flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+          </div>
+          <div class="flex-grow">
+            <h5 class="text-base font-bold text-rose-400 mb-1">Gagal Memuat Data Saham</h5>
+            <p class="text-sm text-rose-300/90 mb-4 leading-relaxed">
+              Simbol Ticker <strong class="text-rose-100 font-bold">"{{ activeSymbol }}"</strong> gagal diambil dari Yahoo Finance. Silakan periksa kembali penulisan ticker Anda (saham Indonesia memerlukan akhiran <code>.JK</code>, contoh: <code>BUMI.JK</code> atau <code>GOTO.JK</code>).
+            </p>
+            <button 
+              type="button"
+              @click="selectedStockCode = 'BBCA'"
+              class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-450 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
+            >
+              Kembali ke Ticker BBCA
+            </button>
+          </div>
+        </div>
+      </div>
 
-      <!-- Charts grid (Bar Chart and Insights side-by-side on desktop) -->
-      <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        <!-- Bar Chart (Span 2) -->
-        <div class="lg:col-span-2 flex flex-col">
-          <SeasonalBarChart 
+      <!-- Loading State -->
+      <div v-else-if="isStockPending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
+        <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+        <p class="text-sm text-slate-400 font-medium animate-pulse">Mengambil data harga historis dari Yahoo Finance...</p>
+      </div>
+
+      <!-- Active Dashboard Content (Once loaded) -->
+      <div v-else-if="fetchedStockData" class="space-y-6">
+        <!-- Summary Info Cards -->
+        <section>
+          <SeasonalSummaryCards 
+            :summary="dashboardSummary" 
+            :period-type="selectedPeriodType" 
+          />
+        </section>
+
+        <!-- Charts grid (Bar Chart and Insights side-by-side on desktop) -->
+        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+          <!-- Bar Chart (Span 2) -->
+          <div class="lg:col-span-2 flex flex-col">
+            <SeasonalBarChart 
+              :stats="seasonalStats" 
+              :ihsg-stats="ihsgSeasonalStats"
+              :stock-code="fetchedStockData.code"
+              class="flex-grow"
+            />
+          </div>
+
+          <!-- Automated Insights (Span 1) -->
+          <div class="flex flex-col">
+            <SeasonalInsight 
+              :insights="insights" 
+              :stock-code="fetchedStockData.code"
+              class="flex-grow"
+            />
+          </div>
+        </section>
+
+        <!-- Heatmap (Full width) -->
+        <section>
+          <SeasonalHeatmap 
+            :history="filteredHistory" 
+            :stats="seasonalStats"
+            :period-type="selectedPeriodType"
+            :stock-code="fetchedStockData.code"
+          />
+        </section>
+
+        <!-- Table Section (Full width) -->
+        <section>
+          <SeasonalTable 
             :stats="seasonalStats" 
-            :ihsg-stats="ihsgSeasonalStats"
-            :stock-code="selectedStockCode"
-            class="flex-grow"
+            :period-type="selectedPeriodType" 
           />
-        </div>
-
-        <!-- Automated Insights (Span 1) -->
-        <div class="flex flex-col">
-          <SeasonalInsight 
-            :insights="insights" 
-            :stock-code="selectedStockCode"
-            class="flex-grow"
-          />
-        </div>
-      </section>
-
-      <!-- Heatmap (Full width) -->
-      <section v-if="filteredData">
-        <SeasonalHeatmap 
-          :history="filteredData.history" 
-          :stats="seasonalStats"
-          :period-type="selectedPeriodType"
-          :stock-code="selectedStockCode"
-        />
-      </section>
-
-      <!-- Table Section (Full width) -->
-      <section>
-        <SeasonalTable 
-          :stats="seasonalStats" 
-          :period-type="selectedPeriodType" 
-        />
-      </section>
+        </section>
+      </div>
 
       <!-- Warning Disclaimer -->
       <footer class="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/10 text-slate-350">

@@ -400,26 +400,21 @@ const ihsgSeasonalStats = computed(() => {
           />
         </section>
 
-        <!-- Charts grid (Bar Chart and Insights side-by-side on desktop) -->
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          <!-- Bar Chart (Span 2) -->
-          <div class="lg:col-span-2 flex flex-col">
-            <SeasonalBarChart 
-              :stats="seasonalStats" 
-              :ihsg-stats="ihsgSeasonalStats"
-              :stock-code="fetchedStockData.code"
-              class="flex-grow"
-            />
-          </div>
+        <!-- Bar Chart (Full Width) -->
+        <section>
+          <SeasonalBarChart 
+            :stats="seasonalStats" 
+            :ihsg-stats="ihsgSeasonalStats"
+            :stock-code="fetchedStockData.code"
+          />
+        </section>
 
-          <!-- Automated Insights (Span 1) -->
-          <div class="flex flex-col">
-            <SeasonalInsight 
-              :insights="insights" 
-              :stock-code="fetchedStockData.code"
-              class="flex-grow"
-            />
-          </div>
+        <!-- Automated Insights (Full Width) -->
+        <section>
+          <SeasonalInsight 
+            :insights="insights" 
+            :stock-code="fetchedStockData.code"
+          />
         </section>
 
         <!-- Heatmap (Full width) -->

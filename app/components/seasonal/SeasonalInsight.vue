@@ -21,7 +21,7 @@ defineProps<{
     </div>
 
     <!-- Insights List -->
-    <div class="space-y-4">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
       <div 
         v-for="(insight, idx) in insights" 
         :key="idx" 
@@ -38,7 +38,7 @@ defineProps<{
 
       <div 
         v-if="insights.length === 0" 
-        class="text-center py-8 text-slate-500 text-sm"
+        class="md:col-span-2 text-center py-8 text-slate-500 text-sm"
       >
         Tidak ada data insight yang cukup untuk rentang waktu terpilih.
       </div>

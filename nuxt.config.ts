@@ -9,7 +9,7 @@ export default defineNuxtConfig({
   },
   echarts: {
     renderer: ['canvas', 'svg'],
-    charts: ['BarChart', 'HeatmapChart', 'LineChart'],
-    components: ['TooltipComponent', 'GridComponent', 'VisualMapComponent', 'LegendComponent']
+    charts: ['BarChart', 'HeatmapChart', 'LineChart', 'CandlestickChart'],
+    components: ['TooltipComponent', 'GridComponent', 'VisualMapComponent', 'LegendComponent', 'DataZoomComponent']
   }
 })

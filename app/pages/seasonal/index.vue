@@ -60,10 +60,12 @@ const {
   params: { symbol: 'IHSG' }
 });
 
-const allAvailableYears = computed(() => {
-  if (!fetchedStockData.value || !fetchedStockData.value.history) return [];
-  const years = fetchedStockData.value.history.map((h: any) => h.year);
-  return Array.from(new Set(years)).sort((a: any, b: any) => a - b);
+const allAvailableYears = computed<number[]>(() => {
+  const data = fetchedStockData.value as any;
+  if (!data || !data.history) return [];
+  const years = data.history.map((h: any) => h.year as number);
+  const uniqueYears: number[] = Array.from(new Set(years)) as number[];
+  return uniqueYears.sort((a, b) => a - b);
 });
 
 // Year range filters
@@ -71,13 +73,17 @@ const startYear = ref(2015);
 const endYear = ref(2025);
 
 // Sync year bounds when fetched stock data updates
-watch(allAvailableYears, (years) => {
+watch(allAvailableYears, (years: number[]) => {
   if (years.length > 0) {
-    startYear.value = Math.max(years[0], startYear.value);
-    endYear.value = Math.min(years[years.length - 1], endYear.value);
-    if (startYear.value > endYear.value) {
-      startYear.value = years[0];
-      endYear.value = years[years.length - 1];
+    const firstYear = years[0];
+    const lastYear = years[years.length - 1];
+    if (firstYear !== undefined && lastYear !== undefined) {
+      startYear.value = Math.max(firstYear, startYear.value);
+      endYear.value = Math.min(lastYear, endYear.value);
+      if (startYear.value > endYear.value) {
+        startYear.value = firstYear;
+        endYear.value = lastYear;
+      }
     }
   }
 }, { immediate: true });

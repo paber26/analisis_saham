@@ -1,6 +1,18 @@
 import { defineEventHandler, getQuery, createError } from 'h3';
 
-export default defineEventHandler(async (event) => {
+interface StockHistoryItem {
+  year: number;
+  month: number;
+  returnVal: number;
+}
+
+interface StockResponse {
+  code: string;
+  name: string;
+  history: StockHistoryItem[];
+}
+
+export default defineEventHandler(async (event): Promise<StockResponse> => {
   const query = getQuery(event);
   const rawSymbol = (query.symbol as string) || 'BBCA';
   
@@ -19,7 +31,7 @@ export default defineEventHandler(async (event) => {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=10y`;
 
   try {
-    const data = await $fetch<any>(url, {
+    const data: any = await $fetch<any>(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
@@ -32,12 +44,12 @@ export default defineEventHandler(async (event) => {
       });
     }
 
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp || [];
-    const quote = result.indicators.quote[0] || {};
-    const opens = quote.open || [];
-    const closes = quote.close || [];
-    const returnedSymbol = result.meta.symbol || symbol;
+    const result: any = data.chart.result[0];
+    const timestamps: number[] = result.timestamp || [];
+    const quote: any = result.indicators.quote[0] || {};
+    const opens: (number | null)[] = quote.open || [];
+    const closes: (number | null)[] = quote.close || [];
+    const returnedSymbol: string = result.meta.symbol || symbol;
 
     // Resolve full name if possible, or use standard labels
     let fullName = returnedSymbol;

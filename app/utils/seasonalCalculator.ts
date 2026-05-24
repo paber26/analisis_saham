@@ -63,10 +63,9 @@ export function aggregateDataByPeriod(
   // Group history by year
   const historyByYear: Record<number, StockMonthlyData[]> = {};
   history.forEach(item => {
-    if (!historyByYear[item.year]) {
-      historyByYear[item.year] = [];
-    }
-    historyByYear[item.year].push(item);
+    const list = historyByYear[item.year] || [];
+    list.push(item);
+    historyByYear[item.year] = list;
   });
 
   Object.entries(historyByYear).forEach(([yearStr, monthlyData]) => {
@@ -78,7 +77,7 @@ export function aggregateDataByPeriod(
         if (item.month >= 1 && item.month <= 12) {
           result.push({
             year,
-            periodLabel: MONTH_LABELS[item.month - 1],
+            periodLabel: MONTH_LABELS[item.month - 1] || '',
             returnVal: item.returnVal
           });
         }
@@ -96,7 +95,7 @@ export function aggregateDataByPeriod(
           const qReturn = compoundReturns(monthsInQuarter.map(m => m.returnVal));
           result.push({
             year,
-            periodLabel: QUARTER_LABELS[q - 1],
+            periodLabel: QUARTER_LABELS[q - 1] || '',
             returnVal: qReturn
           });
         }
@@ -194,8 +193,19 @@ export function calculateDashboardSummary(
   const winRate = totalObs > 0 ? Math.round((totalUp / totalObs) * 100) : 0;
 
   // Find best and worst periods based on average return
-  let bestPeriod = stats[0];
-  let worstPeriod = stats[0];
+  const firstStat = stats[0];
+  if (!firstStat) {
+    return {
+      avgReturn: 0,
+      winRate: 0,
+      bestPeriod: null,
+      worstPeriod: null,
+      totalYears
+    };
+  }
+
+  let bestPeriod = firstStat;
+  let worstPeriod = firstStat;
 
   stats.forEach(s => {
     if (s.avgReturn > bestPeriod.avgReturn) {
@@ -232,21 +242,23 @@ export function generateInsights(
   if (stats.length === 0) return insights;
 
   // 1. Best performing period insight
-  if (summary.bestPeriod && summary.bestPeriod.value > 0) {
-    const bestStat = stats.find(s => s.periodLabel === summary.bestPeriod?.label);
+  const bestPeriod = summary.bestPeriod;
+  if (bestPeriod && bestPeriod.value > 0) {
+    const bestStat = stats.find(s => s.periodLabel === bestPeriod.label);
     if (bestStat) {
       insights.push(
-        `Secara historis, ${periodTypeName} terbaik untuk saham <strong>${stockCode}</strong> adalah <strong>${summary.bestPeriod.label}</strong> dengan rata-rata kenaikan sebesar <strong>${summary.bestPeriod.value}%</strong> dan tingkat keberhasilan (Win Rate) mencapai <strong>${bestStat.winRate}%</strong>.`
+        `Secara historis, ${periodTypeName} terbaik untuk saham <strong>${stockCode}</strong> adalah <strong>${bestPeriod.label}</strong> dengan rata-rata kenaikan sebesar <strong>${bestPeriod.value}%</strong> dan tingkat keberhasilan (Win Rate) mencapai <strong>${bestStat.winRate}%</strong>.`
       );
     }
   }
 
   // 2. Worst performing period insight
-  if (summary.worstPeriod && summary.worstPeriod.value < 0) {
-    const worstStat = stats.find(s => s.periodLabel === summary.worstPeriod?.label);
+  const worstPeriod = summary.worstPeriod;
+  if (worstPeriod && worstPeriod.value < 0) {
+    const worstStat = stats.find(s => s.periodLabel === worstPeriod.label);
     if (worstStat) {
       insights.push(
-        `Waspadai ${periodTypeName} <strong>${summary.worstPeriod.label}</strong> yang mencatatkan kinerja historis terendah dengan rata-rata return <strong>${summary.worstPeriod.value}%</strong> serta probabilitas turun sebesar <strong>${Math.round(100 - worstStat.winRate)}%</strong>.`
+        `Waspadai ${periodTypeName} <strong>${worstPeriod.label}</strong> yang mencatatkan kinerja historis terendah dengan rata-rata return <strong>${worstPeriod.value}%</strong> serta probabilitas turun sebesar <strong>${Math.round(100 - worstStat.winRate)}%</strong>.`
       );
     }
   }
@@ -262,9 +274,10 @@ export function generateInsights(
 
   // 4. Extreme records
   const aggregatedData = aggregateDataByPeriod(history, periodType);
-  if (aggregatedData.length > 0) {
-    let highestSingle = aggregatedData[0];
-    let lowestSingle = aggregatedData[0];
+  const firstAggregated = aggregatedData[0];
+  if (firstAggregated) {
+    let highestSingle = firstAggregated;
+    let lowestSingle = firstAggregated;
 
     aggregatedData.forEach(d => {
       if (d.returnVal > highestSingle.returnVal) highestSingle = d;

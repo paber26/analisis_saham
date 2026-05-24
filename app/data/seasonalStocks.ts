@@ -27,7 +27,7 @@ function generateHistoricalData(
       const u2 = random() || 0.0001;
       const randNormal = Math.sqrt(-2.0 * Math.log(u1)) * Math.cos(2.0 * Math.PI * u2);
       
-      const bias = seasonalBiases[month] !== undefined ? seasonalBiases[month] : 0;
+      const bias = seasonalBiases[month] ?? 0;
       
       // Calculate return percentage
       let returnVal = baseReturn + randNormal * volatility + bias;

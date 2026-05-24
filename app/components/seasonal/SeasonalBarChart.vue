@@ -101,9 +101,11 @@ const chartOption = computed(() => {
       padding: [10, 14],
       formatter: (params: any) => {
         const item = params[0];
+        if (!item) return '';
         const val = item.value;
         const index = item.dataIndex;
         const stat = props.stats[index];
+        if (!stat) return '';
         const color = val >= 0 ? '#34d399' : '#f87171'; // emerald-400 : rose-400
         const sign = val > 0 ? '+' : '';
         

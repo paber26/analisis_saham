@@ -67,12 +67,13 @@ const chartOption = computed(() => {
     grid: {
       left: '3%',
       right: '3%',
-      bottom: '15%',
-      top: '5%',
+      bottom: '10%',
+      top: '12%',
       containLabel: true
     },
     xAxis: {
       type: 'category',
+      position: 'top',
       data: periodLabels,
       splitArea: {
         show: true,

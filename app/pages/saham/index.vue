@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { getStockFundamentals } from '../../data/stockFundamentals';
 
 // Page Title and SEO Meta
 useHead({
-  title: 'Detail Harga Harian & Profil Keuangan Saham IDX',
+  title: 'TradingView Chart - Analisis Harga Saham IDX',
   meta: [
-    { name: 'description', content: 'Informasi harga penutupan harian, statistik pergerakan pasar harian, dan ringkasan rasio keuangan fundamental emiten BEI.' }
+    { name: 'description', content: 'Grafik harga saham interaktif ala TradingView dengan analisis candlestick harian, volume transaksi, dan rata-rata bergerak (Moving Average).' }
   ]
 });
 
@@ -14,7 +13,7 @@ useHead({
 const selectedStockCode = ref('BBCA');
 const searchSymbolQuery = ref('');
 const activeSymbol = ref('BBCA');
-const selectedRange = ref<'1m' | '3m'>('3m');
+const selectedRange = ref<'1m' | '3m' | '6m' | '1y'>('6m');
 
 // Sync activeSymbol when dropdown changes
 watch(selectedStockCode, (newCode) => {
@@ -34,7 +33,7 @@ const handleCustomSearch = () => {
   }
 };
 
-// Fetch live stock details from server API
+// Fetch live stock details from server API (now queries 1 year range)
 const {
   data: stockDetail,
   pending: isPending,
@@ -44,35 +43,73 @@ const {
   watch: [activeSymbol]
 });
 
-// Get fundamental mapping
-const fundamentalData = computed(() => {
-  return getStockFundamentals(activeSymbol.value);
+// Chronological chart data processor (oldest first)
+const chartData = computed(() => {
+  if (!stockDetail.value || !stockDetail.value.history || stockDetail.value.history.length === 0) {
+    return { categoryData: [], values: [], volumes: [], rawList: [] };
+  }
+  
+  const rawList = [...stockDetail.value.history].reverse(); // reverse from latest-first to oldest-first
+  
+  // Filter based on range
+  let filteredList = rawList;
+  if (selectedRange.value === '1m') {
+    filteredList = rawList.slice(-20);
+  } else if (selectedRange.value === '3m') {
+    filteredList = rawList.slice(-60);
+  } else if (selectedRange.value === '6m') {
+    filteredList = rawList.slice(-125);
+  }
+  
+  const categoryData = [];
+  const values = []; // [open, close, lowest, highest]
+  const volumes = []; // [index, volume] with style
+
+  for (let i = 0; i < filteredList.length; i++) {
+    const item = filteredList[i];
+    categoryData.push(item.date);
+    values.push([item.open, item.close, item.low, item.high]);
+    
+    const isUp = item.close >= item.open;
+    volumes.push({
+      value: item.volume,
+      itemStyle: {
+        color: isUp ? '#089981' : '#f23645', // TradingView green vs red
+        opacity: 0.7
+      }
+    });
+  }
+
+  return {
+    categoryData,
+    values,
+    volumes,
+    rawList: filteredList
+  };
 });
 
-// Calculate live metrics based on real-time price
-const computedMarketCap = computed(() => {
-  if (!stockDetail.value) return 0;
-  return stockDetail.value.currentPrice * fundamentalData.value.sharesOutstanding * 1000000000;
-});
+// Moving Averages Calculations
+const ma5 = computed(() => calculateMA(5, chartData.value.rawList));
+const ma10 = computed(() => calculateMA(10, chartData.value.rawList));
+const ma20 = computed(() => calculateMA(20, chartData.value.rawList));
 
-const computedPE = computed(() => {
-  if (!stockDetail.value || fundamentalData.value.eps === 0) return 'N/A';
-  if (fundamentalData.value.eps < 0) return 'Negatif';
-  return (stockDetail.value.currentPrice / fundamentalData.value.eps).toFixed(2);
-});
+function calculateMA(dayCount: number, data: any[]) {
+  const result = [];
+  for (let i = 0; i < data.length; i++) {
+    if (i < dayCount - 1) {
+      result.push('-');
+      continue;
+    }
+    let sum = 0;
+    for (let j = 0; j < dayCount; j++) {
+      sum += data[i - j].close;
+    }
+    result.push(Math.round((sum / dayCount) * 100) / 100);
+  }
+  return result;
+}
 
-const computedPB = computed(() => {
-  if (!stockDetail.value || fundamentalData.value.bvps === 0) return 'N/A';
-  if (fundamentalData.value.bvps < 0) return 'Negatif';
-  return (stockDetail.value.currentPrice / fundamentalData.value.bvps).toFixed(2);
-});
-
-const computedDivYield = computed(() => {
-  if (!stockDetail.value || fundamentalData.value.dps === 0) return '0.00%';
-  return ((fundamentalData.value.dps / stockDetail.value.currentPrice) * 100).toFixed(2) + '%';
-});
-
-// Format volume helper
+// Format Large Numbers Helper
 const formatLargeNumber = (num: number, suffix = '') => {
   if (num >= 1e12) return (num / 1e12).toFixed(2) + ' T' + suffix;
   if (num >= 1e9) return (num / 1e9).toFixed(2) + ' B' + suffix;
@@ -80,126 +117,226 @@ const formatLargeNumber = (num: number, suffix = '') => {
   return num.toLocaleString('id-ID') + suffix;
 };
 
-// Calculate Sitting Position inside 52-Week Range
-const sliderPercentage = computed(() => {
-  if (!stockDetail.value) return 0;
-  const high = stockDetail.value.fiftyTwoWeekHigh;
-  const low = stockDetail.value.fiftyTwoWeekLow;
-  const curr = stockDetail.value.currentPrice;
-  if (high === low) return 50;
-  const pct = ((curr - low) / (high - low)) * 100;
-  return Math.min(Math.max(Math.round(pct), 0), 100);
-});
-
-// Daily Chart Configuration
+// ECharts Candlestick + Volume Config
 const chartOption = computed(() => {
-  if (!stockDetail.value || !stockDetail.value.history || stockDetail.value.history.length === 0) return {};
-  
-  // Create copy of history and reverse to chronological order (oldest first)
-  let rawHistory = [...stockDetail.value.history].reverse();
-  if (selectedRange.value === '1m') {
-    rawHistory = rawHistory.slice(-20);
-  }
-  
-  const dates = rawHistory.map((h: any) => h.date);
-  const prices = rawHistory.map((h: any) => h.close);
+  const { categoryData, values, volumes } = chartData.value;
+  if (categoryData.length === 0) return {};
 
   return {
-    backgroundColor: 'transparent',
-    grid: {
-      left: '3%',
-      right: '3%',
-      bottom: '5%',
-      top: '12%',
-      containLabel: true
+    backgroundColor: '#020617', // Slate 950
+    animation: false,
+    legend: {
+      data: ['Candlestick', 'MA5', 'MA10', 'MA20'],
+      inactiveColor: '#475569',
+      textStyle: {
+        color: '#94a3b8',
+        fontSize: 10,
+        fontFamily: 'inherit'
+      },
+      top: '1.5%',
+      left: '3%'
     },
     tooltip: {
       trigger: 'axis',
+      axisPointer: {
+        type: 'cross',
+        label: {
+          backgroundColor: '#1e293b',
+          color: '#f8fafc',
+          fontSize: 10
+        }
+      },
       backgroundColor: '#0f172a',
       borderColor: '#334155',
       borderWidth: 1,
-      textStyle: { color: '#f8fafc', fontSize: 12, fontFamily: 'inherit' },
-      padding: [10, 14],
+      textStyle: {
+        color: '#f8fafc',
+        fontSize: 11,
+        fontFamily: 'inherit'
+      },
+      padding: [8, 12],
+      position: function (pos: any, params: any, el: any, elRect: any, size: any) {
+        // Position at the top right to behave like TradingView's float bar
+        return { top: 8, left: size.viewSize[0] - size.contentSize[0] - 24 };
+      },
       formatter: (params: any) => {
-        const item = params[0];
-        if (!item) return '';
-        const date = item.name;
-        const val = item.value;
-        const index = item.dataIndex;
-        const record = rawHistory[index];
-        if (!record) return '';
-        const color = record.changeVal >= 0 ? '#34d399' : '#f87171';
-        const sign = record.changeVal > 0 ? '+' : '';
+        const candleParam = params.find((p: any) => p.seriesName === 'Candlestick');
+        const volParam = params.find((p: any) => p.seriesName === 'Volume');
+        const ma5Param = params.find((p: any) => p.seriesName === 'MA5');
+        const ma10Param = params.find((p: any) => p.seriesName === 'MA10');
+        const ma20Param = params.find((p: any) => p.seriesName === 'MA20');
         
-        return `
-          <div style="font-family: inherit;">
-            <div style="font-weight: 600; margin-bottom: 6px; color: #94a3b8; font-size: 13px;">${date}</div>
-            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Close:</span>
-              <span style="font-weight: 700; color: #f8fafc;">${val.toLocaleString('id-ID')} IDR</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Perubahan:</span>
-              <span style="font-weight: 700; color: ${color};">${sign}${record.changeVal.toLocaleString('id-ID')} (${sign}${record.changePct.toFixed(2)}%)</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Open / Vol:</span>
-              <span style="font-weight: 500; color: #cbd5e1;">${record.open.toLocaleString('id-ID')} / ${record.volume.toLocaleString('id-ID')}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; gap: 24px;">
-              <span style="color: #cbd5e1;">High - Low:</span>
-              <span style="font-weight: 500; color: #94a3b8;">${record.low.toLocaleString('id-ID')} - ${record.high.toLocaleString('id-ID')}</span>
-            </div>
-          </div>
+        if (!candleParam) return '';
+        const date = candleParam.name;
+        const [open, close, low, high] = candleParam.value;
+        const volumeVal = volParam ? volParam.value : 0;
+        const isUp = close >= open;
+        const color = isUp ? '#22c55e' : '#ef4444'; // emerald vs red
+        const changeVal = close - open;
+        const changePct = ((close - open) / open) * 100;
+        const sign = changeVal > 0 ? '+' : '';
+
+        let html = `
+          <div style="display: flex; gap: 12px; font-family: inherit; font-size: 11px; align-items: center; white-space: nowrap;">
+            <span style="color: #64748b; font-weight: 700;">${date}</span>
+            <span>O: <b style="color: #f8fafc;">${open.toLocaleString('id-ID')}</b></span>
+            <span>H: <b style="color: #f8fafc;">${high.toLocaleString('id-ID')}</b></span>
+            <span>L: <b style="color: #f8fafc;">${low.toLocaleString('id-ID')}</b></span>
+            <span>C: <b style="color: ${color};">${close.toLocaleString('id-ID')}</b></span>
+            <span style="color: ${color}; font-weight: 700;">${sign}${changeVal.toLocaleString('id-ID')} (${sign}${changePct.toFixed(2)}%)</span>
+            <span>V: <b style="color: #cbd5e1;">${formatLargeNumber(volumeVal)}</b></span>
         `;
+
+        if (ma5Param && typeof ma5Param.value === 'number') {
+          html += `<span style="color: #eab308;">MA5: <b>${ma5Param.value.toLocaleString('id-ID')}</b></span>`;
+        }
+        if (ma10Param && typeof ma10Param.value === 'number') {
+          html += `<span style="color: #ec4899;">MA10: <b>${ma10Param.value.toLocaleString('id-ID')}</b></span>`;
+        }
+        if (ma20Param && typeof ma20Param.value === 'number') {
+          html += `<span style="color: #3b82f6;">MA20: <b>${ma20Param.value.toLocaleString('id-ID')}</b></span>`;
+        }
+
+        html += `</div>`;
+        return html;
       }
     },
-    xAxis: {
-      type: 'category',
-      data: dates,
-      axisLine: { lineStyle: { color: '#334155' } },
-      axisLabel: { color: '#94a3b8', fontSize: 10, fontFamily: 'inherit' },
-      axisTick: { show: false }
+    axisPointer: {
+      link: [{ xAxisIndex: 'all' }],
+      label: { backgroundColor: '#334155' }
     },
-    yAxis: {
-      type: 'value',
-      axisLine: { show: false },
-      axisLabel: {
-        color: '#94a3b8',
-        fontFamily: 'inherit',
-        fontSize: 10,
-        formatter: (val: number) => val.toLocaleString('id-ID')
+    // Dual aligned grids (Main Candlestick top, Volume bottom)
+    grid: [
+      {
+        left: '2%',
+        right: '4%',
+        height: '67%',
+        top: '10%',
+        containLabel: false
       },
-      splitLine: { lineStyle: { color: '#1e293b', type: 'dashed' } }
-    },
+      {
+        left: '2%',
+        right: '4%',
+        top: '80%',
+        height: '13%',
+        containLabel: false
+      }
+    ],
+    xAxis: [
+      {
+        type: 'category',
+        data: categoryData,
+        boundaryGap: true,
+        axisLine: { onZero: false, lineStyle: { color: '#1e293b' } },
+        splitLine: { show: true, lineStyle: { color: '#0f172a', type: 'dashed' } },
+        axisLabel: { show: false },
+        axisTick: { show: false },
+        min: 'dataMin',
+        max: 'dataMax'
+      },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: categoryData,
+        boundaryGap: true,
+        axisLine: { onZero: false, lineStyle: { color: '#334155' } },
+        splitLine: { show: true, lineStyle: { color: '#0f172a', type: 'dashed' } },
+        axisLabel: {
+          color: '#64748b',
+          fontSize: 9,
+          fontFamily: 'inherit'
+        },
+        axisTick: { show: false },
+        min: 'dataMin',
+        max: 'dataMax'
+      }
+    ],
+    yAxis: [
+      {
+        scale: true,
+        axisLine: { show: false },
+        axisLabel: {
+          color: '#64748b',
+          fontFamily: 'inherit',
+          fontSize: 9,
+          formatter: (val: number) => val.toLocaleString('id-ID')
+        },
+        splitLine: { show: true, lineStyle: { color: '#0f172a', type: 'dashed' } },
+        position: 'right'
+      },
+      {
+        scale: true,
+        gridIndex: 1,
+        splitNumber: 2,
+        axisLabel: { show: false },
+        axisLine: { show: false },
+        axisTick: { show: false },
+        splitLine: { show: false }
+      }
+    ],
+    // Scrolling & Zooming triggers
+    dataZoom: [
+      {
+        type: 'inside',
+        xAxisIndex: [0, 1],
+        start: 60, // Shows latest 40% of records by default
+        end: 100
+      },
+      {
+        show: true,
+        xAxisIndex: [0, 1],
+        type: 'slider',
+        bottom: '0%',
+        height: 16,
+        backgroundColor: '#020617',
+        borderColor: '#0f172a',
+        fillerColor: 'rgba(8, 153, 129, 0.08)',
+        textStyle: { color: '#475569', fontSize: 8, fontFamily: 'inherit' },
+        handleStyle: { color: '#089981' }
+      }
+    ],
     series: [
       {
-        name: 'Harga Harian',
+        name: 'Candlestick',
+        type: 'candlestick',
+        data: values,
+        itemStyle: {
+          color: '#089981',       // Green up candle
+          color0: '#f23645',      // Red down candle
+          borderColor: '#089981',
+          borderColor0: '#f23645'
+        }
+      },
+      {
+        name: 'Volume',
+        type: 'bar',
+        xAxisIndex: 1,
+        yAxisIndex: 1,
+        data: volumes
+      },
+      {
+        name: 'MA5',
         type: 'line',
-        showSymbol: false,
+        data: ma5.value,
         smooth: true,
-        lineStyle: {
-          width: 3,
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 1, y2: 0,
-            colorStops: [
-              { offset: 0, color: '#10b981' },
-              { offset: 1, color: '#06b6d4' }
-            ]
-          }
-        },
-        areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(16, 185, 129, 0.2)' },
-              { offset: 1, color: 'rgba(6, 182, 212, 0)' }
-            ]
-          }
-        },
-        data: prices
+        showSymbol: false,
+        lineStyle: { color: '#eab308', width: 1 }
+      },
+      {
+        name: 'MA10',
+        type: 'line',
+        data: ma10.value,
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { color: '#ec4899', width: 1 }
+      },
+      {
+        name: 'MA20',
+        type: 'line',
+        data: ma20.value,
+        smooth: true,
+        showSymbol: false,
+        lineStyle: { color: '#3b82f6', width: 1.2 }
       }
     ]
   };
@@ -209,115 +346,144 @@ const chartOption = computed(() => {
 <template>
   <div class="pb-16 bg-slate-950 text-slate-100 flex flex-col flex-grow">
     <!-- Main Content -->
-    <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-8 flex-grow w-full space-y-6">
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-8 flex-grow w-full flex flex-col space-y-4">
       
-      <!-- Filters Panel -->
-      <section class="glow-card rounded-2xl p-6">
-        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Pilih Saham untuk Informasi Detail</h2>
-        
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          <!-- Stock Selector -->
-          <div class="flex flex-col gap-2">
-            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Saham Preset</label>
-            <select 
-              id="stockSelect"
-              v-model="selectedStockCode"
-              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-            >
-              <optgroup label="Indeks">
-                <option value="IHSG">IHSG - Indeks Harga Saham Gabungan</option>
-              </optgroup>
-              
-              <optgroup label="Perbankan & Keuangan">
-                <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
-                <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
-                <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
-                <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
-                <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Energi & Tambang">
-                <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
-                <option value="PTBA">PTBA - Bukit Asam Tbk</option>
-                <option value="BUMI">BUMI - Bumi Resources Tbk</option>
-                <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
-                <option value="HRUM">HRUM - Harum Energy Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Infrastruktur & Telko">
-                <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
-                <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
-                <option value="EXCL">EXCL - XL Axiata Tbk</option>
-                <option value="JSMR">JSMR - Jasa Marga Tbk</option>
-                <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Konsumer Non-Primer (Siklikal/Ritel)">
-                <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
-                <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
-                <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
-                <option value="MYOR">MYOR - Mayora Indah Tbk</option>
-                <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Barang Baku & Logam">
-                <option value="ANTM">ANTM - Aneka Tambang Tbk</option>
-                <option value="INCO">INCO - Vale Indonesia Tbk</option>
-                <option value="TPIA">TPIA - Chandra Asri Pacific Tbk</option>
-                <option value="KRAS">KRAS - Krakatau Steel Tbk</option>
-                <option value="MDKA">MDKA - Merdeka Gold Copper Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Industri & Otomotif">
-                <option value="ASII">ASII - Astra International Tbk</option>
-                <option value="UNTR">UNTR - United Tractors Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Teknologi & Digital">
-                <option value="GOTO">GOTO - GoTo Gojek Tokopedia Tbk</option>
-                <option value="BUKA">BUKA - Bukalapak.com Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Kesehatan & Farmasi">
-                <option value="KLBF">KLBF - Kalbe Farma Tbk</option>
-                <option value="MIKA">MIKA - Mitra Keluarga Karyasehat Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Properti & Real Estate">
-                <option value="BSDE">BSDE - Bumi Serpong Damai Tbk</option>
-                <option value="PWON">PWON - Pakuwon Jati Tbk</option>
-                <option value="SMRA">SMRA - Summarecon Agung Tbk</option>
-              </optgroup>
-              
-              <option value="CUSTOM">Pencarian Simbol Kustom...</option>
-            </select>
-          </div>
+      <!-- Top Actions Bar -->
+      <section class="glow-card rounded-2xl p-4 flex flex-col md:flex-row justify-between items-center gap-4">
+        <!-- Stock Ticker selectors -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+          <!-- Dropdown -->
+          <select 
+            id="stockSelect"
+            v-model="selectedStockCode"
+            class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-semibold text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+          >
+            <optgroup label="Indeks">
+              <option value="IHSG">IHSG - Indeks Harga Gabungan</option>
+            </optgroup>
+            
+            <optgroup label="Perbankan & Keuangan">
+              <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
+              <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
+              <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
+              <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
+              <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Energi & Tambang">
+              <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
+              <option value="PTBA">PTBA - Bukit Asam Tbk</option>
+              <option value="BUMI">BUMI - Bumi Resources Tbk</option>
+              <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
+              <option value="HRUM">HRUM - Harum Energy Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Infrastruktur & Telko">
+              <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
+              <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
+              <option value="EXCL">EXCL - XL Axiata Tbk</option>
+              <option value="JSMR">JSMR - Jasa Marga Tbk</option>
+              <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Konsumer & Ritel">
+              <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
+              <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
+              <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
+              <option value="MYOR">MYOR - Mayora Indah Tbk</option>
+              <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Barang Baku & Logam">
+              <option value="ANTM">ANTM - Aneka Tambang Tbk</option>
+              <option value="INCO">INCO - Vale Indonesia Tbk</option>
+              <option value="TPIA">TPIA - Chandra Asri Pacific Tbk</option>
+              <option value="KRAS">KRAS - Krakatau Steel Tbk</option>
+              <option value="MDKA">MDKA - Merdeka Gold Copper Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Industri & Otomotif">
+              <option value="ASII">ASII - Astra International Tbk</option>
+              <option value="UNTR">UNTR - United Tractors Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Teknologi & Digital">
+              <option value="GOTO">GOTO - GoTo Gojek Tokopedia Tbk</option>
+              <option value="BUKA">BUKA - Bukalapak.com Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Kesehatan & Farmasi">
+              <option value="KLBF">KLBF - Kalbe Farma Tbk</option>
+              <option value="MIKA">MIKA - Mitra Keluarga Karyasehat Tbk</option>
+            </optgroup>
+            
+            <optgroup label="Properti & Real Estate">
+              <option value="BSDE">BSDE - Bumi Serpong Damai Tbk</option>
+              <option value="PWON">PWON - Pakuwon Jati Tbk</option>
+              <option value="SMRA">SMRA - Summarecon Agung Tbk</option>
+            </optgroup>
+            
+            <option value="CUSTOM">Pencarian Simbol Kustom...</option>
+          </select>
 
-          <!-- Custom Ticker Search -->
-          <div v-if="selectedStockCode === 'CUSTOM'" class="flex flex-col gap-2 xl:col-span-2">
-            <label for="customSearch" class="text-xs font-semibold text-slate-400">Masukkan Simbol Saham BEI</label>
-            <div class="flex gap-2">
-              <input 
-                id="customSearch"
-                v-model="searchSymbolQuery"
-                type="text"
-                placeholder="Contoh: BUMI, GOTO, ASII"
-                class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 placeholder-slate-600 focus:outline-none focus:border-emerald-500 w-full uppercase"
-                @keyup.enter="handleCustomSearch"
-              />
-              <button 
-                type="button"
-                @click="handleCustomSearch"
-                class="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-slate-950 px-4 py-2.5 rounded-xl font-bold text-xs transition-all uppercase tracking-wider"
-              >
-                Cari
-              </button>
-            </div>
+          <!-- Custom Ticker Search input -->
+          <div v-if="selectedStockCode === 'CUSTOM'" class="flex gap-2">
+            <input 
+              id="customSearch"
+              v-model="searchSymbolQuery"
+              type="text"
+              placeholder="Simbol IDX..."
+              class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-emerald-500 uppercase w-32"
+              @keyup.enter="handleCustomSearch"
+            />
+            <button 
+              type="button"
+              @click="handleCustomSearch"
+              class="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-slate-950 px-3 py-1.5 rounded-xl font-bold text-xs transition-all"
+            >
+              Cari
+            </button>
           </div>
+        </div>
+
+        <!-- Range Filter Buttons -->
+        <div class="flex bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs font-bold text-slate-400">
+          <button 
+            type="button" 
+            class="px-3 py-1.5 rounded-lg transition-all"
+            :class="[selectedRange === '1m' ? 'bg-slate-800 text-emerald-450 shadow-sm' : 'hover:text-slate-200']"
+            @click="selectedRange = '1m'"
+          >
+            1B
+          </button>
+          <button 
+            type="button" 
+            class="px-3 py-1.5 rounded-lg transition-all"
+            :class="[selectedRange === '3m' ? 'bg-slate-800 text-emerald-450 shadow-sm' : 'hover:text-slate-200']"
+            @click="selectedRange = '3m'"
+          >
+            3B
+          </button>
+          <button 
+            type="button" 
+            class="px-3 py-1.5 rounded-lg transition-all"
+            :class="[selectedRange === '6m' ? 'bg-slate-800 text-emerald-450 shadow-sm' : 'hover:text-slate-200']"
+            @click="selectedRange = '6m'"
+          >
+            6B
+          </button>
+          <button 
+            type="button" 
+            class="px-3 py-1.5 rounded-lg transition-all"
+            :class="[selectedRange === '1y' ? 'bg-slate-800 text-emerald-450 shadow-sm' : 'hover:text-slate-200']"
+            @click="selectedRange = '1y'"
+          >
+            1T
+          </button>
         </div>
       </section>
 
-      <!-- Error State -->
+      <!-- Error State Warning -->
       <div v-if="fetchError" class="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/20 text-rose-200">
         <div class="flex gap-4 items-start">
           <div class="p-2 bg-rose-500/10 text-rose-400 rounded-xl flex-shrink-0">
@@ -326,14 +492,14 @@ const chartOption = computed(() => {
             </svg>
           </div>
           <div class="flex-grow">
-            <h5 class="text-base font-bold text-rose-400 mb-1">Gagal Memuat Informasi Detail</h5>
-            <p class="text-sm text-rose-300/90 mb-4 leading-relaxed">
-              Detail untuk simbol <strong class="text-rose-100 font-bold">"{{ activeSymbol }}"</strong> gagal diambil dari Yahoo Finance. Periksa kembali ticker yang Anda ketikkan atau coba gunakan kode preset terdaftar.
+            <h5 class="text-base font-bold text-rose-400 mb-1">Gagal Memuat Grafik Candlestick</h5>
+            <p class="text-sm text-rose-300/90 mb-4">
+              Data harga untuk simbol <strong class="text-rose-100 font-bold">"{{ activeSymbol }}"</strong> tidak ditemukan. Silakan periksa kembali simbol ticker bursa atau coba emiten blue-chip preset lainnya.
             </p>
             <button 
               type="button"
               @click="selectedStockCode = 'BBCA'"
-              class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-350 border border-rose-500/30 font-semibold text-xs rounded-xl transition-all"
+              class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-350 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
             >
               Kembali ke Saham BBCA
             </button>
@@ -342,329 +508,84 @@ const chartOption = computed(() => {
       </div>
 
       <!-- Loading State -->
-      <div v-else-if="isPending" class="py-24 flex flex-col items-center justify-center gap-4 bg-slate-900/20 border border-slate-900 rounded-2xl">
+      <div v-else-if="isPending" class="py-32 flex flex-col items-center justify-center gap-4 bg-slate-900/10 border border-slate-900 rounded-2xl flex-grow">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-sm text-slate-400 font-medium animate-pulse">Mengambil data penutupan harian dan profil emiten...</p>
+        <p class="text-sm text-slate-400 font-medium animate-pulse">Menggambar grafik candlestick harian ala TradingView...</p>
       </div>
 
-      <!-- Content State (Loaded) -->
-      <div v-else-if="stockDetail" class="space-y-6">
+      <!-- Loaded Candlestick + Volume Chart -->
+      <div v-else-if="stockDetail" class="flex flex-col flex-grow space-y-4">
         
-        <!-- Header Info Cards & Price Quote -->
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          <!-- Core Quote (Span 2) -->
-          <div class="lg:col-span-2 glow-card p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
-            <div>
-              <div class="flex justify-between items-start gap-4 mb-2">
-                <div>
-                  <span class="text-[10px] font-bold text-emerald-400 tracking-wider bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md uppercase">
-                    {{ stockDetail.exchange }} : {{ stockDetail.currency }}
-                  </span>
-                  <h3 class="text-xl font-bold text-slate-100 mt-2">{{ stockDetail.name }}</h3>
-                  <p class="text-sm font-semibold text-slate-400 mt-0.5">{{ stockDetail.symbol }}</p>
-                </div>
-                
-                <div class="text-right">
-                  <div class="text-3xl font-extrabold text-slate-50 tracking-tight">
-                    {{ stockDetail.currentPrice.toLocaleString('id-ID') }}
-                  </div>
-                  
-                  <!-- Price changes -->
-                  <div 
-                    class="text-sm font-bold mt-1 flex items-center justify-end gap-1.5"
-                    :class="[stockDetail.currentPrice - stockDetail.previousClose >= 0 ? 'text-emerald-400' : 'text-rose-400']"
-                  >
-                    <span>
-                      {{ stockDetail.currentPrice - stockDetail.previousClose >= 0 ? '▲' : '▼' }}
-                    </span>
-                    <span>
-                      {{ Math.abs(stockDetail.currentPrice - stockDetail.previousClose).toLocaleString('id-ID') }} 
-                      ({{ (stockDetail.currentPrice - stockDetail.previousClose >= 0 ? '+' : '') }}{{ (((stockDetail.currentPrice - stockDetail.previousClose) / stockDetail.previousClose) * 100).toFixed(2) }}%)
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Divider -->
-            <div class="border-t border-slate-900 my-4"></div>
-
-            <!-- Quick Data Grid -->
-            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mt-2">
-              <div class="p-3 bg-slate-900/40 border border-slate-900 rounded-xl">
-                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Harga Buka</span>
-                <span class="text-sm font-bold text-slate-200 mt-1 block">
-                  {{ stockDetail.history && stockDetail.history[0] ? stockDetail.history[0].open.toLocaleString('id-ID') : '-' }}
-                </span>
-              </div>
-              <div class="p-3 bg-slate-900/40 border border-slate-900 rounded-xl">
-                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Tertinggi Harian</span>
-                <span class="text-sm font-bold text-slate-200 mt-1 block">
-                  {{ stockDetail.dayHigh.toLocaleString('id-ID') }}
-                </span>
-              </div>
-              <div class="p-3 bg-slate-900/40 border border-slate-900 rounded-xl">
-                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Terendah Harian</span>
-                <span class="text-sm font-bold text-slate-200 mt-1 block">
-                  {{ stockDetail.dayLow.toLocaleString('id-ID') }}
-                </span>
-              </div>
-              <div class="p-3 bg-slate-900/40 border border-slate-900 rounded-xl">
-                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Prev Close</span>
-                <span class="text-sm font-bold text-slate-200 mt-1 block">
-                  {{ stockDetail.previousClose.toLocaleString('id-ID') }}
-                </span>
-              </div>
-            </div>
+        <!-- Live Price Strip / Info bar (TradingView-style Status bar) -->
+        <section class="glow-card p-4 rounded-xl flex flex-wrap items-center justify-between gap-4 text-xs">
+          <!-- Left Ticker details -->
+          <div class="flex items-center gap-3">
+            <h3 class="text-base font-bold text-slate-100 tracking-tight">{{ stockDetail.name }}</h3>
+            <span class="text-[10px] font-bold text-slate-400 bg-slate-900 border border-slate-800 px-2 py-0.5 rounded uppercase">
+              {{ stockDetail.symbol }}
+            </span>
+            <span class="text-[10px] font-bold text-emerald-450/90 bg-emerald-500/5 border border-emerald-500/10 px-2 py-0.5 rounded uppercase">
+              {{ stockDetail.exchange }} : {{ stockDetail.currency }}
+            </span>
           </div>
 
-          <!-- 52-Week Range Bar (Span 1) -->
-          <div class="glow-card p-6 rounded-2xl flex flex-col justify-between">
-            <div>
-              <h4 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Rentang 52 Minggu</h4>
-              <p class="text-xs text-slate-500 mt-1">Mengukur posisi harga saat ini dalam setahun terakhir</p>
-            </div>
-
-            <!-- Visual Bar Slider -->
-            <div class="my-6">
-              <div class="flex justify-between text-xs text-slate-400 font-semibold mb-2">
-                <span>Min: {{ stockDetail.fiftyTwoWeekLow.toLocaleString('id-ID') }}</span>
-                <span>Max: {{ stockDetail.fiftyTwoWeekHigh.toLocaleString('id-ID') }}</span>
-              </div>
-              
-              <!-- Track -->
-              <div class="w-full h-3 bg-slate-900 border border-slate-800 rounded-full relative overflow-visible">
-                <!-- Highlight active segment -->
-                <div 
-                  class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full absolute left-0"
-                  :style="{ width: `${sliderPercentage}%` }"
-                ></div>
-                <!-- Pin Pointer -->
-                <div 
-                  class="w-4 h-4 rounded-full bg-slate-50 border-3 border-emerald-500 shadow-md absolute top-1/2 -translate-y-1/2 -translate-x-1/2 cursor-default"
-                  :style="{ left: `${sliderPercentage}%` }"
-                ></div>
-              </div>
-              
-              <div class="text-right text-[10px] text-slate-400 mt-2 font-medium">
-                Posisi saat ini: <strong class="text-emerald-400 font-bold">{{ sliderPercentage }}%</strong> dari batas bawah
-              </div>
-            </div>
-
-            <div class="p-3 bg-slate-900/30 border border-slate-900 rounded-xl text-center">
-              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Volume Hari Ini</span>
-              <span class="text-base font-bold text-slate-200 mt-1 block">
-                {{ formatLargeNumber(stockDetail.volume, ' Lembar') }}
+          <!-- Mid / Right Financial stats -->
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-slate-400">
+            <!-- Current price -->
+            <div class="flex items-baseline gap-2">
+              <span class="text-base font-extrabold text-slate-50">{{ stockDetail.currentPrice.toLocaleString('id-ID') }}</span>
+              <span 
+                class="font-bold text-xs"
+                :class="[stockDetail.currentPrice - stockDetail.previousClose >= 0 ? 'text-emerald-400' : 'text-rose-500']"
+              >
+                {{ stockDetail.currentPrice - stockDetail.previousClose >= 0 ? '▲' : '▼' }}
+                {{ (stockDetail.currentPrice - stockDetail.previousClose >= 0 ? '+' : '') }}{{ (((stockDetail.currentPrice - stockDetail.previousClose) / stockDetail.previousClose) * 100).toFixed(2) }}%
               </span>
             </div>
-          </div>
+            
+            <div class="hidden sm:block border-l border-slate-900 h-4"></div>
 
+            <div>
+              <span>Buka:</span>
+              <strong class="text-slate-200 ml-1">
+                {{ stockDetail.history && stockDetail.history[0] ? stockDetail.history[stockDetail.history.length - 1].open.toLocaleString('id-ID') : '-' }}
+              </strong>
+            </div>
+
+            <div>
+              <span>Harian:</span>
+              <strong class="text-slate-200 ml-1">
+                {{ stockDetail.dayLow.toLocaleString('id-ID') }} - {{ stockDetail.dayHigh.toLocaleString('id-ID') }}
+              </strong>
+            </div>
+
+            <div>
+              <span>52M:</span>
+              <strong class="text-slate-200 ml-1">
+                {{ stockDetail.fiftyTwoWeekLow.toLocaleString('id-ID') }} - {{ stockDetail.fiftyTwoWeekHigh.toLocaleString('id-ID') }}
+              </strong>
+            </div>
+
+            <div>
+              <span>Volume:</span>
+              <strong class="text-slate-200 ml-1">
+                {{ formatLargeNumber(stockDetail.volume) }}
+              </strong>
+            </div>
+          </div>
         </section>
 
-        <!-- Daily Price Chart (Full Width) -->
-        <section class="glow-card p-6 rounded-2xl">
-          <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
-            <div>
-              <h4 class="text-lg font-bold text-slate-100">Grafik Pergerakan Harga Penutupan Harian</h4>
-              <p class="text-xs text-slate-400">Harga perdagangan harian terakhir emiten {{ stockDetail.symbol }}</p>
-            </div>
-            
-            <!-- Time Range Tabs -->
-            <div class="flex bg-slate-900 border border-slate-800 p-1 rounded-xl text-xs font-bold text-slate-400">
-              <button 
-                type="button" 
-                class="px-4 py-2 rounded-lg transition-all"
-                :class="[selectedRange === '1m' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'hover:text-slate-200']"
-                @click="selectedRange = '1m'"
-              >
-                1 Bulan (20 Hari Kerja)
-              </button>
-              <button 
-                type="button" 
-                class="px-4 py-2 rounded-lg transition-all"
-                :class="[selectedRange === '3m' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'hover:text-slate-200']"
-                @click="selectedRange = '3m'"
-              >
-                3 Bulan (60 Hari Kerja)
-              </button>
-            </div>
-          </div>
-
-          <!-- ECharts container -->
-          <div class="h-[360px] w-full">
+        <!-- Massive Chart Box -->
+        <section class="glow-card p-2 rounded-2xl flex-grow overflow-hidden flex flex-col min-h-[580px] bg-[#020617] border border-slate-900">
+          <div class="flex-grow w-full h-full min-h-[540px] relative">
             <ClientOnly>
               <VChart :option="chartOption" class="w-full h-full" autoresize />
               <template #fallback>
-                <div class="w-full h-full flex items-center justify-center text-slate-500 text-sm">
-                  Memuat grafik harga...
+                <div class="absolute inset-0 flex items-center justify-center text-slate-500 text-sm">
+                  Menggambar grafik lilin...
                 </div>
               </template>
             </ClientOnly>
-          </div>
-        </section>
-
-        <!-- Financial Profile & Ratios -->
-        <section class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-          
-          <!-- Key Fundamental Ratios (Span 2) -->
-          <div class="lg:col-span-2 glow-card p-6 rounded-2xl flex flex-col justify-between">
-            <div>
-              <h4 class="text-base font-bold text-slate-200 uppercase tracking-wider mb-4">Profil & Rasio Keuangan Fundamental</h4>
-              <p class="text-xs text-slate-400 mb-6">Metrik fundamental dihitung otomatis berdasarkan harga pasar berjalan emiten.</p>
-              
-              <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-                <!-- Ratio 1 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Kapitalisasi Pasar</span>
-                  <span class="text-lg font-bold text-slate-100 block mt-2">
-                    Rp {{ formatLargeNumber(computedMarketCap) }}
-                  </span>
-                </div>
-                <!-- Ratio 2 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Rasio P/E (Price-to-Earnings)</span>
-                  <span class="text-lg font-bold text-slate-100 block mt-2">
-                    {{ computedPE }}x
-                  </span>
-                </div>
-                <!-- Ratio 3 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Rasio P/B (Price-to-Book)</span>
-                  <span class="text-lg font-bold text-slate-100 block mt-2">
-                    {{ computedPB }}x
-                  </span>
-                </div>
-                <!-- Ratio 4 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Dividend Yield</span>
-                  <span class="text-lg font-bold text-emerald-450 block mt-2">
-                    {{ computedDivYield }}
-                  </span>
-                </div>
-                <!-- Ratio 5 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Laba Bersih per Saham (EPS)</span>
-                  <span class="text-lg font-bold text-slate-100 block mt-2">
-                    Rp {{ fundamentalData.eps.toLocaleString('id-ID') }}
-                  </span>
-                </div>
-                <!-- Ratio 6 -->
-                <div class="p-4 bg-slate-900/40 border border-slate-800 rounded-xl flex flex-col justify-between min-h-[90px]">
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Nilai Buku per Saham (BVPS)</span>
-                  <span class="text-lg font-bold text-slate-100 block mt-2">
-                    Rp {{ fundamentalData.bvps.toLocaleString('id-ID') }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Divider -->
-            <div class="border-t border-slate-900 my-6"></div>
-
-            <!-- Additional stats -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs text-slate-400">
-              <div class="flex justify-between py-1.5 border-b border-slate-900">
-                <span>Saham Beredar:</span>
-                <span class="font-bold text-slate-300">{{ fundamentalData.sharesOutstanding }} Miliar Lembar</span>
-              </div>
-              <div class="flex justify-between py-1.5 border-b border-slate-900">
-                <span>Dividen per Saham (DPS):</span>
-                <span class="font-bold text-slate-300">Rp {{ fundamentalData.dps.toLocaleString('id-ID') }}</span>
-              </div>
-            </div>
-          </div>
-
-          <!-- Company Profile Card (Span 1) -->
-          <div class="glow-card p-6 rounded-2xl flex flex-col justify-between relative overflow-hidden">
-            <div>
-              <h4 class="text-sm font-bold text-slate-300 uppercase tracking-wider">Profil Emiten</h4>
-              <p class="text-xs text-slate-500 mt-1">Identitas dan operasional bisnis perusahaan</p>
-              
-              <!-- Sector Industry info -->
-              <div class="mt-6 space-y-3">
-                <div>
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Sektor Bisnis</span>
-                  <span class="text-sm font-bold text-slate-200 mt-1 block">
-                    {{ stockDetail.sector !== 'N/A' ? stockDetail.sector : 'Financial Services' }}
-                  </span>
-                </div>
-                <div>
-                  <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Sub-Industri</span>
-                  <span class="text-sm font-bold text-slate-200 mt-1 block font-sans">
-                    {{ stockDetail.industry !== 'N/A' ? stockDetail.industry : 'Banks—Regional' }}
-                  </span>
-                </div>
-              </div>
-              
-              <!-- Divider -->
-              <div class="border-t border-slate-900 my-4"></div>
-              
-              <div>
-                <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block">Deskripsi Singkat</span>
-                <p class="text-xs text-slate-300 mt-2 leading-relaxed font-sans text-justify">
-                  {{ fundamentalData.description }}
-                </p>
-              </div>
-            </div>
-
-            <!-- Footer indicator -->
-            <div class="text-center text-[10px] text-slate-500 mt-6 pt-4 border-t border-slate-900/60 font-medium">
-              Data diolah dari Bursa Efek Indonesia (IDX) & Yahoo Finance
-            </div>
-          </div>
-        </section>
-
-        <!-- Historical Prices Table (Full Width) -->
-        <section class="glow-card p-6 rounded-2xl">
-          <div class="mb-6">
-            <h4 class="text-lg font-bold text-slate-100">Riwayat Penutupan Harga Harian</h4>
-            <p class="text-xs text-slate-400">Data harga harian 15 hari perdagangan bursa terakhir</p>
-          </div>
-
-          <div class="overflow-x-auto rounded-xl border border-slate-900">
-            <table class="w-full border-collapse text-left text-sm text-slate-300">
-              <thead class="bg-slate-900/60 text-xs font-semibold uppercase text-slate-400 border-b border-slate-900">
-                <tr>
-                  <th class="px-6 py-4">Tanggal</th>
-                  <th class="px-6 py-4 text-right">Harga Open</th>
-                  <th class="px-6 py-4 text-right">Harga Close</th>
-                  <th class="px-6 py-4 text-right">Perubahan (IDR)</th>
-                  <th class="px-6 py-4 text-right">Perubahan (%)</th>
-                  <th class="px-6 py-4 text-right">Volume Perdagangan</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-900">
-                <tr 
-                  v-for="row in stockDetail.history.slice(0, 15)" 
-                  :key="row.timestamp"
-                  class="hover:bg-slate-900/20 transition-colors"
-                >
-                  <!-- Date -->
-                  <td class="px-6 py-4 font-semibold text-slate-200">{{ row.date }}</td>
-                  <!-- Open -->
-                  <td class="px-6 py-4 text-right">{{ row.open.toLocaleString('id-ID') }}</td>
-                  <!-- Close -->
-                  <td class="px-6 py-4 text-right font-bold text-slate-100">{{ row.close.toLocaleString('id-ID') }}</td>
-                  <!-- Change val -->
-                  <td 
-                    class="px-6 py-4 text-right font-semibold"
-                    :class="[row.changeVal >= 0 ? 'text-emerald-450' : 'text-rose-455']"
-                  >
-                    {{ row.changeVal >= 0 ? '+' : '' }}{{ row.changeVal.toLocaleString('id-ID') }}
-                  </td>
-                  <!-- Change pct -->
-                  <td 
-                    class="px-6 py-4 text-right font-semibold"
-                    :class="[row.changePct >= 0 ? 'text-emerald-450' : 'text-rose-455']"
-                  >
-                    {{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct.toFixed(2) }}%
-                  </td>
-                  <!-- Volume -->
-                  <td class="px-6 py-4 text-right text-slate-400">{{ row.volume.toLocaleString('id-ID') }}</td>
-                </tr>
-              </tbody>
-            </table>
           </div>
         </section>
       </div>

@@ -41,8 +41,8 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
     symbol = `${symbol}.JK`;
   }
 
-  // Fetch daily chart data (3 months)
-  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=3mo`;
+  // Fetch daily chart data (1 year)
+  const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
   
   // Fetch sector and industry search data
   const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}`;

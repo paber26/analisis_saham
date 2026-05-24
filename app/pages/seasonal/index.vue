@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { seasonalStocks } from '../../data/seasonalStocks';
+import { seasonalStocks, ihsgData } from '../../data/seasonalStocks';
 import type { PeriodType } from '../../types/seasonal';
 import {
   filterStockData,
@@ -91,6 +91,19 @@ const insights = computed(() => {
     filteredData.value.history,
     selectedPeriodType.value
   );
+});
+
+// Compute IHSG comparison statistics
+const ihsgFilteredData = computed(() => {
+  return {
+    code: 'IHSG',
+    name: 'Indeks Harga Saham Gabungan',
+    history: ihsgData.history.filter(h => h.year >= startYear.value && h.year <= endYear.value)
+  };
+});
+
+const ihsgSeasonalStats = computed(() => {
+  return calculateSeasonalStats(ihsgFilteredData.value.history, selectedPeriodType.value);
 });
 </script>
 
@@ -227,6 +240,7 @@ const insights = computed(() => {
         <div class="lg:col-span-2 flex flex-col">
           <SeasonalBarChart 
             :stats="seasonalStats" 
+            :ihsg-stats="ihsgSeasonalStats"
             :stock-code="selectedStockCode"
             class="flex-grow"
           />

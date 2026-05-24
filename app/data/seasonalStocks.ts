@@ -117,5 +117,26 @@ export const seasonalStocks: StockData[] = [
       11: -0.5, // Nov: Flat
       12: 2.0   // Dec: Window Dressing
     })
+  },
+  {
+    code: 'IHSG',
+    name: 'Indeks Harga Saham Gabungan',
+    history: generateHistoricalData(2015, 2025, 0.4, 3.5, {
+      1: 1.0,   // Jan: Moderate
+      2: 0.8,   // Feb: Flat-positive
+      3: 0.6,   // Mar: Moderate
+      4: 1.2,   // Apr: Dividend season impact
+      5: -1.5,  // May: Sell in May
+      6: 0.3,   // Jun: Flat
+      7: 0.8,   // Jul: Positive
+      8: -0.8,  // Aug: Weak
+      9: -1.0,  // Sep: Weak
+      10: 1.5,  // Oct: Positive
+      11: -0.2, // Nov: Flat-weak
+      12: 2.8   // Dec: Window Dressing
+    })
   }
 ];
+
+export const ihsgData = seasonalStocks[4]; // Reference to IHSG
+

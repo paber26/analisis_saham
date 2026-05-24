@@ -4,6 +4,7 @@ import type { SeasonalPeriodStats } from '../../types/seasonal';
 
 const props = defineProps<{
   stats: SeasonalPeriodStats[];
+  ihsgStats?: SeasonalPeriodStats[];
   stockCode: string;
 }>();
 
@@ -36,13 +37,57 @@ const chartOption = computed(() => {
     };
   });
 
+  const hasIhsg = props.ihsgStats && props.stockCode !== 'IHSG';
+
+  const series: any[] = [
+    {
+      name: props.stockCode,
+      type: 'bar',
+      barWidth: hasIhsg ? '45%' : '55%',
+      data: data
+    }
+  ];
+
+  if (hasIhsg && props.ihsgStats) {
+    series.push({
+      name: 'IHSG',
+      type: 'line',
+      smooth: true,
+      showSymbol: true,
+      symbol: 'circle',
+      symbolSize: 6,
+      lineStyle: {
+        color: '#60a5fa', // blue-400
+        width: 2.5,
+        type: 'dashed'
+      },
+      itemStyle: {
+        color: '#3b82f6', // blue-500
+        borderColor: '#020617',
+        borderWidth: 1.5
+      },
+      data: props.ihsgStats.map(s => s.avgReturn)
+    });
+  }
+
   return {
     backgroundColor: 'transparent',
+    legend: {
+      show: hasIhsg,
+      data: [props.stockCode, 'IHSG'],
+      textStyle: {
+        color: '#94a3b8',
+        fontFamily: 'inherit',
+        fontSize: 11
+      },
+      top: '0%',
+      right: '2%'
+    },
     grid: {
       left: '3%',
       right: '3%',
       bottom: '3%',
-      top: '12%',
+      top: hasIhsg ? '18%' : '12%',
       containLabel: true
     },
     tooltip: {
@@ -61,18 +106,41 @@ const chartOption = computed(() => {
         const stat = props.stats[index];
         const color = val >= 0 ? '#34d399' : '#f87171'; // emerald-400 : rose-400
         const sign = val > 0 ? '+' : '';
+        
+        let ihsgHtml = '';
+        const ihsgItem = params.find((p: any) => p.seriesName === 'IHSG');
+        if (ihsgItem) {
+          const ihsgVal = ihsgItem.value;
+          const ihsgColor = '#60a5fa'; // blue-400
+          const ihsgSign = ihsgVal > 0 ? '+' : '';
+          const diffVal = val - ihsgVal;
+          const diffColor = diffVal >= 0 ? '#34d399' : '#f87171';
+          const diffSign = diffVal > 0 ? '+' : '';
+          ihsgHtml = `
+            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
+              <span style="color: #cbd5e1;">Avg Return IHSG:</span>
+              <span style="font-weight: 700; color: ${ihsgColor};">${ihsgSign}${ihsgVal.toFixed(2)}%</span>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
+              <span style="color: #cbd5e1;">Alpha vs IHSG:</span>
+              <span style="font-weight: 700; color: ${diffColor};">${diffSign}${diffVal.toFixed(2)}%</span>
+            </div>
+          `;
+        }
+
         return `
           <div style="font-family: inherit; font-size: 13px;">
             <div style="font-weight: 600; margin-bottom: 6px; color: #94a3b8;">${item.name}</div>
-            <div style="display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Avg Return:</span>
+            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
+              <span style="color: #cbd5e1;">Avg Return ${props.stockCode}:</span>
               <span style="font-weight: 700; color: ${color};">${sign}${val.toFixed(2)}%</span>
             </div>
-            <div style="display: flex; justify-content: space-between; gap: 20px; margin-bottom: 4px;">
-              <span style="color: #cbd5e1;">Win Rate:</span>
+            ${ihsgHtml}
+            <div style="display: flex; justify-content: space-between; gap: 24px; margin-bottom: 4px;">
+              <span style="color: #cbd5e1;">Win Rate ${props.stockCode}:</span>
               <span style="font-weight: 700; color: #f8fafc;">${stat.winRate}%</span>
             </div>
-            <div style="display: flex; justify-content: space-between; gap: 20px;">
+            <div style="display: flex; justify-content: space-between; gap: 24px;">
               <span style="color: #cbd5e1;">Naik / Turun:</span>
               <span style="font-weight: 500; color: #94a3b8;">${stat.yearsUp} thn / ${stat.yearsDown} thn</span>
             </div>
@@ -115,14 +183,7 @@ const chartOption = computed(() => {
         }
       }
     },
-    series: [
-      {
-        name: 'Average Return',
-        type: 'bar',
-        barWidth: '55%',
-        data: data
-      }
-    ]
+    series: series
   };
 });
 </script>

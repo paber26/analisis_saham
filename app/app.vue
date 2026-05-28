@@ -37,11 +37,11 @@
             Detail Saham & Keuangan
           </NuxtLink>
           <NuxtLink 
-            to="/profil-perusahaan" 
+            to="/profil-saham" 
             class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/profil-perusahaan') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+            :class="[route.path.startsWith('/profil-saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
-            Profil Perusahaan
+            Profil Saham
           </NuxtLink>
           
           <a 

@@ -1,6 +1,7 @@
 import { getQuery } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 import { analyzeTechnical, type Bar, type TechResult } from '../utils/technical';
+import { SCREENING_UNIVERSE } from '../utils/universe';
 
 export interface ScreenRow extends TechResult {
   code: string;
@@ -9,12 +10,30 @@ export interface ScreenRow extends TechResult {
 }
 
 function parseSymbols(raw: string): string[] {
-  return raw
+  const list = raw
     .split(',')
     .map((s) => s.trim().toUpperCase())
-    .filter(Boolean)
+    .filter(Boolean);
+  // Fall back to the default liquid universe when no symbols are supplied
+  const source = list.length ? list : SCREENING_UNIVERSE;
+  return source
+    .map((s) => s.toUpperCase())
     .filter((s, i, arr) => arr.indexOf(s) === i)
-    .slice(0, 80); // safety cap
+    .slice(0, 200); // safety cap
+}
+
+// Run async tasks with limited concurrency to avoid hammering Yahoo Finance.
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      results[idx] = await fn(items[idx]!);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 }
 
 async function analyzeSymbol(code: string): Promise<ScreenRow | null> {
@@ -65,7 +84,8 @@ export default defineCachedEventHandler(async (event): Promise<{ results: Screen
   const codes = parseSymbols((query.symbols as string) || '');
   if (codes.length === 0) return { results: [], count: 0 };
 
-  const settled = await Promise.all(codes.map((c) => analyzeSymbol(c)));
+  // Fetch/analyze at most 12 symbols concurrently
+  const settled = await mapWithConcurrency(codes, 12, (c) => analyzeSymbol(c));
   const results = settled
     .filter((r): r is ScreenRow => r !== null)
     .sort((a, b) => b.score - a.score);

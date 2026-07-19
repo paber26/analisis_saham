@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { STOCK_GROUPS } from '../../data/stockList';
 
 useHead({
   title: 'Screening Teknikal Saham IDX — Skor Layak Beli',
   meta: [
-    { name: 'description', content: 'Screening saham IDX berbasis analisis teknikal profesional: MA20/50/200, Golden Cross, RSI, MACD, volume, dan posisi 52 minggu, dengan skor layak beli.' }
+    { name: 'description', content: 'Screening saham IDX berbasis analisis teknikal profesional: MA20/50/200, Golden Cross, RSI, MACD, ADX, Stochastic, Bollinger Bands, volume, dan posisi 52 minggu, dengan skor layak beli.' }
   ]
 });
 
-// Universe = curated liquid IDX names (single source: stockList.ts)
-const universe = STOCK_GROUPS.flatMap((g) => g.options.map((o) => o.code)).join(',');
-
-const { data, pending, error, refresh } = await useFetch<any>(() => '/api/screen', {
-  params: { symbols: universe }
-});
+// Uses the default liquid universe defined server-side (server/utils/universe.ts)
+const { data, pending, error, refresh } = await useFetch<any>(() => '/api/screen');
 
 const rows = computed<any[]>(() => data.value?.results || []);
 
@@ -77,8 +72,10 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
           <div>
             <h2 class="text-lg font-bold text-slate-50">Screening Teknikal</h2>
             <p class="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-              Skor 0–100 layak-beli dari indikator teknikal profesional: tren (MA20/50/200, Golden Cross),
-              momentum (RSI, MACD), serta volume &amp; posisi 52 minggu. Diurutkan dari skor tertinggi.
+              Skor 0–100 layak-beli dari indikator teknikal profesional: tren (MA20/50/200, Golden Cross,
+              <strong class="text-slate-300">ADX/DMI</strong>), momentum (RSI, MACD, <strong class="text-slate-300">Stochastic</strong>),
+              volatilitas (<strong class="text-slate-300">Bollinger Bands</strong>, ATR), serta volume &amp; posisi 52 minggu.
+              Memindai <strong class="text-slate-300">{{ counts.total }}</strong> saham likuid, diurutkan dari skor tertinggi.
             </p>
           </div>
           <button
@@ -130,7 +127,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
       <!-- Loading -->
       <div v-if="pending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-sm text-slate-400 animate-pulse">Menghitung indikator teknikal untuk {{ universe.split(',').length }} saham…</p>
+        <p class="text-sm text-slate-400 animate-pulse">Menghitung indikator teknikal untuk seluruh universe likuid IDX…</p>
       </div>
 
       <!-- Error -->
@@ -191,13 +188,19 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                     <span :class="row.sma200 != null && row.price > row.sma200 ? 'text-emerald-400' : 'text-rose-400'">
                       {{ row.sma200 != null && row.price > row.sma200 ? '▲ Uptrend' : '▼ Downtrend' }}
                     </span>
+                    <span
+                      v-if="row.adx != null"
+                      class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                      :class="row.adx >= 25 ? 'bg-slate-800 text-slate-200' : 'bg-slate-900 text-slate-500'"
+                      :title="'ADX ' + row.adx + (row.adx >= 25 ? ' (tren kuat)' : ' (tren lemah)')"
+                    >ADX {{ Math.round(row.adx) }}</span>
                   </div>
                   <p class="text-[10px] text-slate-500 mt-0.5">MA50: {{ fmt(row.sma50) }} · MA200: {{ fmt(row.sma200) }}</p>
                 </td>
                 <td class="px-4 py-3">
-                  <div class="flex flex-wrap gap-1 max-w-[260px]">
+                  <div class="flex flex-wrap gap-1 max-w-[280px]">
                     <span
-                      v-for="(sig, i) in row.signals.slice(0, 4)"
+                      v-for="(sig, i) in row.signals.slice(0, 5)"
                       :key="i"
                       class="text-[10px] font-medium px-2 py-0.5 rounded-full border"
                       :class="SIGNAL_TONE[sig.tone]"

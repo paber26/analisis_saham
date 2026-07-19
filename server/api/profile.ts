@@ -1,4 +1,5 @@
-import { defineEventHandler, getQuery, createError } from 'h3';
+import { getQuery, createError } from 'h3';
+import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 
 type StockProfileResponse = {
   symbol: string;
@@ -17,25 +18,14 @@ type StockProfileResponse = {
   fiftyTwoWeekLow?: number;
 };
 
-export default defineEventHandler(async (event): Promise<StockProfileResponse> => {
+// Company profile rarely changes: cache for 24 hours.
+export default defineCachedEventHandler(async (event): Promise<StockProfileResponse> => {
   const query = getQuery(event);
-  const rawSymbol = (query.symbol as string) || 'BBCA';
-
-  let symbol = rawSymbol.toUpperCase().trim();
-  if (symbol === 'IHSG') {
-    symbol = '^JKSE';
-  } else if (!symbol.endsWith('.JK') && !symbol.startsWith('^')) {
-    symbol = `${symbol}.JK`;
-  }
+  const symbol = normalizeSymbol(query.symbol as string);
 
   const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile,price,summaryDetail`;
 
-  const data = await $fetch<any>(url, {
-    headers: {
-      'User-Agent':
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
-  }).catch((err) => {
+  const data = await $fetch<any>(url, { headers: YAHOO_HEADERS }).catch((err) => {
     console.error('Yahoo Finance quoteSummary fetch error:', err);
     return null;
   });
@@ -53,12 +43,7 @@ export default defineEventHandler(async (event): Promise<StockProfileResponse> =
   const summaryDetail = result.summaryDetail || {};
 
   const returnedSymbol = price.symbol || symbol;
-  let name = price.longName || price.shortName || returnedSymbol;
-  if (returnedSymbol === '^JKSE') {
-    name = 'Indeks Harga Saham Gabungan (IHSG)';
-  } else if (returnedSymbol.endsWith('.JK') && name === returnedSymbol) {
-    name = `PT ${returnedSymbol.replace('.JK', '')} Tbk`;
-  }
+  const name = resolveDisplayName(returnedSymbol, price.longName || price.shortName);
 
   const addressParts = [
     assetProfile.address1,
@@ -85,5 +70,9 @@ export default defineEventHandler(async (event): Promise<StockProfileResponse> =
     fiftyTwoWeekHigh: summaryDetail.fiftyTwoWeekHigh?.raw,
     fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw
   };
+}, {
+  maxAge: 60 * 60 * 24, // 24 hours
+  swr: true,
+  name: 'profile',
+  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
 });
-

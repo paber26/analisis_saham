@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
+import { stockFundamentals, getStockFundamentals } from '../../data/stockFundamentals';
+import { KNOWN_CODES } from '../../data/stockList';
 
 // Page Title and SEO Meta
 useHead({
@@ -9,10 +11,14 @@ useHead({
   ]
 });
 
-// Selection States
-const selectedStockCode = ref('BBCA');
-const searchSymbolQuery = ref('');
-const activeSymbol = ref('BBCA');
+// Selection States (initialised from the URL so links are shareable)
+const route = useRoute();
+const router = useRouter();
+const initialSymbol = ((route.query.symbol as string) || 'BBCA').toUpperCase().trim();
+
+const selectedStockCode = ref(KNOWN_CODES.has(initialSymbol) ? initialSymbol : 'CUSTOM');
+const searchSymbolQuery = ref(KNOWN_CODES.has(initialSymbol) ? '' : initialSymbol);
+const activeSymbol = ref(initialSymbol);
 const selectedRange = ref<'1m' | '3m' | '6m' | '1y'>('6m');
 
 // Sync activeSymbol when dropdown changes
@@ -33,6 +39,11 @@ const handleCustomSearch = () => {
   }
 };
 
+// Reflect the active symbol in the URL query for shareable links
+watch(activeSymbol, (sym) => {
+  router.replace({ query: { ...route.query, symbol: sym } });
+});
+
 // Fetch live stock details from server API (now queries 1 year range)
 const {
   data: stockDetail,
@@ -46,11 +57,11 @@ const {
 // Chronological chart data processor (oldest first)
 const chartData = computed(() => {
   if (!stockDetail.value || !stockDetail.value.history || stockDetail.value.history.length === 0) {
-    return { categoryData: [], values: [], volumes: [], rawList: [] };
+    return { categoryData: [], values: [], volumes: [], prevCloseList: [], rawList: [] };
   }
   
   const rawList = [...stockDetail.value.history].reverse(); // reverse from latest-first to oldest-first
-  
+
   // Filter based on range
   let filteredList = rawList;
   if (selectedRange.value === '1m') {
@@ -60,16 +71,25 @@ const chartData = computed(() => {
   } else if (selectedRange.value === '6m') {
     filteredList = rawList.slice(-125);
   }
-  
+
+  // Offset of the filtered window inside rawList, so the very first visible
+  // bar still knows the true previous close (from before the window).
+  const startIdx = rawList.length - filteredList.length;
+
   const categoryData = [];
   const values = []; // [open, close, lowest, highest]
   const volumes = []; // [index, volume] with style
+  const prevCloseList: number[] = []; // previous-day close, aligned with values
 
   for (let i = 0; i < filteredList.length; i++) {
     const item = filteredList[i];
     categoryData.push(item.date);
     values.push([item.open, item.close, item.low, item.high]);
-    
+
+    const globalIdx = startIdx + i;
+    const prevBar = globalIdx > 0 ? rawList[globalIdx - 1] : null;
+    prevCloseList.push(prevBar ? prevBar.close : item.open);
+
     const isUp = item.close >= item.open;
     volumes.push({
       value: item.volume,
@@ -84,6 +104,7 @@ const chartData = computed(() => {
     categoryData,
     values,
     volumes,
+    prevCloseList,
     rawList: filteredList
   };
 });
@@ -117,9 +138,96 @@ const formatLargeNumber = (num: number, suffix = '') => {
   return num.toLocaleString('id-ID') + suffix;
 };
 
+// ==========================================================================
+// Fundamental Ratios (Keuangan)
+// Wires up app/data/stockFundamentals.ts against the live price so PER, PBV,
+// Dividend Yield & ROE are computed on demand.
+// ==========================================================================
+
+// Base ticker (strip .JK) used for the fundamental lookup
+const baseCode = computed(() => {
+  const sym = (stockDetail.value?.symbol || activeSymbol.value || '').toUpperCase();
+  return sym.replace('.JK', '');
+});
+
+// Indices (IHSG / ^JKSE) have no company fundamentals
+const isIndex = computed(() => {
+  const sym = (stockDetail.value?.symbol || activeSymbol.value || '').toUpperCase();
+  return sym.startsWith('^') || sym === 'IHSG';
+});
+
+// True when we have hand-curated data (vs a deterministic estimate fallback)
+const isKnownFundamental = computed(() => !!stockFundamentals[baseCode.value]);
+
+const fundamentals = computed(() => getStockFundamentals(baseCode.value));
+
+const ratios = computed(() => {
+  const price = stockDetail.value?.currentPrice;
+  const f = fundamentals.value;
+  if (!price || !f || isIndex.value) return null;
+
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  return {
+    per: f.eps > 0 ? round2(price / f.eps) : null,          // Price / Earnings
+    pbv: f.bvps > 0 ? round2(price / f.bvps) : null,        // Price / Book Value
+    divYield: price > 0 ? round2((f.dps / price) * 100) : null, // Dividend Yield %
+    roe: f.bvps > 0 ? round2((f.eps / f.bvps) * 100) : null,    // ROE ≈ EPS / BVPS
+    payout: f.eps > 0 ? round2((f.dps / f.eps) * 100) : null,   // Payout ratio %
+    marketCap: price * f.sharesOutstanding * 1e9
+  };
+});
+
+// Interpretation tones -> literal Tailwind classes (kept whole so JIT detects them)
+const TONE: Record<string, string> = {
+  emerald: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20',
+  sky: 'text-sky-300 bg-sky-500/10 border-sky-500/20',
+  amber: 'text-amber-300 bg-amber-500/10 border-amber-500/20',
+  rose: 'text-rose-300 bg-rose-500/10 border-rose-500/20',
+  slate: 'text-slate-300 bg-slate-800/60 border-slate-700'
+};
+
+type Verdict = { label: string; tone: keyof typeof TONE };
+
+const perVerdict = computed<Verdict>(() => {
+  const per = ratios.value?.per;
+  if (per == null) return { label: 'EPS negatif (rugi)', tone: 'rose' };
+  if (per < 10) return { label: 'Relatif murah', tone: 'emerald' };
+  if (per <= 20) return { label: 'Valuasi wajar', tone: 'sky' };
+  if (per <= 30) return { label: 'Premium', tone: 'amber' };
+  return { label: 'Mahal', tone: 'rose' };
+});
+
+const pbvVerdict = computed<Verdict>(() => {
+  const pbv = ratios.value?.pbv;
+  if (pbv == null) return { label: '—', tone: 'slate' };
+  if (pbv < 1) return { label: 'Di bawah nilai buku', tone: 'emerald' };
+  if (pbv <= 3) return { label: 'Wajar', tone: 'sky' };
+  return { label: 'Premium', tone: 'amber' };
+});
+
+const roeVerdict = computed<Verdict>(() => {
+  const roe = ratios.value?.roe;
+  if (roe == null) return { label: '—', tone: 'slate' };
+  if (roe < 0) return { label: 'Rugi', tone: 'rose' };
+  if (roe >= 15) return { label: 'Sangat baik', tone: 'emerald' };
+  if (roe >= 10) return { label: 'Baik', tone: 'sky' };
+  return { label: 'Rendah', tone: 'amber' };
+});
+
+const yieldVerdict = computed<Verdict>(() => {
+  const dy = ratios.value?.divYield;
+  if (dy == null || dy === 0) return { label: 'Tidak bagi dividen', tone: 'slate' };
+  if (dy >= 4) return { label: 'Yield tinggi', tone: 'emerald' };
+  if (dy >= 1) return { label: 'Yield sedang', tone: 'sky' };
+  return { label: 'Yield rendah', tone: 'amber' };
+});
+
+const formatIdr = (n: number | null | undefined) =>
+  n == null ? '—' : 'Rp ' + n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
+
 // ECharts Candlestick + Volume Config
 const chartOption = computed(() => {
-  const { categoryData, values, volumes } = chartData.value;
+  const { categoryData, values, volumes, prevCloseList } = chartData.value;
   if (categoryData.length === 0) return {};
 
   return {
@@ -170,10 +278,12 @@ const chartOption = computed(() => {
         const date = candleParam.name;
         const [open, close, low, high] = candleParam.value;
         const volumeVal = volParam ? volParam.value : 0;
-        const isUp = close >= open;
+        // Daily change vs the PREVIOUS close (exchange convention), not intra-day open.
+        const prevClose = prevCloseList[candleParam.dataIndex] ?? open;
+        const changeVal = close - prevClose;
+        const changePct = prevClose > 0 ? (changeVal / prevClose) * 100 : 0;
+        const isUp = changeVal >= 0;
         const color = isUp ? '#22c55e' : '#ef4444'; // emerald vs red
-        const changeVal = close - open;
-        const changePct = ((close - open) / open) * 100;
         const sign = changeVal > 0 ? '+' : '';
 
         let html = `
@@ -587,6 +697,87 @@ const chartOption = computed(() => {
               </template>
             </ClientOnly>
           </div>
+        </section>
+
+        <!-- Financial Ratios & Valuation (Keuangan) -->
+        <section v-if="ratios" class="glow-card rounded-2xl p-6 space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h4 class="text-base font-bold text-slate-50">Rasio Keuangan &amp; Valuasi</h4>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Dihitung dari harga terkini
+                <strong class="text-slate-200">{{ formatIdr(stockDetail.currentPrice) }}</strong>
+                terhadap data fundamental emiten.
+              </p>
+            </div>
+            <span
+              class="text-[10px] font-semibold px-3 py-1 rounded-full border"
+              :class="isKnownFundamental ? TONE.emerald : TONE.amber"
+            >
+              {{ isKnownFundamental ? 'Data fundamental preset' : 'Estimasi otomatis' }}
+            </span>
+          </div>
+
+          <!-- Valuation ratios -->
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <!-- PER -->
+            <div class="rounded-xl bg-slate-950/40 border border-slate-800/80 p-4">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">PER (P/E)</p>
+              <p class="text-2xl font-bold text-slate-50 mt-1">{{ ratios.per != null ? ratios.per + '×' : '—' }}</p>
+              <span class="inline-block mt-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border" :class="TONE[perVerdict.tone]">{{ perVerdict.label }}</span>
+            </div>
+            <!-- PBV -->
+            <div class="rounded-xl bg-slate-950/40 border border-slate-800/80 p-4">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">PBV (P/B)</p>
+              <p class="text-2xl font-bold text-slate-50 mt-1">{{ ratios.pbv != null ? ratios.pbv + '×' : '—' }}</p>
+              <span class="inline-block mt-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border" :class="TONE[pbvVerdict.tone]">{{ pbvVerdict.label }}</span>
+            </div>
+            <!-- ROE -->
+            <div class="rounded-xl bg-slate-950/40 border border-slate-800/80 p-4">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">ROE</p>
+              <p class="text-2xl font-bold text-slate-50 mt-1">{{ ratios.roe != null ? ratios.roe + '%' : '—' }}</p>
+              <span class="inline-block mt-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border" :class="TONE[roeVerdict.tone]">{{ roeVerdict.label }}</span>
+            </div>
+            <!-- Dividend Yield -->
+            <div class="rounded-xl bg-slate-950/40 border border-slate-800/80 p-4">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Dividend Yield</p>
+              <p class="text-2xl font-bold text-slate-50 mt-1">{{ ratios.divYield != null ? ratios.divYield + '%' : '—' }}</p>
+              <span class="inline-block mt-2 text-[10px] font-semibold px-2 py-0.5 rounded-full border" :class="TONE[yieldVerdict.tone]">{{ yieldVerdict.label }}</span>
+            </div>
+          </div>
+
+          <!-- Supporting fundamentals -->
+          <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 pt-1">
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">EPS</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">{{ formatIdr(fundamentals.eps) }}</p>
+            </div>
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">BVPS</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">{{ formatIdr(fundamentals.bvps) }}</p>
+            </div>
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">DPS</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">{{ formatIdr(fundamentals.dps) }}</p>
+            </div>
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">Payout Ratio</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">{{ ratios.payout != null ? ratios.payout + '%' : '—' }}</p>
+            </div>
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">Market Cap</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">Rp {{ formatLargeNumber(ratios.marketCap) }}</p>
+            </div>
+            <div class="rounded-lg bg-slate-900/40 border border-slate-800/60 px-3 py-2.5">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">Saham Beredar</p>
+              <p class="text-sm font-bold text-slate-100 mt-0.5">{{ fundamentals.sharesOutstanding.toLocaleString('id-ID') }} M</p>
+            </div>
+          </div>
+
+          <p class="text-[11px] leading-relaxed text-slate-500 border-t border-slate-800/60 pt-3">
+            EPS, BVPS, dan DPS merupakan snapshot fundamental statis (bukan realtime dari laporan keuangan terbaru).
+            Rasio dihitung ulang otomatis mengikuti harga live. Gunakan sebagai gambaran awal, bukan rekomendasi investasi.
+          </p>
         </section>
       </div>
 

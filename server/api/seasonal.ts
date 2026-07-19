@@ -1,4 +1,5 @@
-import { defineEventHandler, getQuery, createError } from 'h3';
+import { getQuery, createError } from 'h3';
+import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 
 interface StockHistoryItem {
   year: number;
@@ -12,30 +13,17 @@ interface StockResponse {
   history: StockHistoryItem[];
 }
 
-export default defineEventHandler(async (event): Promise<StockResponse> => {
+// Cache monthly seasonal data for 6 hours (data only changes once a month).
+// stale-while-revalidate keeps the app fast and resilient to Yahoo rate limits.
+export default defineCachedEventHandler(async (event): Promise<StockResponse> => {
   const query = getQuery(event);
-  const rawSymbol = (query.symbol as string) || 'BBCA';
-  
-  // Format the symbol:
-  // - 'IHSG' mapped to '^JKSE' (Jakarta Composite Index)
-  // - 4 letter alpha symbols (like 'BBCA') mapped to 'BBCA.JK' (Indonesian Stock)
-  // - Otherwise, keep it as-is (enables US stock queries like 'AAPL', 'MSFT', etc.)
-  let symbol = rawSymbol.toUpperCase().trim();
-  if (symbol === 'IHSG') {
-    symbol = '^JKSE';
-  } else if (!symbol.endsWith('.JK') && !symbol.startsWith('^')) {
-    symbol = `${symbol}.JK`;
-  }
+  const symbol = normalizeSymbol(query.symbol as string);
 
   // Fetch past 10 years of monthly historical chart data
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1mo&range=10y`;
 
   try {
-    const data: any = await $fetch<any>(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
-    });
+    const data: any = await $fetch<any>(url, { headers: YAHOO_HEADERS });
 
     if (!data.chart || !data.chart.result || !data.chart.result[0]) {
       throw createError({
@@ -47,45 +35,38 @@ export default defineEventHandler(async (event): Promise<StockResponse> => {
     const result: any = data.chart.result[0];
     const timestamps: number[] = result.timestamp || [];
     const quote: any = result.indicators.quote[0] || {};
-    const opens: (number | null)[] = quote.open || [];
+    // Prefer adjusted close so stock splits & dividends do not distort returns.
+    const adjClose: (number | null)[] = result.indicators.adjclose?.[0]?.adjclose || [];
     const closes: (number | null)[] = quote.close || [];
     const returnedSymbol: string = result.meta.symbol || symbol;
+    const fullName = resolveDisplayName(returnedSymbol, result.meta.longName || result.meta.shortName);
 
-    // Resolve full name if possible, or use standard labels
-    let fullName = returnedSymbol;
-    if (returnedSymbol === '^JKSE') {
-      fullName = 'Indeks Harga Saham Gabungan (IHSG)';
-    } else if (returnedSymbol.endsWith('.JK')) {
-      fullName = `PT ${returnedSymbol.replace('.JK', '')} Tbk`;
-    }
+    const history: StockHistoryItem[] = [];
 
-    const history: { year: number; month: number; returnVal: number }[] = [];
-
-    // Parse price points into month-by-month returns
+    // Month-over-month return: (close[m] - close[m-1]) / close[m-1].
+    // This is the correct seasonal methodology; the previous open->close
+    // (intra-month) calculation ignored the gap between consecutive months.
+    let prevClose: number | null = null;
     for (let i = 0; i < timestamps.length; i++) {
       const ts = timestamps[i];
-      const open = opens[i];
-      const close = closes[i];
+      const rawClose = adjClose[i] ?? closes[i];
 
-      // Skip nulls or zero values (market holidays or incomplete data)
-      if (
-        ts && 
-        open !== null && 
-        open !== undefined && 
-        close !== null && 
-        close !== undefined && 
-        open > 0
-      ) {
+      // Skip nulls/zeros (market holidays or incomplete data)
+      if (!ts || rawClose === null || rawClose === undefined || rawClose <= 0) {
+        continue;
+      }
+
+      const close = rawClose as number;
+      if (prevClose !== null && prevClose > 0) {
         const date = new Date(ts * 1000);
-        // Calculate return percentage: ((close - open) / open) * 100
-        const returnVal = Math.round(((close - open) / open) * 100 * 100) / 100;
-        
+        const returnVal = Math.round(((close - prevClose) / prevClose) * 100 * 100) / 100;
         history.push({
           year: date.getFullYear(),
           month: date.getMonth() + 1,
           returnVal
         });
       }
+      prevClose = close;
     }
 
     if (history.length === 0) {
@@ -102,15 +83,20 @@ export default defineEventHandler(async (event): Promise<StockResponse> => {
     };
   } catch (error: any) {
     console.error('Yahoo Finance server fetch error:', error);
-    
+
     // Pass along Nuxt H3 errors, otherwise create a new one
     if (error.statusCode) {
       throw error;
     }
-    
+
     throw createError({
       statusCode: 500,
       statusMessage: `Koneksi ke Yahoo Finance gagal untuk simbol ${symbol}. Periksa ticker Anda.`
     });
   }
+}, {
+  maxAge: 60 * 60 * 6, // 6 hours
+  swr: true,
+  name: 'seasonal',
+  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
 });

@@ -1,4 +1,5 @@
-import { defineEventHandler, getQuery, createError } from 'h3';
+import { getQuery, createError } from 'h3';
+import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 
 interface DailyPriceItem {
   date: string;
@@ -29,39 +30,25 @@ interface StockDetailResponse {
   history: DailyPriceItem[];
 }
 
-export default defineEventHandler(async (event): Promise<StockDetailResponse> => {
+// Cache daily price detail for 30 minutes: fresh enough for ratio display,
+// while shielding Yahoo from repeated hits when users switch symbols.
+export default defineCachedEventHandler(async (event): Promise<StockDetailResponse> => {
   const query = getQuery(event);
-  const rawSymbol = (query.symbol as string) || 'BBCA';
-
-  // Format symbol (same as seasonal API)
-  let symbol = rawSymbol.toUpperCase().trim();
-  if (symbol === 'IHSG') {
-    symbol = '^JKSE';
-  } else if (!symbol.endsWith('.JK') && !symbol.startsWith('^')) {
-    symbol = `${symbol}.JK`;
-  }
+  const symbol = normalizeSymbol(query.symbol as string);
 
   // Fetch daily chart data (1 year)
   const chartUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
-  
+
   // Fetch sector and industry search data
   const searchUrl = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(symbol)}`;
 
   try {
     const [chartData, searchData]: [any, any] = await Promise.all([
-      $fetch<any>(chartUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      }).catch(err => {
+      $fetch<any>(chartUrl, { headers: YAHOO_HEADERS }).catch((err) => {
         console.error('Yahoo Finance chart fetch error:', err);
         return null;
       }),
-      $fetch<any>(searchUrl, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-        }
-      }).catch(err => {
+      $fetch<any>(searchUrl, { headers: YAHOO_HEADERS }).catch((err) => {
         console.error('Yahoo Finance search fetch error:', err);
         return null;
       })
@@ -85,12 +72,7 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
     const volumes: (number | null)[] = quoteObj.volume || [];
 
     const returnedSymbol = meta.symbol || symbol;
-    let fullName = meta.longName || meta.shortName || returnedSymbol;
-    if (returnedSymbol === '^JKSE') {
-      fullName = 'Indeks Harga Saham Gabungan (IHSG)';
-    } else if (returnedSymbol.endsWith('.JK') && fullName === returnedSymbol) {
-      fullName = `PT ${returnedSymbol.replace('.JK', '')} Tbk`;
-    }
+    const fullName = resolveDisplayName(returnedSymbol, meta.longName || meta.shortName);
 
     // Extract sector and industry from search API results
     let sector = 'N/A';
@@ -103,8 +85,11 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
       }
     }
 
-    // Parse daily historical records
+    // Parse daily historical records (chronological order first so we can
+    // compute the daily change against the PREVIOUS close, not the same-day
+    // open. Change vs previous close is the standard exchange convention.
     const history: DailyPriceItem[] = [];
+    let prevClose: number | null = null;
     for (let i = 0; i < timestamps.length; i++) {
       const ts = timestamps[i];
       const open = opens[i];
@@ -113,9 +98,9 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
       const close = closes[i];
       const vol = volumes[i];
 
-      // We need at least close and open to compute changes and render properly
+      // We need OHLC to render a candle properly
       if (
-        ts && 
+        ts &&
         open !== null && open !== undefined &&
         high !== null && high !== undefined &&
         low !== null && low !== undefined &&
@@ -123,12 +108,12 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
         open > 0
       ) {
         const dateObj = new Date(ts * 1000);
-        // Format as YYYY-MM-DD
         const formattedDate = dateObj.toISOString().split('T')[0] || '';
-        
-        // Price change metrics vs. open of the day
-        const changeVal = Math.round((close - open) * 100) / 100;
-        const changePct = Math.round(((close - open) / open) * 100 * 100) / 100;
+
+        // Change vs previous close (fallback to same-day open for the first bar)
+        const baseline = prevClose !== null && prevClose > 0 ? prevClose : open;
+        const changeVal = Math.round((close - baseline) * 100) / 100;
+        const changePct = Math.round(((close - baseline) / baseline) * 100 * 100) / 100;
 
         history.push({
           date: formattedDate,
@@ -141,6 +126,8 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
           changeVal,
           changePct
         });
+
+        prevClose = close;
       }
     }
 
@@ -183,4 +170,9 @@ export default defineEventHandler(async (event): Promise<StockDetailResponse> =>
       statusMessage: `Koneksi ke Yahoo Finance gagal untuk simbol ${symbol}. Periksa kembali ticker Anda.`
     });
   }
+}, {
+  maxAge: 60 * 30, // 30 minutes
+  swr: true,
+  name: 'detail',
+  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
 });

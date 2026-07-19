@@ -13,10 +13,40 @@ const { data, pending, error, refresh } = await useFetch<any>(() => '/api/screen
 
 const rows = computed<any[]>(() => data.value?.results || []);
 
-// Filters
+// Basic filters
 const ratingFilter = ref<'all' | 'Kuat' | 'Menarik'>('all');
 const searchQ = ref('');
 const onlyUptrend = ref(false);
+
+// Advanced filters
+const minAdx = ref(0); // 0 = off
+const rsiMin = ref(0);
+const rsiMax = ref(100);
+
+interface QuickSignal { key: string; label: string; test: (x: any) => boolean }
+const QUICK_SIGNALS: QuickSignal[] = [
+  { key: 'golden', label: 'Golden Cross', test: (x) => x.signals?.some((s: any) => s.label === 'Golden Cross') },
+  { key: 'breakout', label: 'Breakout Bollinger', test: (x) => x.bbPercentB != null && x.bbPercentB > 1 },
+  { key: 'macd', label: 'MACD Bullish', test: (x) => x.macd != null && x.macdSignal != null && x.macd > x.macdSignal },
+  { key: 'volume', label: 'Volume Spike ≥1.5x', test: (x) => x.volRatio != null && x.volRatio >= 1.5 },
+  { key: 'near52h', label: 'Dekat 52W High', test: (x) => x.pctFromHigh != null && x.pctFromHigh >= -8 }
+];
+const activeQuickSignals = ref<Set<string>>(new Set());
+function toggleQuickSignal(key: string) {
+  const next = new Set(activeQuickSignals.value);
+  if (next.has(key)) next.delete(key); else next.add(key);
+  activeQuickSignals.value = next;
+}
+
+const rsiRangeActive = computed(() => rsiMin.value > 0 || rsiMax.value < 100);
+const hasAdvancedFilters = computed(() => minAdx.value > 0 || rsiRangeActive.value || activeQuickSignals.value.size > 0);
+
+function resetAdvancedFilters() {
+  minAdx.value = 0;
+  rsiMin.value = 0;
+  rsiMax.value = 100;
+  activeQuickSignals.value = new Set();
+}
 
 const filtered = computed(() => {
   let r = rows.value;
@@ -24,6 +54,13 @@ const filtered = computed(() => {
   if (onlyUptrend.value) r = r.filter((x) => x.sma200 != null && x.price > x.sma200);
   const q = searchQ.value.trim().toUpperCase();
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
+
+  if (minAdx.value > 0) r = r.filter((x) => x.adx != null && x.adx >= minAdx.value);
+  if (rsiRangeActive.value) r = r.filter((x) => x.rsi != null && x.rsi >= rsiMin.value && x.rsi <= rsiMax.value);
+  if (activeQuickSignals.value.size > 0) {
+    const active = QUICK_SIGNALS.filter((s) => activeQuickSignals.value.has(s.key));
+    r = r.filter((x) => active.every((s) => s.test(x)));
+  }
   return r;
 });
 
@@ -76,6 +113,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
               <strong class="text-slate-300">ADX/DMI</strong>), momentum (RSI, MACD, <strong class="text-slate-300">Stochastic</strong>),
               volatilitas (<strong class="text-slate-300">Bollinger Bands</strong>, ATR), serta volume &amp; posisi 52 minggu.
               Memindai <strong class="text-slate-300">{{ counts.total }}</strong> saham likuid, diurutkan dari skor tertinggi.
+              <span v-if="filtered.length !== counts.total" class="text-emerald-400 font-semibold">{{ filtered.length }} lolos filter.</span>
             </p>
           </div>
           <button
@@ -119,6 +157,78 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
             <div class="flex gap-2 text-xs">
               <span class="px-3 py-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300 font-semibold">Kuat: {{ counts.kuat }}</span>
               <span class="px-3 py-1.5 rounded-lg border border-sky-500/25 bg-sky-500/10 text-sky-300 font-semibold">Menarik: {{ counts.menarik }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Advanced filters -->
+        <div class="mt-5 pt-5 border-t border-slate-900">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Filter Lanjutan</span>
+            <button
+              v-if="hasAdvancedFilters"
+              type="button"
+              class="text-[11px] font-semibold text-rose-300 hover:text-rose-200 transition-colors"
+              @click="resetAdvancedFilters"
+            >
+              ✕ Reset filter lanjutan
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <!-- Min ADX -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                <span>Min ADX (kekuatan tren)</span>
+                <span class="text-slate-200 font-bold">{{ minAdx > 0 ? minAdx : 'Off' }}</span>
+              </label>
+              <input
+                v-model.number="minAdx"
+                type="range" min="0" max="50" step="5"
+                class="w-full accent-emerald-500"
+              />
+              <p class="text-[10px] text-slate-500">ADX ≥ 25 umumnya dianggap tren kuat.</p>
+            </div>
+
+            <!-- RSI range -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                <span>Rentang RSI</span>
+                <span class="text-slate-200 font-bold">{{ rsiMin }}–{{ rsiMax }}</span>
+              </label>
+              <div class="flex items-center gap-2">
+                <input
+                  v-model.number="rsiMin"
+                  type="number" min="0" max="100"
+                  class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                />
+                <span class="text-slate-600 text-xs">–</span>
+                <input
+                  v-model.number="rsiMax"
+                  type="number" min="0" max="100"
+                  class="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <p class="text-[10px] text-slate-500">Mis. 30–50 untuk saham yang baru pulih dari oversold.</p>
+            </div>
+
+            <!-- Quick signal chips -->
+            <div class="flex flex-col gap-2">
+              <label class="text-xs font-semibold text-slate-400">Sinyal spesifik</label>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="sig in QUICK_SIGNALS"
+                  :key="sig.key"
+                  type="button"
+                  class="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors"
+                  :class="activeQuickSignals.has(sig.key)
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                    : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'"
+                  @click="toggleQuickSignal(sig.key)"
+                >
+                  {{ activeQuickSignals.has(sig.key) ? '✓ ' : '' }}{{ sig.label }}
+                </button>
+              </div>
             </div>
           </div>
         </div>

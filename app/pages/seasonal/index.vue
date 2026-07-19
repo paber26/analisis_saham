@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
-import { seasonalStocks } from '../../data/seasonalStocks';
 import type { PeriodType } from '../../types/seasonal';
 import {
   calculateSeasonalStats,
   calculateDashboardSummary,
-  generateInsights
+  generateInsights,
+  MONTH_LABELS
 } from '../../utils/seasonalCalculator';
 
 // Page Title and SEO Meta
@@ -16,31 +16,22 @@ useHead({
   ]
 });
 
-// Selection States
-const selectedStockCode = ref('BBCA');
-const selectedPeriodType = ref<PeriodType>('monthly');
+// Selection States (symbol & period initialised from the URL for shareable links)
+const route = useRoute();
+const router = useRouter();
+const activeSymbol = ref(((route.query.symbol as string) || 'BBCA').toUpperCase().trim());
+const selectedPeriodType = ref<PeriodType>(
+  ['monthly', 'quarterly', 'yearly'].includes(route.query.period as string)
+    ? (route.query.period as PeriodType)
+    : 'monthly'
+);
 
-const searchSymbolQuery = ref('');
-const activeSymbol = ref('BBCA');
-
-// Sync activeSymbol when dropdown changes
-watch(selectedStockCode, (newCode) => {
-  if (newCode !== 'CUSTOM') {
-    activeSymbol.value = newCode;
-    searchSymbolQuery.value = '';
-  } else {
-    // Default to Indonesian stock BUMI when custom search is selected
-    searchSymbolQuery.value = 'BUMI';
-    activeSymbol.value = 'BUMI';
-  }
+// Keep the URL in sync so an analysis can be shared via link
+watch([activeSymbol, selectedPeriodType], () => {
+  router.replace({
+    query: { ...route.query, symbol: activeSymbol.value, period: selectedPeriodType.value }
+  });
 });
-
-const handleCustomSearch = () => {
-  const query = searchSymbolQuery.value.trim().toUpperCase();
-  if (query) {
-    activeSymbol.value = query;
-  }
-};
 
 // Fetch active stock data dynamically from API
 const { 
@@ -141,6 +132,29 @@ const insights = computed(() => {
 const ihsgSeasonalStats = computed(() => {
   return calculateSeasonalStats(filteredIhsgHistory.value, selectedPeriodType.value);
 });
+
+// Actionable signal for the current & upcoming month (monthly view only)
+const monthlySignal = computed(() => {
+  if (selectedPeriodType.value !== 'monthly') return null;
+  const curIdx = new Date().getMonth(); // 0-11
+  const nextIdx = (curIdx + 1) % 12;
+  const find = (idx: number) =>
+    seasonalStats.value.find((s) => s.periodLabel === MONTH_LABELS[idx]) || null;
+  return {
+    current: { label: MONTH_LABELS[curIdx], stat: find(curIdx) },
+    next: { label: MONTH_LABELS[nextIdx], stat: find(nextIdx) }
+  };
+});
+
+// Classify a period's historical bias into a colour + verdict for the banner
+function signalMeta(stat: { avgReturn: number; winRate: number } | null) {
+  if (!stat) return { cls: 'border-slate-800 bg-slate-900/40 text-slate-300', verdict: 'Data belum cukup' };
+  if (stat.avgReturn > 0 && stat.winRate >= 55)
+    return { cls: 'border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300', verdict: 'Cenderung bullish' };
+  if (stat.avgReturn < 0 || stat.winRate <= 45)
+    return { cls: 'border-rose-500/25 bg-rose-500/[0.06] text-rose-300', verdict: 'Cenderung bearish' };
+  return { cls: 'border-amber-500/25 bg-amber-500/[0.06] text-amber-300', verdict: 'Netral / campuran' };
+}
 </script>
 
 <template>
@@ -153,103 +167,13 @@ const ihsgSeasonalStats = computed(() => {
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Pengaturan Analisis</h2>
         
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6">
-          <!-- Stock Selector -->
-          <div class="flex flex-col gap-2">
-            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Saham / Indeks</label>
-            <select 
-              id="stockSelect"
-              v-model="selectedStockCode"
-              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-            >
-              <option value="IHSG">IHSG - Indeks Harga Saham Gabungan</option>
-              
-              <optgroup label="Perbankan & Keuangan">
-                <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
-                <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
-                <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
-                <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
-                <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Energi & Tambang">
-                <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
-                <option value="PTBA">PTBA - Bukit Asam Tbk</option>
-                <option value="BUMI">BUMI - Bumi Resources Tbk</option>
-                <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
-                <option value="HRUM">HRUM - Harum Energy Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Infrastruktur & Telko">
-                <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
-                <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
-                <option value="EXCL">EXCL - XL Axiata Tbk</option>
-                <option value="JSMR">JSMR - Jasa Marga Tbk</option>
-                <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Konsumer Non-Primer (Siklikal/Ritel)">
-                <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
-                <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
-                <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
-                <option value="MYOR">MYOR - Mayora Indah Tbk</option>
-                <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk (Ace Hardware)</option>
-              </optgroup>
-              
-              <optgroup label="Barang Baku & Logam">
-                <option value="ANTM">ANTM - Aneka Tambang Tbk</option>
-                <option value="INCO">INCO - Vale Indonesia Tbk</option>
-                <option value="TPIA">TPIA - Chandra Asri Pacific Tbk</option>
-                <option value="KRAS">KRAS - Krakatau Steel Tbk</option>
-                <option value="MDKA">MDKA - Merdeka Gold Copper Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Industri & Otomotif">
-                <option value="ASII">ASII - Astra International Tbk</option>
-                <option value="UNTR">UNTR - United Tractors Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Teknologi & Digital">
-                <option value="GOTO">GOTO - GoTo Gojek Tokopedia Tbk</option>
-                <option value="BUKA">BUKA - Bukalapak.com Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Kesehatan & Farmasi">
-                <option value="KLBF">KLBF - Kalbe Farma Tbk</option>
-                <option value="MIKA">MIKA - Mitra Keluarga Karyasehat Tbk</option>
-              </optgroup>
-              
-              <optgroup label="Properti & Real Estate">
-                <option value="BSDE">BSDE - Bumi Serpong Damai Tbk</option>
-                <option value="PWON">PWON - Pakuwon Jati Tbk</option>
-                <option value="SMRA">SMRA - Summarecon Agung Tbk</option>
-              </optgroup>
-              
-              <option value="CUSTOM">Cari Kode Saham IDX Lainnya...</option>
-            </select>
+          <!-- Stock Selector (live autocomplete over all IDX) -->
+          <div class="flex flex-col gap-2 sm:col-span-2">
+            <label class="text-xs font-semibold text-slate-400">Kode Saham / Indeks</label>
+            <StockSearch v-model="activeSymbol" />
           </div>
 
-          <!-- Custom Symbol Search (Only show if CUSTOM is selected) -->
-          <div v-if="selectedStockCode === 'CUSTOM'" class="flex flex-col gap-2">
-            <label for="customSearch" class="text-xs font-semibold text-slate-400">Simbol Kustom (contoh: BUMI, GOTO)</label>
-            <div class="flex gap-2">
-              <input 
-                id="customSearch"
-                v-model="searchSymbolQuery"
-                type="text"
-                placeholder="Kode Saham (misal: BUMI, GOTO)"
-                @keyup.enter="handleCustomSearch"
-                class="flex-grow min-w-0 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-              />
-              <button 
-                type="button"
-                @click="handleCustomSearch"
-                class="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold text-xs rounded-xl shadow-md transition-colors whitespace-nowrap"
-              >
-                Cari
-              </button>
-            </div>
-          </div>
-
+          
           <!-- Period Type Selector -->
           <div class="flex flex-col gap-2">
             <label class="text-xs font-semibold text-slate-400">Jenis Periode</label>
@@ -336,7 +260,7 @@ const ihsgSeasonalStats = computed(() => {
             </p>
             <button 
               type="button"
-              @click="selectedStockCode = 'BBCA'"
+              @click="activeSymbol = 'BBCA'"
               class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-455 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
             >
               Kembali ke Saham BBCA
@@ -355,10 +279,55 @@ const ihsgSeasonalStats = computed(() => {
       <div v-else-if="fetchedStockData" class="space-y-6">
         <!-- Summary Info Cards -->
         <section>
-          <SeasonalSummaryCards 
-            :summary="dashboardSummary" 
-            :period-type="selectedPeriodType" 
+          <SeasonalSummaryCards
+            :summary="dashboardSummary"
+            :period-type="selectedPeriodType"
           />
+        </section>
+
+        <!-- Actionable Signal: current & upcoming month -->
+        <section v-if="monthlySignal" class="glow-card rounded-2xl p-5">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Sinyal Musiman Bulan Ini</span>
+            <span class="text-[10px] text-slate-500">• berdasarkan {{ dashboardSummary.totalYears }} tahun data</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div
+              v-for="item in [monthlySignal.current, monthlySignal.next]"
+              :key="item.label"
+              class="rounded-xl border p-4"
+              :class="signalMeta(item.stat).cls"
+            >
+              <div class="flex items-center justify-between mb-2">
+                <span class="text-sm font-bold text-slate-100">{{ item.label }}
+                  <span class="text-[10px] font-medium text-slate-400 ml-1">{{ item === monthlySignal.current ? 'bulan berjalan' : 'bulan depan' }}</span>
+                </span>
+                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="signalMeta(item.stat).cls">
+                  {{ signalMeta(item.stat).verdict }}
+                </span>
+              </div>
+              <div v-if="item.stat" class="flex items-end gap-5">
+                <div>
+                  <p class="text-[10px] text-slate-500 uppercase tracking-wide">Rata-rata Return</p>
+                  <p class="text-xl font-extrabold" :class="item.stat.avgReturn >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                    {{ item.stat.avgReturn >= 0 ? '+' : '' }}{{ item.stat.avgReturn }}%
+                  </p>
+                </div>
+                <div>
+                  <p class="text-[10px] text-slate-500 uppercase tracking-wide">Win Rate</p>
+                  <p class="text-xl font-extrabold text-slate-100">{{ item.stat.winRate }}%</p>
+                </div>
+                <div>
+                  <p class="text-[10px] text-slate-500 uppercase tracking-wide">Naik / Turun</p>
+                  <p class="text-sm font-bold text-slate-300 mt-1">{{ item.stat.yearsUp }} / {{ item.stat.yearsDown }} thn</p>
+                </div>
+              </div>
+              <p v-else class="text-xs text-slate-400">Belum ada data historis untuk bulan ini.</p>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-3">
+            Ganti periode ke <strong class="text-slate-300">Bulanan</strong> untuk melihat sinyal ini. Kinerja historis bukan jaminan masa depan.
+          </p>
         </section>
 
         <!-- Bar Chart (Full Width) -->

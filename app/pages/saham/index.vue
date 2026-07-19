@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { stockFundamentals, getStockFundamentals } from '../../data/stockFundamentals';
-import { KNOWN_CODES } from '../../data/stockList';
 
 // Page Title and SEO Meta
 useHead({
@@ -11,33 +10,11 @@ useHead({
   ]
 });
 
-// Selection States (initialised from the URL so links are shareable)
+// Active symbol (initialised from the URL so links are shareable)
 const route = useRoute();
 const router = useRouter();
-const initialSymbol = ((route.query.symbol as string) || 'BBCA').toUpperCase().trim();
-
-const selectedStockCode = ref(KNOWN_CODES.has(initialSymbol) ? initialSymbol : 'CUSTOM');
-const searchSymbolQuery = ref(KNOWN_CODES.has(initialSymbol) ? '' : initialSymbol);
-const activeSymbol = ref(initialSymbol);
+const activeSymbol = ref(((route.query.symbol as string) || 'BBCA').toUpperCase().trim());
 const selectedRange = ref<'1m' | '3m' | '6m' | '1y'>('6m');
-
-// Sync activeSymbol when dropdown changes
-watch(selectedStockCode, (newCode) => {
-  if (newCode !== 'CUSTOM') {
-    activeSymbol.value = newCode;
-    searchSymbolQuery.value = '';
-  } else {
-    searchSymbolQuery.value = 'BUMI';
-    activeSymbol.value = 'BUMI';
-  }
-});
-
-const handleCustomSearch = () => {
-  const query = searchSymbolQuery.value.trim().toUpperCase();
-  if (query) {
-    activeSymbol.value = query;
-  }
-};
 
 // Reflect the active symbol in the URL query for shareable links
 watch(activeSymbol, (sym) => {
@@ -50,6 +27,12 @@ const {
   pending: isPending,
   error: fetchError
 } = await useFetch<any>(() => '/api/detail', {
+  params: { symbol: activeSymbol },
+  watch: [activeSymbol]
+});
+
+// Fetch live fundamentals (PER/PBV/ROE/yield) for the active symbol
+const { data: liveFund } = await useFetch<any>(() => '/api/fundamentals', {
   params: { symbol: activeSymbol },
   watch: [activeSymbol]
 });
@@ -140,11 +123,11 @@ const formatLargeNumber = (num: number, suffix = '') => {
 
 // ==========================================================================
 // Fundamental Ratios (Keuangan)
-// Wires up app/data/stockFundamentals.ts against the live price so PER, PBV,
-// Dividend Yield & ROE are computed on demand.
+// Prefers LIVE fundamentals from Yahoo (/api/fundamentals, works for any IDX
+// ticker) and falls back to the static snapshot when Yahoo has no data.
 // ==========================================================================
 
-// Base ticker (strip .JK) used for the fundamental lookup
+// Base ticker (strip .JK) used for the static fallback lookup
 const baseCode = computed(() => {
   const sym = (stockDetail.value?.symbol || activeSymbol.value || '').toUpperCase();
   return sym.replace('.JK', '');
@@ -156,24 +139,39 @@ const isIndex = computed(() => {
   return sym.startsWith('^') || sym === 'IHSG';
 });
 
-// True when we have hand-curated data (vs a deterministic estimate fallback)
-const isKnownFundamental = computed(() => !!stockFundamentals[baseCode.value]);
+// Live Yahoo fundamentals, only when actually available
+const live = computed(() => (liveFund.value && liveFund.value.available ? liveFund.value : null));
 
-const fundamentals = computed(() => getStockFundamentals(baseCode.value));
+// Merged base figures (EPS/BVPS/DPS/shares) + provenance for the badge
+const fundamentals = computed(() => {
+  const stat = getStockFundamentals(baseCode.value);
+  const l = live.value;
+  const source: 'yahoo' | 'preset' | 'estimate' =
+    l ? 'yahoo' : (stockFundamentals[baseCode.value] ? 'preset' : 'estimate');
+  return {
+    eps: l?.eps ?? stat.eps,
+    bvps: l?.bvps ?? stat.bvps,
+    dps: l?.dps ?? stat.dps,
+    // Yahoo returns absolute share count; static list is already in billions
+    sharesOutstanding: l?.sharesOutstanding != null ? l.sharesOutstanding / 1e9 : stat.sharesOutstanding,
+    source
+  };
+});
 
 const ratios = computed(() => {
   const price = stockDetail.value?.currentPrice;
   const f = fundamentals.value;
-  if (!price || !f || isIndex.value) return null;
+  const l = live.value;
+  if (!price || isIndex.value) return null;
 
   const round2 = (n: number) => Math.round(n * 100) / 100;
   return {
-    per: f.eps > 0 ? round2(price / f.eps) : null,          // Price / Earnings
-    pbv: f.bvps > 0 ? round2(price / f.bvps) : null,        // Price / Book Value
-    divYield: price > 0 ? round2((f.dps / price) * 100) : null, // Dividend Yield %
-    roe: f.bvps > 0 ? round2((f.eps / f.bvps) * 100) : null,    // ROE ≈ EPS / BVPS
-    payout: f.eps > 0 ? round2((f.dps / f.eps) * 100) : null,   // Payout ratio %
-    marketCap: price * f.sharesOutstanding * 1e9
+    per: l?.per ?? (f.eps > 0 ? round2(price / f.eps) : null),          // Price / Earnings
+    pbv: l?.pbv ?? (f.bvps > 0 ? round2(price / f.bvps) : null),        // Price / Book Value
+    divYield: l?.dividendYield ?? (price > 0 ? round2((f.dps / price) * 100) : null), // %
+    roe: l?.roe ?? (f.bvps > 0 ? round2((f.eps / f.bvps) * 100) : null),    // ROE (%)
+    payout: l?.payout ?? (f.eps > 0 ? round2((f.dps / f.eps) * 100) : null),   // Payout ratio %
+    marketCap: l?.marketCap ?? price * (f.sharesOutstanding || 0) * 1e9
   };
 });
 
@@ -461,99 +459,8 @@ const chartOption = computed(() => {
       <!-- Top Actions Bar -->
       <section class="glow-card rounded-2xl p-4 flex flex-col md:flex-row justify-between items-center gap-4">
         <!-- Stock Ticker selectors -->
-        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
-          <!-- Dropdown -->
-          <select 
-            id="stockSelect"
-            v-model="selectedStockCode"
-            class="bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-sm font-semibold text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
-          >
-            <optgroup label="Indeks">
-              <option value="IHSG">IHSG - Indeks Harga Gabungan</option>
-            </optgroup>
-            
-            <optgroup label="Perbankan & Keuangan">
-              <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
-              <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
-              <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
-              <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
-              <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Energi & Tambang">
-              <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
-              <option value="PTBA">PTBA - Bukit Asam Tbk</option>
-              <option value="BUMI">BUMI - Bumi Resources Tbk</option>
-              <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
-              <option value="HRUM">HRUM - Harum Energy Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Infrastruktur & Telko">
-              <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
-              <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
-              <option value="EXCL">EXCL - XL Axiata Tbk</option>
-              <option value="JSMR">JSMR - Jasa Marga Tbk</option>
-              <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Konsumer & Ritel">
-              <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
-              <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
-              <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
-              <option value="MYOR">MYOR - Mayora Indah Tbk</option>
-              <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Barang Baku & Logam">
-              <option value="ANTM">ANTM - Aneka Tambang Tbk</option>
-              <option value="INCO">INCO - Vale Indonesia Tbk</option>
-              <option value="TPIA">TPIA - Chandra Asri Pacific Tbk</option>
-              <option value="KRAS">KRAS - Krakatau Steel Tbk</option>
-              <option value="MDKA">MDKA - Merdeka Gold Copper Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Industri & Otomotif">
-              <option value="ASII">ASII - Astra International Tbk</option>
-              <option value="UNTR">UNTR - United Tractors Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Teknologi & Digital">
-              <option value="GOTO">GOTO - GoTo Gojek Tokopedia Tbk</option>
-              <option value="BUKA">BUKA - Bukalapak.com Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Kesehatan & Farmasi">
-              <option value="KLBF">KLBF - Kalbe Farma Tbk</option>
-              <option value="MIKA">MIKA - Mitra Keluarga Karyasehat Tbk</option>
-            </optgroup>
-            
-            <optgroup label="Properti & Real Estate">
-              <option value="BSDE">BSDE - Bumi Serpong Damai Tbk</option>
-              <option value="PWON">PWON - Pakuwon Jati Tbk</option>
-              <option value="SMRA">SMRA - Summarecon Agung Tbk</option>
-            </optgroup>
-            
-            <option value="CUSTOM">Pencarian Simbol Kustom...</option>
-          </select>
-
-          <!-- Custom Ticker Search input -->
-          <div v-if="selectedStockCode === 'CUSTOM'" class="flex gap-2">
-            <input 
-              id="customSearch"
-              v-model="searchSymbolQuery"
-              type="text"
-              placeholder="Simbol IDX..."
-              class="bg-slate-900 border border-slate-800 rounded-xl px-3 py-1.5 text-sm text-slate-200 placeholder-slate-650 focus:outline-none focus:border-emerald-500 uppercase w-32"
-              @keyup.enter="handleCustomSearch"
-            />
-            <button 
-              type="button"
-              @click="handleCustomSearch"
-              class="bg-emerald-500 hover:bg-emerald-600 active:scale-[0.98] text-slate-950 px-3 py-1.5 rounded-xl font-bold text-xs transition-all"
-            >
-              Cari
-            </button>
-          </div>
+        <div class="w-full md:max-w-2xl">
+          <StockSearch v-model="activeSymbol" />
         </div>
 
         <!-- Range Filter Buttons -->
@@ -608,7 +515,7 @@ const chartOption = computed(() => {
             </p>
             <button 
               type="button"
-              @click="selectedStockCode = 'BBCA'"
+              @click="activeSymbol = 'BBCA'"
               class="px-4 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-350 border border-rose-500/35 font-semibold text-xs rounded-xl transition-all"
             >
               Kembali ke Saham BBCA
@@ -712,9 +619,9 @@ const chartOption = computed(() => {
             </div>
             <span
               class="text-[10px] font-semibold px-3 py-1 rounded-full border"
-              :class="isKnownFundamental ? TONE.emerald : TONE.amber"
+              :class="fundamentals.source === 'yahoo' ? TONE.emerald : fundamentals.source === 'preset' ? TONE.sky : TONE.amber"
             >
-              {{ isKnownFundamental ? 'Data fundamental preset' : 'Estimasi otomatis' }}
+              {{ fundamentals.source === 'yahoo' ? 'Live • Yahoo Finance' : fundamentals.source === 'preset' ? 'Data preset' : 'Estimasi otomatis' }}
             </span>
           </div>
 

@@ -31,3 +31,45 @@ export const YAHOO_HEADERS = {
   'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 };
+
+// The quoteSummary endpoint now requires a session cookie + "crumb" token.
+// We fetch them once and cache in-memory (~30 min) since they are reusable.
+interface YahooAuth { cookie: string; crumb: string; ts: number; }
+let cachedAuth: YahooAuth | null = null;
+
+export async function getYahooAuth(): Promise<{ cookie: string; crumb: string } | null> {
+  if (cachedAuth && Date.now() - cachedAuth.ts < 30 * 60 * 1000) {
+    return { cookie: cachedAuth.cookie, crumb: cachedAuth.crumb };
+  }
+
+  try {
+    // 1) Obtain a session cookie from the Yahoo Finance homepage
+    let cookie = '';
+    for (const seedUrl of ['https://fc.yahoo.com/', 'https://finance.yahoo.com/']) {
+      const res = await fetch(seedUrl, { headers: YAHOO_HEADERS }).catch(() => null);
+      if (!res) continue;
+      const setCookies = typeof res.headers.getSetCookie === 'function'
+        ? res.headers.getSetCookie()
+        : [res.headers.get('set-cookie') || ''];
+      cookie = setCookies
+        .map((c) => (c || '').split(';')[0])
+        .filter(Boolean)
+        .join('; ');
+      if (cookie) break;
+    }
+    if (!cookie) return null;
+
+    // 2) Exchange the cookie for a crumb token
+    const crumbRes = await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', {
+      headers: { ...YAHOO_HEADERS, cookie }
+    });
+    const crumb = (await crumbRes.text()).trim();
+    if (!crumb || crumb.includes('<') || crumb.length > 32) return null;
+
+    cachedAuth = { cookie, crumb, ts: Date.now() };
+    return { cookie, crumb };
+  } catch (err) {
+    console.error('Yahoo auth (crumb) error:', err);
+    return null;
+  }
+}

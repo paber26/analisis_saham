@@ -11,24 +11,14 @@ useHead({
   ]
 });
 
-const selectedStockCode = ref('BBCA');
-const searchSymbolQuery = ref('');
-const activeSymbol = ref('BBCA');
+// Active symbol initialised from the URL for shareable links
+const route = useRoute();
+const router = useRouter();
+const activeSymbol = ref(((route.query.symbol as string) || 'BBCA').toUpperCase().trim());
 
-watch(selectedStockCode, (newCode) => {
-  if (newCode !== 'CUSTOM') {
-    activeSymbol.value = newCode;
-    searchSymbolQuery.value = '';
-  } else {
-    searchSymbolQuery.value = 'BUMI';
-    activeSymbol.value = 'BUMI';
-  }
+watch(activeSymbol, (sym) => {
+  router.replace({ query: { ...route.query, symbol: sym } });
 });
-
-const handleCustomSearch = () => {
-  const query = searchSymbolQuery.value.trim().toUpperCase();
-  if (query) activeSymbol.value = query;
-};
 
 const { data: profile, pending, error } = await useFetch<any>(() => '/api/profile', {
   params: { symbol: activeSymbol },
@@ -51,71 +41,12 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
         <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Profil Emiten</h2>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
-          <div class="flex flex-col gap-2">
-            <label for="stockSelect" class="text-xs font-semibold text-slate-400">Kode Saham / Indeks</label>
-            <select
-              id="stockSelect"
-              v-model="selectedStockCode"
-              class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-            >
-              <option value="IHSG">IHSG - Indeks Harga Saham Gabungan</option>
-
-              <optgroup label="Perbankan & Keuangan">
-                <option value="BBCA">BBCA - Bank Central Asia Tbk</option>
-                <option value="BBRI">BBRI - Bank Rakyat Indonesia Tbk</option>
-                <option value="BMRI">BMRI - Bank Mandiri Tbk</option>
-                <option value="BBNI">BBNI - Bank Negara Indonesia Tbk</option>
-                <option value="BBTN">BBTN - Bank Tabungan Negara Tbk</option>
-              </optgroup>
-
-              <optgroup label="Energi & Tambang">
-                <option value="ADRO">ADRO - Adaro Energy Indonesia Tbk</option>
-                <option value="PTBA">PTBA - Bukit Asam Tbk</option>
-                <option value="BUMI">BUMI - Bumi Resources Tbk</option>
-                <option value="MEDC">MEDC - Medco Energi Internasional Tbk</option>
-                <option value="HRUM">HRUM - Harum Energy Tbk</option>
-              </optgroup>
-
-              <optgroup label="Infrastruktur & Telko">
-                <option value="TLKM">TLKM - Telkom Indonesia Tbk</option>
-                <option value="ISAT">ISAT - Indosat Ooredoo Hutchison Tbk</option>
-                <option value="EXCL">EXCL - XL Axiata Tbk</option>
-                <option value="JSMR">JSMR - Jasa Marga Tbk</option>
-                <option value="PGAS">PGAS - Perusahaan Gas Negara Tbk</option>
-              </optgroup>
-
-              <optgroup label="Konsumer">
-                <option value="UNVR">UNVR - Unilever Indonesia Tbk</option>
-                <option value="ICBP">ICBP - Indofood CBP Sukses Makmur Tbk</option>
-                <option value="INDF">INDF - Indofood Sukses Makmur Tbk</option>
-                <option value="MYOR">MYOR - Mayora Indah Tbk</option>
-                <option value="ACES">ACES - Aspirasi Hidup Indonesia Tbk</option>
-              </optgroup>
-
-              <optgroup label="Lainnya">
-                <option value="CUSTOM">Cari Kode Sendiri...</option>
-              </optgroup>
-            </select>
+          <div class="flex flex-col gap-2 sm:col-span-2">
+            <label class="text-xs font-semibold text-slate-400">Kode Saham / Indeks</label>
+            <StockSearch v-model="activeSymbol" />
           </div>
 
-          <div class="flex flex-col gap-2">
-            <label class="text-xs font-semibold text-slate-400">Cari Manual</label>
-            <div class="flex gap-2">
-              <input
-                v-model="searchSymbolQuery"
-                placeholder="Contoh: ASII, BREN, BRIS"
-                class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-slate-200 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-colors"
-                @keyup.enter="handleCustomSearch"
-              />
-              <button
-                class="px-4 py-2.5 rounded-xl text-sm font-semibold bg-emerald-500/15 text-emerald-300 border border-emerald-500/25 hover:bg-emerald-500/20 transition-colors"
-                @click="handleCustomSearch"
-              >
-                Cari
-              </button>
-            </div>
-          </div>
-
+          
           <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
             <p class="text-xs text-slate-400">Simbol aktif</p>
             <p class="text-lg font-bold text-slate-50 mt-1">

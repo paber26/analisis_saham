@@ -1,5 +1,5 @@
 import { getQuery, createError } from 'h3';
-import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
+import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS, getYahooAuth } from '../utils/symbol';
 
 type StockProfileResponse = {
   symbol: string;
@@ -23,9 +23,13 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
   const query = getQuery(event);
   const symbol = normalizeSymbol(query.symbol as string);
 
-  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile,price,summaryDetail`;
+  const auth = await getYahooAuth();
+  const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : '';
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile,price,summaryDetail${crumbParam}`;
 
-  const data = await $fetch<any>(url, { headers: YAHOO_HEADERS }).catch((err) => {
+  const data = await $fetch<any>(url, {
+    headers: auth ? { ...YAHOO_HEADERS, cookie: auth.cookie } : YAHOO_HEADERS
+  }).catch((err) => {
     console.error('Yahoo Finance quoteSummary fetch error:', err);
     return null;
   });

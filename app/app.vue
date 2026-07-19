@@ -29,8 +29,15 @@
           >
             Pola Musiman
           </NuxtLink>
-          <NuxtLink 
-            to="/saham" 
+          <NuxtLink
+            to="/screening"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/screening') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Screening
+          </NuxtLink>
+          <NuxtLink
+            to="/saham"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >

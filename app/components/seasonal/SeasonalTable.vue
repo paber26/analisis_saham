@@ -52,6 +52,8 @@ const getPeriodColumnName = (type: PeriodType) => {
             <th class="py-4 px-4 text-right text-slate-400">Win Rate</th>
             <th class="py-4 px-4 text-right text-slate-400">Return Tertinggi</th>
             <th class="py-4 px-4 text-right text-slate-400">Return Terendah</th>
+            <th class="py-4 px-4 text-right text-slate-400">n</th>
+            <th class="py-4 px-4 text-right text-slate-400" title="Uji-t rata-rata return vs 0. |t| ≥ 2 dengan n ≥ 5 = pola signifikan, bukan sekadar noise.">Signifikansi</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-slate-850/60 text-sm">
@@ -107,6 +109,26 @@ const getPeriodColumnName = (type: PeriodType) => {
             <!-- Min Return -->
             <td class="py-3 px-4 text-right font-medium text-rose-400/90 font-display">
               {{ formatPercent(stat.minReturn) }}
+            </td>
+
+            <!-- Sample size -->
+            <td class="py-3 px-4 text-right text-slate-400 font-display">
+              {{ stat.count }} <span class="text-xs text-slate-500">thn</span>
+            </td>
+
+            <!-- Statistical significance (t-stat) -->
+            <td class="py-3 px-4 text-right">
+              <span
+                v-if="stat.significant"
+                class="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                :class="stat.tStat > 0 ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-rose-300 bg-rose-500/10 border-rose-500/25'"
+                :title="`t = ${stat.tStat} — pola konsisten secara statistik`"
+              >
+                ★ Signifikan (t={{ stat.tStat }})
+              </span>
+              <span v-else class="text-[10px] text-slate-600" :title="`t = ${stat.tStat} — belum cukup bukti statistik`">
+                t={{ stat.tStat }}
+              </span>
             </td>
           </tr>
         </tbody>

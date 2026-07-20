@@ -1,5 +1,6 @@
 import { getQuery, createError } from 'h3';
-import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
+import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
+import { fetchDailyBars } from '../utils/yahoo';
 import { runForecast, type PricePoint, type ForecastResult } from '../utils/forecast';
 import { tradingDay } from '../utils/cacheKey';
 
@@ -8,8 +9,8 @@ interface ForecastResponse extends ForecastResult {
   name: string;
 }
 
-// Train + backtest + forecast for a single symbol. Uses ~5y of daily closes.
-// Cached 12h since daily data only changes once per session.
+// Train + walk-forward backtest + forward projection for one symbol.
+// Uses ~5y of ADJUSTED daily closes (splits/dividends must not distort returns).
 export default defineCachedEventHandler(async (event): Promise<ForecastResponse> => {
   const query = getQuery(event);
   const symbol = normalizeSymbol(query.symbol as string);
@@ -17,32 +18,12 @@ export default defineCachedEventHandler(async (event): Promise<ForecastResponse>
   if (!Number.isFinite(horizon)) horizon = 14;
   horizon = Math.max(5, Math.min(60, horizon));
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=5y`;
-
-  let data: any;
-  try {
-    data = await $fetch<any>(url, { headers: YAHOO_HEADERS });
-  } catch (err) {
-    console.error('Forecast fetch error:', err);
-    throw createError({ statusCode: 502, statusMessage: `Gagal mengambil data harga untuk ${symbol}.` });
-  }
-
-  const r = data?.chart?.result?.[0];
-  if (!r || !r.timestamp) {
+  const fetched = await fetchDailyBars(symbol, '5y', true);
+  if (!fetched || fetched.bars.length === 0) {
     throw createError({ statusCode: 404, statusMessage: `Simbol ${symbol} tidak ditemukan.` });
   }
 
-  const ts: number[] = r.timestamp || [];
-  const closes: (number | null)[] = r.indicators?.quote?.[0]?.close || [];
-  const adj: (number | null)[] = r.indicators?.adjclose?.[0]?.adjclose || [];
-
-  const points: PricePoint[] = [];
-  for (let i = 0; i < ts.length; i++) {
-    const c = adj[i] ?? closes[i];
-    if (c == null || c <= 0) continue;
-    points.push({ date: new Date(ts[i]! * 1000).toISOString().split('T')[0]!, close: c });
-  }
-
+  const points: PricePoint[] = fetched.bars.map((b) => ({ date: b.date, close: b.close }));
   const result = runForecast(points, horizon);
   if (!result) {
     throw createError({ statusCode: 422, statusMessage: `Data ${symbol} tidak cukup untuk forecasting (butuh >150 hari).` });
@@ -50,7 +31,7 @@ export default defineCachedEventHandler(async (event): Promise<ForecastResponse>
 
   return {
     symbol,
-    name: resolveDisplayName(symbol, r.meta?.longName || r.meta?.shortName),
+    name: resolveDisplayName(symbol, fetched.meta?.longName || fetched.meta?.shortName),
     ...result
   };
 }, {

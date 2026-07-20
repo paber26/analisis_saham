@@ -139,13 +139,26 @@ export function calculateSeasonalStats(
     const returns = periodValues.map(item => item.returnVal);
     const sum = returns.reduce((acc, val) => acc + val, 0);
     const avgReturn = Math.round((sum / returns.length) * 100) / 100;
-    
+
     const yearsUp = returns.filter(r => r > 0).length;
     const yearsDown = returns.filter(r => r <= 0).length;
     const winRate = Math.round((yearsUp / returns.length) * 100);
 
     const maxReturn = Math.max(...returns);
     const minReturn = Math.min(...returns);
+
+    // Statistical significance: one-sample t-test of mean return vs 0.
+    // |t| >= 2 with n >= 5 → the seasonal bias is unlikely to be pure noise.
+    const n = returns.length;
+    const meanVal = sum / n;
+    const variance = n > 1
+      ? returns.reduce((acc, r) => acc + (r - meanVal) ** 2, 0) / (n - 1)
+      : 0;
+    const stdDev = Math.round(Math.sqrt(variance) * 100) / 100;
+    const tStat = n > 1 && stdDev > 0
+      ? Math.round((meanVal / (stdDev / Math.sqrt(n))) * 100) / 100
+      : 0;
+    const significant = n >= 5 && Math.abs(tStat) >= 2;
 
     stats.push({
       periodLabel: label,
@@ -154,7 +167,11 @@ export function calculateSeasonalStats(
       yearsUp,
       yearsDown,
       maxReturn,
-      minReturn
+      minReturn,
+      count: n,
+      stdDev,
+      tStat,
+      significant
     });
   });
 

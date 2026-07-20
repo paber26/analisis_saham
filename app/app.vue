@@ -21,20 +21,20 @@
         </NuxtLink>
 
         <!-- Navbar Links -->
-        <div class="flex items-center gap-6">
-          <NuxtLink 
-            to="/seasonal" 
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/seasonal') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Pola Musiman
-          </NuxtLink>
+        <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
           <NuxtLink
             to="/screening"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/screening') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
             Screening
+          </NuxtLink>
+          <NuxtLink
+            to="/analisa/BBCA"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/analisa') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Analisa
           </NuxtLink>
           <NuxtLink
             to="/forecast"
@@ -44,27 +44,26 @@
             Forecast
           </NuxtLink>
           <NuxtLink
+            to="/seasonal"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/seasonal') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Pola Musiman
+          </NuxtLink>
+          <NuxtLink
             to="/saham"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
-            Detail Saham & Keuangan
+            Chart & Keuangan
           </NuxtLink>
-          <NuxtLink 
-            to="/profil-saham" 
+          <NuxtLink
+            to="/profil-saham"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/profil-saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
-            Profil Saham
+            Profil
           </NuxtLink>
-          
-          <a 
-            href="/docs.html"
-            target="_blank"
-            class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-400 bg-slate-900 border border-slate-800 rounded-lg hover:bg-slate-850 hover:border-slate-700 hover:text-emerald-350 transition-all"
-          >
-            <span>Panduan API</span>
-          </a>
         </div>
       </div>
     </nav>

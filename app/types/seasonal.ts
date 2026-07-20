@@ -20,6 +20,10 @@ export interface SeasonalPeriodStats {
   yearsDown: number; // Number of years where return was <= 0
   maxReturn: number; // Maximum return percentage observed
   minReturn: number; // Minimum return percentage observed
+  count: number; // Number of observations (years) behind this stat
+  stdDev: number; // Sample standard deviation of returns
+  tStat: number; // avg / (sd/sqrt(n)) — 0 when undefined
+  significant: boolean; // |tStat| >= 2 with n >= 5 → pattern unlikely to be noise
 }
 
 export interface DashboardSummary {

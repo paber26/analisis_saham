@@ -2,9 +2,9 @@
 import { ref, computed, watch } from 'vue';
 
 useHead({
-  title: 'Forecasting Saham IDX — Backtest & Proyeksi',
+  title: 'Forecasting Saham IDX — Backtest & Proyeksi Probabilistik',
   meta: [
-    { name: 'description', content: 'Forecasting harga saham IDX dengan model Naive, Holt, dan regresi fitur teknikal. Dilengkapi backtest train/test jujur vs baseline dan proyeksi tren beberapa hari ke depan.' }
+    { name: 'description', content: 'Forecasting saham IDX: ensemble Naive/Drift/AR/Holt/Regresi pada log-return, walk-forward 3 fold, volatilitas EWMA, probabilitas naik, dan proyeksi dengan pita ketidakpastian.' }
   ]
 });
 
@@ -24,21 +24,49 @@ const { data, pending, error } = await useFetch<any>(() => '/api/forecast', {
 
 const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('id-ID'));
 
-const bestLabel = computed(() => {
-  const b = data.value?.best;
-  return b === 'holt' ? 'Holt (tren)' : b === 'reg' ? 'Regresi teknikal' : 'Naive (random walk)';
-});
-const beatsNaive = computed(() => data.value && data.value.best !== 'naive');
+const MODEL_LABELS: Record<string, string> = {
+  naive: 'Naive (baseline)',
+  drift: 'Drift',
+  ar: 'AR',
+  holt: 'Holt (tren)',
+  reg: 'Regresi teknikal',
+  ensemble: 'Ensemble'
+};
 
-// Metric table rows
 const metricRows = computed(() => {
   const m = data.value?.metrics;
   if (!m) return [];
-  return [
-    { key: 'naive', label: 'Naive (baseline)', ...m.naive },
-    { key: 'holt', label: 'Holt (tren)', ...m.holt },
-    { key: 'reg', label: 'Regresi teknikal', ...m.reg }
-  ];
+  return (['naive', 'drift', 'ar', 'holt', 'reg', 'ensemble'] as const).map((k) => ({
+    key: k,
+    label: k === 'ar' ? `AR(${data.value.arOrder || '–'})` : MODEL_LABELS[k],
+    ...m[k]
+  }));
+});
+
+const bestLabel = computed(() => {
+  const b = data.value?.best;
+  if (!b) return '—';
+  return b === 'ar' ? `AR(${data.value.arOrder || '–'})` : MODEL_LABELS[b];
+});
+const beatsNaive = computed(() => data.value && data.value.best !== 'naive');
+const weightsText = computed(() => {
+  const w = data.value?.weights || [];
+  if (!w.length) return null;
+  return w.map((e: any) => `${e.model} ${e.weight}%`).join(' · ');
+});
+
+const volLabel = computed(() => {
+  const r = data.value?.vol?.regime;
+  return r === 'tinggi' ? 'Volatilitas Tinggi' : r === 'rendah' ? 'Volatilitas Rendah' : 'Volatilitas Normal';
+});
+const volClass = computed(() => {
+  const r = data.value?.vol?.regime;
+  return r === 'tinggi' ? 'text-rose-400' : r === 'rendah' ? 'text-emerald-400' : 'text-sky-400';
+});
+
+const rangeEnd = computed(() => {
+  const fc = data.value?.forecast;
+  return fc && fc.length ? fc[fc.length - 1] : null;
 });
 
 // ---- Chart ----
@@ -51,9 +79,8 @@ const chartOption = computed(() => {
 
   const dates = [...series.map((s) => s.date), ...fc.map((f) => f.date)];
   const actual = [...series.map((s) => s.actual), ...fc.map(() => null)];
-  const holt = [...series.map((s) => s.holt), ...fc.map(() => null)];
+  const pred = [...series.map((s) => s.pred), ...fc.map(() => null)];
 
-  // Forward mean + band (connected to last actual point)
   const fwdMean: (number | null)[] = series.map(() => null);
   const fwdLower: (number | null)[] = series.map(() => null);
   const fwdBand: (number | null)[] = series.map(() => null);
@@ -94,13 +121,15 @@ const chartOption = computed(() => {
       axisLabel: { color: '#64748b', fontSize: 9, formatter: (v: number) => v.toLocaleString('id-ID') },
       splitLine: { lineStyle: { color: '#0f172a' } }
     },
-    dataZoom: [{ type: 'inside', start: 40, end: 100 }, { type: 'slider', height: 16, bottom: 8, backgroundColor: '#020617', borderColor: '#0f172a', fillerColor: 'rgba(16,185,129,0.08)', textStyle: { color: '#475569', fontSize: 8 } }],
+    dataZoom: [
+      { type: 'inside', start: 40, end: 100 },
+      { type: 'slider', height: 16, bottom: 8, backgroundColor: '#020617', borderColor: '#0f172a', fillerColor: 'rgba(16,185,129,0.08)', textStyle: { color: '#475569', fontSize: 8 } }
+    ],
     series: [
-      // Confidence band (stacked: transparent lower + translucent width)
       { name: 'lower', type: 'line', data: fwdLower, stack: 'conf', lineStyle: { opacity: 0 }, symbol: 'none', silent: true, z: 1 },
       { name: 'band', type: 'line', data: fwdBand, stack: 'conf', lineStyle: { opacity: 0 }, areaStyle: { color: 'rgba(56,189,248,0.15)' }, symbol: 'none', silent: true, z: 1, tooltip: { show: false } },
       { name: 'Aktual', type: 'line', data: actual, smooth: false, showSymbol: false, lineStyle: { color: '#e2e8f0', width: 1.5 }, z: 4 },
-      { name: 'Prediksi 1-hari (uji)', type: 'line', data: holt, smooth: false, showSymbol: false, connectNulls: false, lineStyle: { color: '#f59e0b', width: 1, type: 'dotted' }, z: 3 },
+      { name: 'Prediksi 1-hari (uji)', type: 'line', data: pred, smooth: false, showSymbol: false, connectNulls: false, lineStyle: { color: '#f59e0b', width: 1, type: 'dotted' }, z: 3 },
       { name: 'Proyeksi', type: 'line', data: fwdMean, smooth: true, showSymbol: false, connectNulls: true, lineStyle: { color: '#38bdf8', width: 2, type: 'dashed' }, z: 5 }
     ]
   };
@@ -115,9 +144,10 @@ const chartOption = computed(() => {
       <section class="glow-card rounded-2xl p-6">
         <h2 class="text-lg font-bold text-slate-50">Forecasting Harga</h2>
         <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
-          Data dibagi kronologis: <strong class="text-slate-300">80% latih</strong> / <strong class="text-slate-300">20% uji</strong>.
-          Model dilatih di data latih lalu diuji <em>walk-forward</em> (satu langkah ke depan) di data uji — dibandingkan jujur
-          dengan baseline <strong class="text-slate-300">random walk</strong>. Proyeksi memakai tren Holt dengan pita ketidakpastian ≈80%.
+          Model pada <strong class="text-slate-300">log-return</strong>: Naive, Drift, AR(p) (orde otomatis via AIC), Holt,
+          Regresi teknikal, dan <strong class="text-slate-300">Ensemble</strong> berbobot untuk model yang mengalahkan naive.
+          Evaluasi <em>walk-forward</em> 3 fold tanpa look-ahead. Pita proyeksi ≈80% dari
+          <strong class="text-slate-300">volatilitas EWMA</strong> terkini.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5 items-end">
           <div class="lg:col-span-2">
@@ -139,7 +169,7 @@ const chartOption = computed(() => {
       <!-- Loading / Error -->
       <div v-if="pending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-sm text-slate-400 animate-pulse">Melatih model & menjalankan backtest…</p>
+        <p class="text-sm text-slate-400 animate-pulse">Melatih 5 model & menjalankan walk-forward backtest…</p>
       </div>
       <div v-else-if="error" class="p-6 rounded-2xl bg-rose-500/5 border border-rose-500/20 text-rose-200 text-sm">
         Gagal memuat forecast untuk "{{ activeSymbol }}". Data mungkin kurang dari 150 hari. Coba saham lain.
@@ -147,27 +177,38 @@ const chartOption = computed(() => {
 
       <template v-else-if="data">
         <!-- Summary cards -->
-        <section class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="glow-card rounded-2xl p-5">
             <p class="text-[11px] text-slate-400 uppercase tracking-wide">Harga Terakhir</p>
             <p class="text-2xl font-extrabold text-slate-50 mt-1">{{ fmt(data.lastPrice) }}</p>
             <p class="text-[11px] text-slate-500 mt-1">per {{ data.lastDate }}</p>
           </div>
+
           <div class="glow-card rounded-2xl p-5">
-            <p class="text-[11px] text-slate-400 uppercase tracking-wide">Prediksi Arah Besok</p>
-            <p class="text-2xl font-extrabold mt-1" :class="data.nextDay.direction === 'up' ? 'text-emerald-400' : 'text-rose-400'">
-              {{ data.nextDay.direction === 'up' ? '▲ Naik' : '▼ Turun' }}
-              <span class="text-base font-bold">{{ data.nextDay.expectedReturnPct >= 0 ? '+' : '' }}{{ data.nextDay.expectedReturnPct }}%</span>
+            <p class="text-[11px] text-slate-400 uppercase tracking-wide">Probabilitas Naik Besok</p>
+            <p class="text-2xl font-extrabold mt-1" :class="data.nextDay.probUp >= 50 ? 'text-emerald-400' : 'text-rose-400'">
+              {{ data.nextDay.probUp }}%
+              <span class="text-sm font-bold text-slate-400">({{ data.nextDay.expectedReturnPct >= 0 ? '+' : '' }}{{ data.nextDay.expectedReturnPct }}%)</span>
             </p>
             <p class="text-[11px] text-slate-500 mt-1">
-              Akurasi arah model (uji): {{ data.nextDay.hitRate ?? '—' }}% · baseline {{ data.baselineDirAcc }}%
+              Akurasi arah uji: {{ data.nextDay.hitRate ?? '—' }}% · baseline {{ data.baselineDirAcc }}%
             </p>
           </div>
+
           <div class="glow-card rounded-2xl p-5">
             <p class="text-[11px] text-slate-400 uppercase tracking-wide">Model Terbaik (RMSE uji)</p>
-            <p class="text-2xl font-extrabold text-slate-50 mt-1">{{ bestLabel }}</p>
+            <p class="text-xl font-extrabold text-slate-50 mt-1">{{ bestLabel }}</p>
             <p class="text-[11px] mt-1" :class="beatsNaive ? 'text-emerald-400' : 'text-amber-400'">
               {{ beatsNaive ? '✓ Mengungguli random walk' : '⚠ Belum mengungguli random walk' }}
+            </p>
+          </div>
+
+          <div class="glow-card rounded-2xl p-5">
+            <p class="text-[11px] text-slate-400 uppercase tracking-wide">{{ volLabel }}</p>
+            <p class="text-2xl font-extrabold mt-1" :class="volClass">{{ data.vol.dailyPct }}%<span class="text-sm text-slate-500">/hari</span></p>
+            <p class="text-[11px] text-slate-500 mt-1">
+              ≈ {{ data.vol.annualPct }}%/tahun ·
+              <span v-if="rangeEnd">rentang {{ data.horizon }}h: {{ fmt(rangeEnd.lower) }}–{{ fmt(rangeEnd.upper) }}</span>
             </p>
           </div>
         </section>
@@ -184,8 +225,22 @@ const chartOption = computed(() => {
 
         <!-- Metrics -->
         <section class="glow-card rounded-2xl p-6">
-          <h3 class="text-sm font-bold text-slate-100 mb-1">Hasil Backtest (data uji: {{ data.testSize }} hari)</h3>
-          <p class="text-xs text-slate-400 mb-4">RMSE/MAE makin kecil makin baik. Akurasi arah: % tebakan naik/turun yang benar (bandingkan dengan baseline {{ data.baselineDirAcc }}%).</p>
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h3 class="text-sm font-bold text-slate-100">Hasil Backtest Walk-Forward ({{ data.testSize }} hari uji, 3 fold)</h3>
+              <p class="text-xs text-slate-400 mt-1">RMSE/MAE makin kecil makin baik. Akurasi arah dibandingkan baseline mayoritas {{ data.baselineDirAcc }}%.</p>
+            </div>
+            <div class="text-right text-[11px] text-slate-400 space-y-1">
+              <p v-if="weightsText">Bobot ensemble: <span class="text-slate-200 font-semibold">{{ weightsText }}</span></p>
+              <p v-else class="text-amber-400">Tidak ada model yang lolos validasi → ensemble = naive</p>
+              <p>
+                Stabilitas arah per fold:
+                <span v-for="(f, i) in data.foldStability" :key="i" class="ml-1 text-slate-200 font-semibold">
+                  {{ f.dirAcc ?? '—' }}%<span v-if="i < data.foldStability.length - 1" class="text-slate-600"> /</span>
+                </span>
+              </p>
+            </div>
+          </div>
           <div class="overflow-x-auto">
             <table class="w-full text-sm min-w-[560px]">
               <thead>
@@ -199,7 +254,7 @@ const chartOption = computed(() => {
               </thead>
               <tbody>
                 <tr v-for="row in metricRows" :key="row.key" class="border-b border-slate-900/70"
-                  :class="row.key === data.best ? 'bg-emerald-500/5' : ''">
+                  :class="[row.key === data.best ? 'bg-emerald-500/5' : '', row.key === 'ensemble' ? 'font-semibold' : '']">
                   <td class="px-3 py-2.5 font-semibold text-slate-200">
                     {{ row.label }}
                     <span v-if="row.key === data.best" class="ml-2 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full">terbaik</span>
@@ -219,10 +274,10 @@ const chartOption = computed(() => {
         <!-- Disclaimer -->
         <footer class="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/10">
           <p class="text-[11px] leading-relaxed text-slate-400">
-            Harga saham harian mendekati <em>random walk</em> — memprediksi harga persis sangat sulit dan sering tidak
-            mengalahkan baseline. Jika "model terbaik" adalah Naive, artinya model lain belum memberi nilai tambah untuk saham ini;
-            gunakan proyeksi sebagai <strong class="text-slate-300">indikasi arah/tren</strong>, bukan target harga pasti.
-            Ini bukan rekomendasi investasi.
+            Harga saham harian mendekati <em>random walk</em> — model apa pun sulit mengalahkan baseline secara konsisten.
+            Sistem ini menampilkan hasil apa adanya: jika ensemble/naive terbaik, artinya belum ada nilai tambah prediktif
+            untuk saham ini. Gunakan proyeksi sebagai <strong class="text-slate-300">indikasi arah &amp; rentang probabilistik</strong>,
+            bukan target harga. Bukan rekomendasi investasi.
           </p>
         </footer>
       </template>

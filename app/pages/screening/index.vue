@@ -268,7 +268,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
               >
                 <td class="px-4 py-3 text-slate-500 font-mono text-xs">{{ idx + 1 }}</td>
                 <td class="px-4 py-3">
-                  <NuxtLink :to="`/saham?symbol=${row.code}`" class="group">
+                  <NuxtLink :to="`/analisa/${row.code}`" class="group">
                     <div class="flex items-center gap-2">
                       <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded group-hover:bg-emerald-500/20">{{ row.code }}</span>
                     </div>

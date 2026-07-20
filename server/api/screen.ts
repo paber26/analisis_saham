@@ -1,6 +1,7 @@
 import { getQuery } from 'h3';
-import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
-import { analyzeTechnical, type Bar, type TechResult } from '../utils/technical';
+import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
+import { fetchDailyBars } from '../utils/yahoo';
+import { analyzeTechnical, type TechResult } from '../utils/technical';
 import { SCREENING_UNIVERSE } from '../utils/universe';
 import { tradingDay, shortHash } from '../utils/cacheKey';
 
@@ -39,42 +40,18 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
 
 async function analyzeSymbol(code: string): Promise<ScreenRow | null> {
   const symbol = normalizeSymbol(code);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1y`;
-  try {
-    const data: any = await $fetch<any>(url, { headers: YAHOO_HEADERS });
-    const r = data?.chart?.result?.[0];
-    if (!r) return null;
-    const ts: number[] = r.timestamp || [];
-    const q = r.indicators?.quote?.[0] || {};
-    const opens = q.open || [];
-    const highs = q.high || [];
-    const lows = q.low || [];
-    const closes = q.close || [];
-    const vols = q.volume || [];
+  const fetched = await fetchDailyBars(symbol, '1y', false);
+  if (!fetched || fetched.bars.length === 0) return null;
 
-    const bars: Bar[] = [];
-    for (let i = 0; i < ts.length; i++) {
-      const c = closes[i];
-      const h = highs[i];
-      const l = lows[i];
-      const o = opens[i];
-      if (c == null || h == null || l == null || o == null || c <= 0) continue;
-      bars.push({ close: c, high: h, low: l, volume: vols[i] || 0 });
-    }
+  const tech = analyzeTechnical(fetched.bars);
+  if (!tech) return null;
 
-    const tech = analyzeTechnical(bars);
-    if (!tech) return null;
-
-    return {
-      code: code.replace('.JK', ''),
-      symbol,
-      name: resolveDisplayName(symbol, r.meta?.longName || r.meta?.shortName),
-      ...tech
-    };
-  } catch (err) {
-    console.error(`Screen fetch error for ${symbol}:`, err);
-    return null;
-  }
+  return {
+    code: code.replace('.JK', ''),
+    symbol,
+    name: resolveDisplayName(symbol, fetched.meta?.longName || fetched.meta?.shortName),
+    ...tech
+  };
 }
 
 // Technical screener: scores each requested symbol and returns them ranked.

@@ -37,6 +37,13 @@
             Screening
           </NuxtLink>
           <NuxtLink
+            to="/forecast"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/forecast') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Forecast
+          </NuxtLink>
+          <NuxtLink
             to="/saham"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"

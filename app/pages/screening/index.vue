@@ -27,13 +27,15 @@ const minAdx = ref(0); // 0 = off
 const rsiMin = ref(0);
 const rsiMax = ref(100);
 
-interface QuickSignal { key: string; label: string; test: (x: any) => boolean }
+interface QuickSignal { key: string; label: string; test: (x: any) => boolean; needsFund?: boolean }
 const QUICK_SIGNALS: QuickSignal[] = [
   { key: 'golden', label: 'Golden Cross', test: (x) => x.signals?.some((s: any) => s.label === 'Golden Cross') },
   { key: 'breakout', label: 'Breakout Bollinger', test: (x) => x.bbPercentB != null && x.bbPercentB > 1 },
   { key: 'macd', label: 'MACD Bullish', test: (x) => x.macd != null && x.macdSignal != null && x.macd > x.macdSignal },
   { key: 'volume', label: 'Volume Spike ≥1.5x', test: (x) => x.volRatio != null && x.volRatio >= 1.5 },
-  { key: 'near52h', label: 'Dekat 52W High', test: (x) => x.pctFromHigh != null && x.pctFromHigh >= -8 }
+  { key: 'near52h', label: 'Dekat 52W High', test: (x) => x.pctFromHigh != null && x.pctFromHigh >= -8 },
+  { key: 'outperform', label: 'Outperform IHSG', needsFund: true, test: (x) => x.rs3m != null && x.rs3m > 0 },
+  { key: 'quality', label: 'Berkualitas (ROE≥12 & tumbuh)', needsFund: true, test: (x) => x.roe != null && x.roe >= 12 && ((x.earningsGrowth != null && x.earningsGrowth > 0) || (x.revenueGrowth != null && x.revenueGrowth > 0)) }
 ];
 const activeQuickSignals = ref<Set<string>>(new Set());
 function toggleQuickSignal(key: string) {
@@ -103,6 +105,14 @@ function rsiClass(rsi: number | null) {
   return 'text-slate-300';
 }
 const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID'));
+
+const SECTOR_ID: Record<string, string> = {
+  'Financial Services': 'Keuangan', 'Energy': 'Energi', 'Basic Materials': 'Barang Baku',
+  'Consumer Cyclical': 'Konsumer Siklikal', 'Consumer Defensive': 'Konsumer Primer',
+  'Industrials': 'Industri', 'Real Estate': 'Properti', 'Technology': 'Teknologi',
+  'Communication Services': 'Telko & Media', 'Healthcare': 'Kesehatan', 'Utilities': 'Utilitas'
+};
+const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
 </script>
 
 <template>
@@ -242,7 +252,9 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                   v-for="sig in QUICK_SIGNALS"
                   :key="sig.key"
                   type="button"
-                  class="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors"
+                  :disabled="sig.needsFund && !hasFundamentals"
+                  :title="sig.needsFund && !hasFundamentals ? 'Butuh data fundamental (snapshot harian)' : ''"
+                  class="text-[11px] font-semibold px-2.5 py-1.5 rounded-full border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
                   :class="activeQuickSignals.has(sig.key)
                     ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
                     : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'"
@@ -296,6 +308,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                       <span class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded group-hover:bg-emerald-500/20">{{ row.code }}</span>
                     </div>
                     <p class="text-[11px] text-slate-500 mt-1 truncate max-w-[180px]">{{ row.name }}</p>
+                    <span v-if="sectorLabel(row.sector)" class="inline-block mt-1 text-[9px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-1.5 py-0.5 rounded">{{ sectorLabel(row.sector) }}</span>
                   </NuxtLink>
                 </td>
                 <td class="px-4 py-3 text-right">

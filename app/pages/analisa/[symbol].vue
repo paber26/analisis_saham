@@ -124,6 +124,15 @@ const conclusions = computed<Bullet[]>(() => {
     });
   }
 
+  // Relative strength vs IHSG
+  const rel = an.value?.relative;
+  if (rel && rel.rs3m != null) {
+    out.push({
+      text: `Relative strength 3 bulan vs IHSG: ${rel.rs3m >= 0 ? '+' : ''}${rel.rs3m}% — ${rel.outperform ? 'mengungguli pasar (relatif kuat)' : 'tertinggal dari pasar (relatif lemah)'}.`,
+      tone: rel.outperform ? 'bull' : 'bear'
+    });
+  }
+
   // Seasonal
   const sn = seasonalNow.value;
   if (sn) {
@@ -156,7 +165,18 @@ const conclusions = computed<Bullet[]>(() => {
   if (lf && lf.per != null) {
     const perZone = lf.per < 10 ? 'relatif murah' : lf.per <= 25 ? 'wajar' : 'premium';
     const dy = lf.dividendYield != null ? `, dividend yield ${lf.dividendYield}%` : '';
-    out.push({ text: `Valuasi: PER ${lf.per}× (${perZone}), PBV ${lf.pbv ?? '—'}×${dy}.`, tone: lf.per < 10 ? 'bull' : lf.per > 25 ? 'warn' : 'neutral' });
+    const grahamTxt = lf.grahamFair != null ? ` Nilai wajar Graham ≈ ${fmt(lf.grahamFair)} (${tv.price < lf.grahamFair ? 'harga di bawah — undervalued' : 'harga di atas'}).` : '';
+    out.push({ text: `Valuasi: PER ${lf.per}× (${perZone}), PBV ${lf.pbv ?? '—'}×${dy}.${grahamTxt}`, tone: lf.per < 10 ? 'bull' : lf.per > 25 ? 'warn' : 'neutral' });
+  }
+
+  // Quality: growth + leverage
+  if (lf && (lf.revenueGrowth != null || lf.earningsGrowth != null)) {
+    const parts: string[] = [];
+    if (lf.revenueGrowth != null) parts.push(`pendapatan ${lf.revenueGrowth >= 0 ? '+' : ''}${lf.revenueGrowth}%`);
+    if (lf.earningsGrowth != null) parts.push(`laba ${lf.earningsGrowth >= 0 ? '+' : ''}${lf.earningsGrowth}%`);
+    if (lf.debtToEquity != null) parts.push(`DER ${lf.debtToEquity}×`);
+    const growthPos = (lf.earningsGrowth ?? lf.revenueGrowth ?? 0) >= 0;
+    out.push({ text: `Kualitas: pertumbuhan ${parts.join(', ')}.`, tone: growthPos ? 'bull' : 'warn' });
   }
 
   // Risk plan
@@ -210,8 +230,13 @@ const verdict = computed(() => {
                 <h3 class="text-2xl font-extrabold text-slate-50">{{ an.code }}</h3>
                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="ratingClass(t.rating)">{{ t.rating }} · {{ t.score }}/100</span>
                 <span v-if="verdict" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="verdict.cls">{{ verdict.label }}</span>
+                <span v-if="an.relative && an.relative.rs3m != null" class="text-[10px] font-bold px-2.5 py-1 rounded-full border"
+                  :class="an.relative.outperform ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-rose-300 bg-rose-500/10 border-rose-500/25'"
+                  title="Relative strength 3 bulan vs IHSG">
+                  {{ an.relative.outperform ? '↑ Outperform IHSG' : '↓ Underperform' }} {{ an.relative.rs3m >= 0 ? '+' : '' }}{{ an.relative.rs3m }}%
+                </span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">{{ an.name }}</p>
+              <p class="text-xs text-slate-400 mt-1">{{ an.name }}<span v-if="liveFund?.sector"> · {{ liveFund.sector }}</span></p>
             </div>
             <div class="text-right">
               <p class="text-3xl font-extrabold text-slate-50">{{ fmt(t.price) }}</p>
@@ -227,7 +252,11 @@ const verdict = computed(() => {
             <span class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">PBV <strong class="text-slate-100">{{ liveFund.pbv ?? '—' }}×</strong></span>
             <span class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">ROE <strong class="text-slate-100">{{ liveFund.roe ?? '—' }}%</strong></span>
             <span class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">Div. Yield <strong class="text-slate-100">{{ liveFund.dividendYield ?? '—' }}%</strong></span>
-            <span class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">EPS <strong class="text-slate-100">{{ fmtIdr(liveFund.eps) }}</strong></span>
+            <span v-if="liveFund.revenueGrowth != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">Rev. Growth <strong :class="liveFund.revenueGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ liveFund.revenueGrowth >= 0 ? '+' : '' }}{{ liveFund.revenueGrowth }}%</strong></span>
+            <span v-if="liveFund.earningsGrowth != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">Laba Growth <strong :class="liveFund.earningsGrowth >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ liveFund.earningsGrowth >= 0 ? '+' : '' }}{{ liveFund.earningsGrowth }}%</strong></span>
+            <span v-if="liveFund.debtToEquity != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">DER <strong :class="liveFund.debtToEquity <= 1 ? 'text-emerald-400' : liveFund.debtToEquity <= 2 ? 'text-slate-100' : 'text-amber-400'">{{ liveFund.debtToEquity }}×</strong></span>
+            <span v-if="liveFund.pegRatio != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">PEG <strong class="text-slate-100">{{ liveFund.pegRatio }}</strong></span>
+            <span v-if="liveFund.grahamFair != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300" title="Estimasi nilai wajar Graham">Wajar <strong :class="t.price < liveFund.grahamFair ? 'text-emerald-400' : 'text-amber-400'">{{ fmt(liveFund.grahamFair) }}</strong></span>
           </div>
 
           <div class="flex flex-wrap gap-3 mt-4 text-[11px]">

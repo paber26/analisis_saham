@@ -10,12 +10,17 @@ export interface ScreenRow extends TechResult {
   code: string;
   symbol: string;
   name: string;
+  sector: string | null;   // Yahoo GICS sector (translated in market.ts)
+  rs3m: number | null;     // relative strength vs IHSG, 3-month (%)
   // Fundamentals (may be null when Yahoo lacks data)
   per: number | null;
   pbv: number | null;
   roe: number | null;
   dividendYield: number | null;
   marketCap: number | null;
+  revenueGrowth: number | null;  // % YoY
+  earningsGrowth: number | null; // % YoY
+  debtToEquity: number | null;   // ratio
 }
 
 export interface ScreenSnapshot {

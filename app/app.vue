@@ -23,6 +23,13 @@
         <!-- Navbar Links -->
         <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
           <NuxtLink
+            to="/pasar"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/pasar') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Pasar
+          </NuxtLink>
+          <NuxtLink
             to="/screening"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/screening') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"

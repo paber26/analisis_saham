@@ -43,7 +43,9 @@ async function analyzeSymbol(code: string): Promise<ScreenRow | null> {
     code: code.replace('.JK', ''),
     symbol,
     name: resolveDisplayName(symbol, fetched.meta?.longName || fetched.meta?.shortName),
+    sector: null, rs3m: null,
     per: null, pbv: null, roe: null, dividendYield: null, marketCap: null,
+    revenueGrowth: null, earningsGrowth: null, debtToEquity: null,
     ...tech
   };
 }

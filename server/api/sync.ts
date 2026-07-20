@@ -3,6 +3,7 @@ import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
 import { fetchDailyBars } from '../utils/yahoo';
 import { analyzeTechnical } from '../utils/technical';
 import { fetchFundamentals } from '../utils/fundamentals';
+import { rs3mOnly } from '../utils/relative';
 import { IDX_TICKERS } from '../utils/idxTickers';
 import { saveScreenSnapshot, type ScreenRow, type ScreenSnapshot } from '../utils/store';
 import { tradingDay } from '../utils/cacheKey';
@@ -20,7 +21,7 @@ async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T)
   return results;
 }
 
-async function buildRow(code: string): Promise<ScreenRow | null> {
+async function buildRow(code: string, ihsgCloses: number[]): Promise<ScreenRow | null> {
   const symbol = normalizeSymbol(code);
   const fetched = await fetchDailyBars(symbol, '1y', false);
   if (!fetched || fetched.bars.length === 0) return null;
@@ -28,16 +29,25 @@ async function buildRow(code: string): Promise<ScreenRow | null> {
   const tech = analyzeTechnical(fetched.bars);
   if (!tech) return null;
 
+  const closes = fetched.bars.map((b) => b.close);
+  const rs3m = ihsgCloses.length ? rs3mOnly(closes, ihsgCloses) : null;
+
   // Fundamentals are best-effort — a failure just leaves nulls.
+  let sector: string | null = null;
   let per: number | null = null;
   let pbv: number | null = null;
   let roe: number | null = null;
   let dividendYield: number | null = null;
   let marketCap: number | null = null;
+  let revenueGrowth: number | null = null;
+  let earningsGrowth: number | null = null;
+  let debtToEquity: number | null = null;
   try {
     const f = await fetchFundamentals(symbol);
+    sector = f.sector;
     if (f.available) {
       per = f.per; pbv = f.pbv; roe = f.roe; dividendYield = f.dividendYield; marketCap = f.marketCap;
+      revenueGrowth = f.revenueGrowth; earningsGrowth = f.earningsGrowth; debtToEquity = f.debtToEquity;
     }
   } catch { /* ignore */ }
 
@@ -45,7 +55,9 @@ async function buildRow(code: string): Promise<ScreenRow | null> {
     code: code.replace('.JK', ''),
     symbol,
     name: resolveDisplayName(symbol, fetched.meta?.longName || fetched.meta?.shortName),
+    sector, rs3m,
     per, pbv, roe, dividendYield, marketCap,
+    revenueGrowth, earningsGrowth, debtToEquity,
     ...tech
   };
 }
@@ -62,7 +74,12 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; date: st
   const t0 = Date.now();
   const limit = parseInt((query.limit as string) || '0', 10);
   const tickers = limit > 0 ? IDX_TICKERS.slice(0, limit) : IDX_TICKERS;
-  const settled = await mapWithConcurrency(tickers, 6, (c) => buildRow(c).catch(() => null));
+
+  // IHSG baseline (once) for relative strength
+  const ihsg = await fetchDailyBars('^JKSE', '1y', false);
+  const ihsgCloses = ihsg?.bars.map((b) => b.close) || [];
+
+  const settled = await mapWithConcurrency(tickers, 6, (c) => buildRow(c, ihsgCloses).catch(() => null));
   const rows = settled
     .filter((r): r is ScreenRow => r !== null)
     .sort((a, b) => b.score - a.score);

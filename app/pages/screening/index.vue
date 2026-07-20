@@ -12,11 +12,15 @@ useHead({
 const { data, pending, error, refresh } = await useFetch<any>(() => '/api/screen');
 
 const rows = computed<any[]>(() => data.value?.results || []);
+const source = computed(() => data.value?.source || 'live');
+const snapshotDate = computed(() => data.value?.date || null);
+const hasFundamentals = computed(() => rows.value.some((x) => x.per != null));
 
 // Basic filters
 const ratingFilter = ref<'all' | 'Kuat' | 'Menarik'>('all');
 const searchQ = ref('');
 const onlyUptrend = ref(false);
+const onlyValue = ref(false); // "Murah + Uptrend": PER wajar & di atas MA200
 
 // Advanced filters
 const minAdx = ref(0); // 0 = off
@@ -52,6 +56,8 @@ const filtered = computed(() => {
   let r = rows.value;
   if (ratingFilter.value !== 'all') r = r.filter((x) => x.rating === ratingFilter.value);
   if (onlyUptrend.value) r = r.filter((x) => x.sma200 != null && x.price > x.sma200);
+  // Value + trend: profitable, reasonably cheap (0 < PER <= 15), and uptrend
+  if (onlyValue.value) r = r.filter((x) => x.per != null && x.per > 0 && x.per <= 15 && x.sma200 != null && x.price > x.sma200);
   const q = searchQ.value.trim().toUpperCase();
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
 
@@ -112,8 +118,12 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
               Skor 0–100 layak-beli dari indikator teknikal profesional: tren (MA20/50/200, Golden Cross,
               <strong class="text-slate-300">ADX/DMI</strong>), momentum (RSI, MACD, <strong class="text-slate-300">Stochastic</strong>),
               volatilitas (<strong class="text-slate-300">Bollinger Bands</strong>, ATR), serta volume &amp; posisi 52 minggu.
-              Memindai <strong class="text-slate-300">{{ counts.total }}</strong> saham likuid, diurutkan dari skor tertinggi.
+              Memindai <strong class="text-slate-300">{{ counts.total }}</strong> saham, diurutkan dari skor tertinggi.
               <span v-if="filtered.length !== counts.total" class="text-emerald-400 font-semibold">{{ filtered.length }} lolos filter.</span>
+            </p>
+            <p class="text-[10px] mt-1.5" :class="source === 'snapshot' ? 'text-slate-500' : 'text-amber-400'">
+              <span v-if="source === 'snapshot'">📦 Data snapshot harian {{ snapshotDate }} (teknikal + fundamental, dari cron)</span>
+              <span v-else>⚡ Live compute (snapshot harian belum tersedia — fundamental menyusul setelah sync)</span>
             </p>
           </div>
           <button
@@ -143,15 +153,27 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
             </div>
           </div>
           <div class="flex flex-col gap-2">
-            <label class="text-xs font-semibold text-slate-400">Filter tren</label>
-            <button
-              type="button"
-              class="py-2.5 text-xs font-semibold rounded-xl border transition-all"
-              :class="onlyUptrend ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'"
-              @click="onlyUptrend = !onlyUptrend"
-            >
-              {{ onlyUptrend ? '✓ ' : '' }}Hanya uptrend (di atas MA200)
-            </button>
+            <label class="text-xs font-semibold text-slate-400">Filter cepat</label>
+            <div class="grid grid-cols-1 gap-1.5">
+              <button
+                type="button"
+                class="py-2 text-xs font-semibold rounded-lg border transition-all"
+                :class="onlyUptrend ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'"
+                @click="onlyUptrend = !onlyUptrend"
+              >
+                {{ onlyUptrend ? '✓ ' : '' }}Uptrend (di atas MA200)
+              </button>
+              <button
+                type="button"
+                :disabled="!hasFundamentals"
+                class="py-2 text-xs font-semibold rounded-lg border transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                :class="onlyValue ? 'bg-amber-500/10 border-amber-500/30 text-amber-300' : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'"
+                :title="hasFundamentals ? 'PER 0–15 + di atas MA200' : 'Butuh data fundamental (snapshot harian)'"
+                @click="onlyValue = !onlyValue"
+              >
+                {{ onlyValue ? '✓ ' : '' }}💎 Murah + Uptrend
+              </button>
+            </div>
           </div>
           <div class="flex items-end">
             <div class="flex gap-2 text-xs">
@@ -256,6 +278,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                 <th class="px-4 py-3 font-semibold text-right">Harga</th>
                 <th class="px-4 py-3 font-semibold">Skor Teknikal</th>
                 <th class="px-4 py-3 font-semibold text-right">RSI</th>
+                <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>
                 <th class="px-4 py-3 font-semibold">Tren</th>
                 <th class="px-4 py-3 font-semibold">Sinyal</th>
               </tr>
@@ -293,6 +316,15 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                   </div>
                 </td>
                 <td class="px-4 py-3 text-right font-semibold" :class="rsiClass(row.rsi)">{{ row.rsi ?? '—' }}</td>
+                <td v-if="hasFundamentals" class="px-4 py-3 text-right whitespace-nowrap">
+                  <div class="text-xs font-semibold" :class="row.per != null && row.per > 0 && row.per <= 15 ? 'text-emerald-400' : 'text-slate-300'">
+                    {{ row.per != null ? 'PER ' + row.per + '×' : '—' }}
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-0.5">
+                    <span v-if="row.pbv != null">PBV {{ row.pbv }}×</span>
+                    <span v-if="row.roe != null"> · ROE {{ row.roe }}%</span>
+                  </div>
+                </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1.5 text-xs">
                     <span :class="row.sma200 != null && row.price > row.sma200 ? 'text-emerald-400' : 'text-rose-400'">
@@ -320,7 +352,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
                 </td>
               </tr>
               <tr v-if="!filtered.length">
-                <td colspan="7" class="px-4 py-10 text-center text-sm text-slate-500">Tidak ada saham yang cocok dengan filter.</td>
+                <td :colspan="hasFundamentals ? 8 : 7" class="px-4 py-10 text-center text-sm text-slate-500">Tidak ada saham yang cocok dengan filter.</td>
               </tr>
             </tbody>
           </table>

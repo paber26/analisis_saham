@@ -89,10 +89,22 @@ Menggabungkan semua sudut pandang dalam satu halaman:
   arah/rentang probabilistik, bukan target harga.
 - Fundamental statis (stockFundamentals.ts) hanya fallback bila live kosong.
 
-## Roadmap (belum dikerjakan, disengaja)
+## Data pipeline harian (Tier 1.5)
 
-- **Tier 1.5**: SQLite + cron harian → universe ~900 emiten penuh, screener
-  fundamental+teknikal gabungan, riwayat skor.
+- **/api/sync** (token) memindai seluruh `idxTickers.ts`, menghitung teknikal +
+  fundamental tiap saham, lalu menulis snapshot `.data-store/screen-latest.json`
+  (store berbasis file — tanpa native module, aman untuk deploy Mac→Linux).
+- **/api/screen** memprioritaskan snapshot (instan, seluruh universe +
+  fundamental); fallback ke live compute bila snapshot belum ada / list kustom.
+- **Cron** (crontab server) memanggil `/api/sync` sekali/hari sore WIB.
+- Screener gabungan: filter **"Murah + Uptrend"** (PER 0–15 & di atas MA200).
+- Skala ke ~900: cukup tambah kode ke `idxTickers.ts` (invalid auto-skip).
+- SQLite bisa menggantikan store file bila butuh query SQL ad-hoc (opsional).
+
+## Roadmap berikutnya
+
+- **Tier 1.5+**: simpan histori OHLCV harian (SQLite/parquet) untuk kepemilikan
+  data & fetch inkremental; riwayat skor harian.
 - **Tier 2**: microservice Python (statsmodels/LightGBM) untuk model lanjutan,
   training terjadwal, hasil disajikan via cache JSON.
 - Watchlist/alert pribadi (butuh persistence — saat itulah database masuk).

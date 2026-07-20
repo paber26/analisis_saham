@@ -46,7 +46,8 @@ rsync -az --delete -e "$RSH" "$SCRIPT_DIR/.output/" \
 echo "==> [3/3] Clearing day-cache + (re)starting PM2 app '${PM2_NAME}' on port ${DEPLOY_PORT} ..."
 # Clear the persistent cache on deploy so changed logic takes effect immediately
 # (between deploys the cache persists and refreshes once per day).
+SYNC_TOKEN="${SYNC_TOKEN:-saham-sync}"
 "${SSH_BIN[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-  "cd ${DEPLOY_PATH} && rm -rf .cache && (pm2 restart ${PM2_NAME} --update-env || PORT=${DEPLOY_PORT} HOST=127.0.0.1 pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
+  "cd ${DEPLOY_PATH} && rm -rf .cache && (SYNC_TOKEN='${SYNC_TOKEN}' PORT=${DEPLOY_PORT} HOST=127.0.0.1 pm2 restart ${PM2_NAME} --update-env || SYNC_TOKEN='${SYNC_TOKEN}' PORT=${DEPLOY_PORT} HOST=127.0.0.1 pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
 
 echo "==> Done ✅  https://saham.kuydinas.id"

@@ -202,6 +202,11 @@ export function analyzeTechnical(bars: Bar[]): TechResult | null {
   const lows = bars.map((b) => b.low);
   const vols = bars.map((b) => b.volume);
 
+  // Data-quality guard: drop degenerate / suspended tickers whose price is
+  // effectively flat (produces meaningless indicators, e.g. RSI = 100 on a
+  // stuck line). A liquid stock moves on almost every session.
+  if (new Set(closes.slice(-60)).size <= 3) return null;
+
   const price = closes[n - 1]!;
   const prevClose = closes[n - 2]!;
   const changePct = prevClose > 0 ? round2(((price - prevClose) / prevClose) * 100) : 0;

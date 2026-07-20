@@ -13,14 +13,10 @@ export default defineNuxtConfig({
     // day-based cache keys, data is fetched from Yahoo at most once per day.
     storage: {
       cache: { driver: 'fs', base: process.env.NITRO_CACHE_DIR || './.cache' }
-    },
-    // Don't let Cloudflare (or any shared cache) cache API responses at the edge
-    // — freshness is controlled at the origin (fs cache + daily sync). Without
-    // this, defineCachedEventHandler's s-maxage makes CF serve stale data,
-    // even across deploys.
-    routeRules: {
-      '/api/**': { headers: { 'cache-control': 'no-store' } }
     }
+    // NOTE: Edge (Cloudflare) caching of /api/** is disabled via the
+    // server/plugins/no-cache-api.ts plugin (routeRules headers don't override
+    // defineCachedEventHandler's s-maxage; the beforeResponse hook does).
   },
   echarts: {
     renderer: ['canvas', 'svg'],

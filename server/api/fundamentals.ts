@@ -1,5 +1,6 @@
 import { getQuery } from 'h3';
 import { normalizeSymbol, YAHOO_HEADERS, getYahooAuth } from '../utils/symbol';
+import { tradingDay } from '../utils/cacheKey';
 
 interface FundamentalsResponse {
   symbol: string;
@@ -87,8 +88,8 @@ export default defineCachedEventHandler(async (event): Promise<FundamentalsRespo
 
   return response;
 }, {
-  maxAge: 60 * 60 * 6, // 6 hours
+  maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,
   name: 'fundamentals',
-  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
+  getKey: (event) => `${normalizeSymbol(getQuery(event).symbol as string)}:${tradingDay()}`
 });

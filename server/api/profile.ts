@@ -1,5 +1,6 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS, getYahooAuth } from '../utils/symbol';
+import { tradingDay } from '../utils/cacheKey';
 
 type StockProfileResponse = {
   symbol: string;
@@ -78,5 +79,5 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
   maxAge: 60 * 60 * 24, // 24 hours
   swr: true,
   name: 'profile',
-  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
+  getKey: (event) => `${normalizeSymbol(getQuery(event).symbol as string)}:${tradingDay()}`
 });

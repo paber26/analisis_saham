@@ -43,8 +43,10 @@ echo "==> [2/3] Uploading .output to ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH
 rsync -az --delete -e "$RSH" "$SCRIPT_DIR/.output/" \
   "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/.output/"
 
-echo "==> [3/3] (Re)starting PM2 app '${PM2_NAME}' on port ${DEPLOY_PORT} ..."
+echo "==> [3/3] Clearing day-cache + (re)starting PM2 app '${PM2_NAME}' on port ${DEPLOY_PORT} ..."
+# Clear the persistent cache on deploy so changed logic takes effect immediately
+# (between deploys the cache persists and refreshes once per day).
 "${SSH_BIN[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-  "cd ${DEPLOY_PATH} && (pm2 restart ${PM2_NAME} --update-env || PORT=${DEPLOY_PORT} HOST=127.0.0.1 pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
+  "cd ${DEPLOY_PATH} && rm -rf .cache && (pm2 restart ${PM2_NAME} --update-env || PORT=${DEPLOY_PORT} HOST=127.0.0.1 pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
 
 echo "==> Done ✅  https://saham.kuydinas.id"

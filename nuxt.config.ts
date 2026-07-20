@@ -7,6 +7,14 @@ export default defineNuxtConfig({
   future: {
     compatibilityVersion: 4,
   },
+  nitro: {
+    // Persist the API cache to disk (survives restarts/deploys). Kept OUTSIDE
+    // .output so deploy's `rsync --delete` doesn't wipe it. Combined with the
+    // day-based cache keys, data is fetched from Yahoo at most once per day.
+    storage: {
+      cache: { driver: 'fs', base: process.env.NITRO_CACHE_DIR || './.cache' }
+    }
+  },
   echarts: {
     renderer: ['canvas', 'svg'],
     charts: ['BarChart', 'HeatmapChart', 'LineChart', 'CandlestickChart'],

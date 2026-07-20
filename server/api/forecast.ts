@@ -1,6 +1,7 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 import { runForecast, type PricePoint, type ForecastResult } from '../utils/forecast';
+import { tradingDay } from '../utils/cacheKey';
 
 interface ForecastResponse extends ForecastResult {
   symbol: string;
@@ -53,11 +54,11 @@ export default defineCachedEventHandler(async (event): Promise<ForecastResponse>
     ...result
   };
 }, {
-  maxAge: 60 * 60 * 12, // 12 hours
+  maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,
   name: 'forecast',
   getKey: (event) => {
     const q = getQuery(event);
-    return `${normalizeSymbol(q.symbol as string)}:${q.horizon || 14}`;
+    return `${normalizeSymbol(q.symbol as string)}:${q.horizon || 14}:${tradingDay()}`;
   }
 });

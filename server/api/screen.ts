@@ -2,6 +2,7 @@ import { getQuery } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
 import { analyzeTechnical, type Bar, type TechResult } from '../utils/technical';
 import { SCREENING_UNIVERSE } from '../utils/universe';
+import { tradingDay, shortHash } from '../utils/cacheKey';
 
 export interface ScreenRow extends TechResult {
   code: string;
@@ -92,9 +93,11 @@ export default defineCachedEventHandler(async (event): Promise<{ results: Screen
 
   return { results, count: results.length };
 }, {
-  maxAge: 60 * 30, // 30 minutes
+  maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,
   name: 'screen',
-  getKey: (event) =>
-    parseSymbols((getQuery(event).symbols as string) || '').sort().join(',')
+  getKey: (event) => {
+    const codes = parseSymbols((getQuery(event).symbols as string) || '');
+    return `screen-${shortHash(codes.sort().join(','))}:${tradingDay()}`;
+  }
 });

@@ -1,5 +1,6 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
+import { tradingDay } from '../utils/cacheKey';
 
 interface StockHistoryItem {
   year: number;
@@ -95,8 +96,8 @@ export default defineCachedEventHandler(async (event): Promise<StockResponse> =>
     });
   }
 }, {
-  maxAge: 60 * 60 * 6, // 6 hours
+  maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,
   name: 'seasonal',
-  getKey: (event) => normalizeSymbol(getQuery(event).symbol as string)
+  getKey: (event) => `${normalizeSymbol(getQuery(event).symbol as string)}:${tradingDay()}`
 });

@@ -103,6 +103,9 @@ Menggabungkan semua sudut pandang dalam satu halaman:
 
 ## Roadmap berikutnya
 
+Rancangan analisa lanjutan (konteks pasar, portofolio, backtest, alert)
+didokumentasikan terpisah di **[ROADMAP.md](ROADMAP.md)** (Tier 1–4).
+
 - **Tier 1.5+**: simpan histori OHLCV harian (SQLite/parquet) untuk kepemilikan
   data & fetch inkremental; riwayat skor harian.
 - **Tier 2**: microservice Python (statsmodels/LightGBM) untuk model lanjutan,

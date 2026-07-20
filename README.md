@@ -16,7 +16,7 @@ data dari Yahoo Finance dengan cache disk per-hari.
 - **/saham** — chart candlestick ala TradingView + rasio keuangan live
 - **/profil-saham** — profil emiten
 
-Detail desain: [ARCHITECTURE.md](ARCHITECTURE.md) · Cara deploy: [DEPLOY.md](DEPLOY.md)
+Detail desain: [ARCHITECTURE.md](ARCHITECTURE.md) · Roadmap analisa lanjutan: [ROADMAP.md](ROADMAP.md) · Cara deploy: [DEPLOY.md](DEPLOY.md)
 
 ## Menjalankan
 

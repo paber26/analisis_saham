@@ -61,8 +61,12 @@ export async function fetchFundamentals(rawSymbol: string): Promise<Fundamentals
   const bvps = raw(stats.bookValue);
   const dps = raw(detail.dividendRate) ?? raw(detail.trailingAnnualDividendRate);
   const currentPrice = raw(price.regularMarketPrice);
-  const per = raw(detail.trailingPE) ?? (eps && eps > 0 && currentPrice ? currentPrice / eps : null);
-  const pbv = raw(stats.priceToBook) ?? (bvps && bvps > 0 && currentPrice ? currentPrice / bvps : null);
+  const perRaw = raw(detail.trailingPE) ?? (eps && eps > 0 && currentPrice ? currentPrice / eps : null);
+  const pbvRaw = raw(stats.priceToBook) ?? (bvps && bvps > 0 && currentPrice ? currentPrice / bvps : null);
+  // Sanity guard: Yahoo sometimes returns garbage (e.g. PBV 15000×) when
+  // book value is near-zero or in the wrong unit. Drop implausible values.
+  const per = perRaw != null && Math.abs(perRaw) < 1000 ? perRaw : null;
+  const pbv = pbvRaw != null && pbvRaw > 0 && pbvRaw < 100 ? pbvRaw : null;
   const roeFrac = raw(fin.returnOnEquity);
   const yieldFrac = raw(detail.dividendYield) ?? raw(detail.trailingAnnualDividendYield);
   const payoutFrac = raw(detail.payoutRatio);

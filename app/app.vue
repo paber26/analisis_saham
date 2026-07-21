@@ -94,6 +94,13 @@
             Portofolio
           </NuxtLink>
           <NuxtLink
+            to="/edukasi"
+            class="text-sm font-semibold transition-colors flex items-center gap-1"
+            :class="[route.path.startsWith('/edukasi') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            <span>📚</span> Edukasi
+          </NuxtLink>
+          <NuxtLink
             to="/pengembangan"
             class="px-3 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5"
             :class="[
@@ -119,11 +126,14 @@
         <div class="flex items-center gap-2">
           <span>© Analisis Saham BEI (IDX)</span>
           <span>•</span>
-          <span class="text-slate-400">Institutional WMI Blueprint & Architecture</span>
+          <span class="text-slate-400">Personal Knowledge &amp; Institutional WMI Blueprint</span>
         </div>
         <div class="flex items-center gap-4">
+          <NuxtLink to="/edukasi" class="text-slate-300 hover:text-emerald-400 flex items-center gap-1">
+            <span>📚</span> Materi Edukasi
+          </NuxtLink>
           <NuxtLink to="/pengembangan" class="text-emerald-400 hover:underline flex items-center gap-1 font-medium">
-            <span>📐</span> Dokumen Pengembangan & Arsitektur
+            <span>📐</span> Dokumen Pengembangan
           </NuxtLink>
         </div>
       </div>

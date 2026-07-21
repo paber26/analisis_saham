@@ -13,7 +13,7 @@ export interface MaterialItem {
   isCustom?: boolean;
 }
 
-const STORE_DIR = resolve(process.env.DATA_STORE_DIR || resolve(process.cwd(), '.data-store'));
+const STORE_DIR = process.env.DATA_STORE_DIR || './.data-store';
 const STORE_FILE = join(STORE_DIR, 'materials.json');
 
 const INITIAL_MATERIALS: MaterialItem[] = [

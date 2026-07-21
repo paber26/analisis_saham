@@ -38,31 +38,32 @@ export default defineEventHandler(async (event) => {
     }
 
     const items = getMaterials();
-    const existingIndex = items.findIndex(m => m.id === body.id);
-
     const now = new Date().toISOString().slice(0, 10);
+    const tags = Array.isArray(body.tags)
+      ? body.tags
+      : String(body.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean);
 
-    if (existingIndex >= 0) {
-      items[existingIndex] = {
-        ...items[existingIndex],
-        title: body.title.trim(),
-        category: body.category,
-        level: body.level || 'Dasar',
-        summary: body.summary || body.content.substring(0, 120) + '...',
-        content: body.content,
-        tags: Array.isArray(body.tags) ? body.tags : (body.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
-        updatedAt: now,
-        isCustom: true
-      };
+    const targetId = body.id ? String(body.id) : '';
+    const existingItem = items.find(m => m.id === targetId);
+
+    if (existingItem) {
+      existingItem.title = String(body.title).trim();
+      existingItem.category = body.category;
+      existingItem.level = body.level || 'Dasar';
+      existingItem.summary = body.summary ? String(body.summary) : String(body.content).substring(0, 120) + '...';
+      existingItem.content = String(body.content);
+      existingItem.tags = tags;
+      existingItem.updatedAt = now;
+      existingItem.isCustom = true;
     } else {
       const newItem: MaterialItem = {
         id: `custom-${Date.now()}`,
-        title: body.title.trim(),
+        title: String(body.title).trim(),
         category: body.category,
         level: body.level || 'Dasar',
-        summary: body.summary || body.content.substring(0, 120) + '...',
-        content: body.content,
-        tags: Array.isArray(body.tags) ? body.tags : (body.tags || '').split(',').map((t: string) => t.trim()).filter(Boolean),
+        summary: body.summary ? String(body.summary) : String(body.content).substring(0, 120) + '...',
+        content: String(body.content),
+        tags: tags,
         updatedAt: now,
         isCustom: true
       };

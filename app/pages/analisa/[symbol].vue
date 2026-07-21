@@ -130,22 +130,35 @@ const conclusions = computed<Bullet[]>(() => {
     tone: tv.score >= 55 ? 'bull' : tv.score >= 40 ? 'neutral' : 'bear'
   });
 
-  // Momentum
+  // Momentum (RSI + MACD + Stochastic untuk deteksi jenuh beli/jual jangka pendek)
   if (tv.rsi != null) {
-    const macdTxt = tv.macd != null && tv.macdSignal != null ? (tv.macd > tv.macdSignal ? 'MACD bullish' : 'MACD bearish') : '';
-    const rsiZone = tv.rsi > 70 ? 'overbought — rawan koreksi' : tv.rsi < 30 ? 'oversold — potensi rebound tapi bisa berlanjut turun' : 'netral-sehat';
+    const macdUp = (tv.macd ?? 0) > (tv.macdSignal ?? 0);
+    const macdTxt = tv.macd != null && tv.macdSignal != null ? (macdUp ? 'MACD bullish' : 'MACD bearish') : '';
+    const stochHot = tv.stochK != null && tv.stochK > 80;
+    const stochCold = tv.stochK != null && tv.stochK < 20;
+    let rsiZone: string;
+    if (tv.rsi > 70) rsiZone = 'overbought — rawan koreksi';
+    else if (tv.rsi < 30) rsiZone = 'oversold — potensi rebound tapi bisa berlanjut turun';
+    else if (tv.rsi >= 58 && stochHot) rsiZone = 'sehat tapi jangka pendek mulai jenuh beli (Stochastic overbought)';
+    else if (tv.rsi <= 45 && stochCold) rsiZone = 'lemah, Stochastic oversold — waspada rebound teknikal';
+    else rsiZone = 'netral-sehat';
+    const warn = tv.rsi > 70 || (tv.rsi >= 58 && stochHot);
     out.push({
       text: `Momentum: RSI ${Math.round(tv.rsi)} (${rsiZone})${macdTxt ? ', ' + macdTxt : ''}.`,
-      tone: tv.rsi > 70 ? 'warn' : tv.rsi < 30 ? 'warn' : (tv.macd ?? 0) > (tv.macdSignal ?? 0) ? 'bull' : 'neutral'
+      tone: warn ? 'warn' : tv.rsi < 30 ? 'warn' : macdUp ? 'bull' : 'neutral'
     });
   }
 
-  // Relative strength vs IHSG
+  // Relative strength vs IHSG (deadband ±2% agar RS mendekati nol = setara pasar)
   const rel = an.value?.relative;
   if (rel && rel.rs3m != null) {
+    const strong = Math.abs(rel.rs3m) > 2;
     out.push({
-      text: `Relative strength 3 bulan vs IHSG: ${rel.rs3m >= 0 ? '+' : ''}${rel.rs3m}% — ${rel.outperform ? 'mengungguli pasar (relatif kuat)' : 'tertinggal dari pasar (relatif lemah)'}.`,
-      tone: rel.outperform ? 'bull' : 'bear'
+      text: `Relative strength 3 bulan vs IHSG: ${rel.rs3m >= 0 ? '+' : ''}${rel.rs3m}% — ${
+        !strong ? 'bergerak setara pasar (tidak menonjol)'
+          : rel.rs3m > 0 ? 'mengungguli pasar (relatif kuat)' : 'tertinggal dari pasar (relatif lemah)'
+      }.`,
+      tone: !strong ? 'neutral' : rel.rs3m > 0 ? 'bull' : 'bear'
     });
   }
 
@@ -176,13 +189,24 @@ const conclusions = computed<Bullet[]>(() => {
     });
   }
 
-  // Valuation
+  // Valuation (+ Graham hanya relevan bila PBV wajar, + peringatan value trap)
   const lf = liveFund.value;
   if (lf && lf.per != null) {
     const perZone = lf.per < 10 ? 'relatif murah' : lf.per <= 25 ? 'wajar' : 'premium';
     const dy = lf.dividendYield != null ? `, dividend yield ${lf.dividendYield}%` : '';
-    const grahamTxt = lf.grahamFair != null ? ` Nilai wajar Graham ≈ ${fmt(lf.grahamFair)} (${tv.price < lf.grahamFair ? 'harga di bawah — undervalued' : 'harga di atas'}).` : '';
-    out.push({ text: `Valuasi: PER ${lf.per}× (${perZone}), PBV ${lf.pbv ?? '—'}×${dy}.${grahamTxt}`, tone: lf.per < 10 ? 'bull' : lf.per > 25 ? 'warn' : 'neutral' });
+    let grahamTxt = '';
+    if (lf.grahamFair != null) {
+      grahamTxt = lf.pbv != null && lf.pbv <= 2.5
+        ? ` Nilai wajar Graham ≈ ${fmt(lf.grahamFair)} (${tv.price < lf.grahamFair ? 'harga di bawah — undervalued' : 'harga di atas'}).`
+        : ` (Graham ≈ ${fmt(lf.grahamFair)}, kurang relevan karena PBV tinggi.)`;
+    }
+    const cheap = lf.per < 10;
+    const earnDown = lf.earningsGrowth != null && lf.earningsGrowth < 0;
+    const trapTxt = cheap && earnDown ? ' ⚠ Murah tapi laba menurun — waspada value trap.' : '';
+    out.push({
+      text: `Valuasi: PER ${lf.per}× (${perZone}), PBV ${lf.pbv ?? '—'}×${dy}.${grahamTxt}${trapTxt}`,
+      tone: cheap && earnDown ? 'neutral' : cheap ? 'bull' : lf.per > 25 ? 'warn' : 'neutral'
+    });
   }
 
   // Quality: growth + leverage
@@ -209,7 +233,9 @@ const conclusions = computed<Bullet[]>(() => {
 const verdict = computed(() => {
   const tv = t.value;
   if (!tv) return null;
+  const fullDown = tv.sma200 != null && tv.sma20 != null && tv.price < tv.sma200 && tv.price < tv.sma20;
   if (tv.score >= 55 && isUptrend.value) return { label: 'Layak dipantau untuk beli', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' };
+  if (fullDown && tv.score < 50) return { label: 'Hindari dulu', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' };
   if (tv.score >= 40) return { label: 'Netral — tunggu konfirmasi', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' };
   return { label: 'Hindari dulu', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' };
 });

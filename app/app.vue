@@ -10,9 +10,9 @@
         class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm lg:hidden transition-opacity"
       ></div>
 
-      <!-- SIDEBAR -->
+      <!-- FIXED SIDEBAR -->
       <aside
-        class="fixed lg:sticky top-0 left-0 z-50 h-screen bg-slate-950 border-r border-slate-900 flex flex-col justify-between transition-all duration-300 shadow-2xl shrink-0"
+        class="fixed top-0 left-0 bottom-0 z-50 h-screen bg-slate-950 border-r border-slate-900 flex flex-col justify-between transition-all duration-300 shadow-2xl shrink-0"
         :class="[
           isMobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0',
           isCollapsed ? 'lg:w-20' : 'lg:w-64'
@@ -47,8 +47,8 @@
             </button>
           </div>
 
-          <!-- Navigation Links List -->
-          <div class="px-3 py-4 space-y-6 overflow-y-auto max-h-[calc(100vh-140px)] scrollbar-none">
+          <!-- Navigation Links List (Internal scrollable if content overflows sidebar height) -->
+          <div class="px-3 py-4 space-y-6 overflow-y-auto max-h-[calc(100vh-130px)] scrollbar-thin">
             <!-- Group 1: Pasar & Screening -->
             <div class="space-y-1">
               <div v-if="!isCollapsed" class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
@@ -212,7 +212,7 @@
         </div>
 
         <!-- Sidebar Footer Status -->
-        <div class="p-3 border-t border-slate-900 bg-slate-950/80">
+        <div class="p-3 border-t border-slate-900 bg-slate-950/90">
           <div v-if="!isCollapsed" class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs">
             <div>
               <div class="text-[10px] text-slate-500 font-bold uppercase">Saham Terakhir</div>
@@ -228,8 +228,13 @@
         </div>
       </aside>
 
-      <!-- MAIN CONTENT WRAPPER -->
-      <div class="flex-1 flex flex-col min-w-0">
+      <!-- MAIN CONTENT WRAPPER (Offset by fixed sidebar width on desktop) -->
+      <div
+        class="flex-1 flex flex-col min-w-0 transition-all duration-300"
+        :class="[
+          isCollapsed ? 'lg:ml-20' : 'lg:ml-64'
+        ]"
+      >
         <!-- TOP HEADER BAR -->
         <header class="sticky top-0 z-30 h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-900 px-4 sm:px-6 flex items-center justify-between gap-4">
           <!-- Left: Mobile Menu Toggle & Breadcrumb -->

@@ -51,6 +51,13 @@
             Forecast
           </NuxtLink>
           <NuxtLink
+            to="/backtest"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/backtest') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Backtest
+          </NuxtLink>
+          <NuxtLink
             to="/seasonal"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/seasonal') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"

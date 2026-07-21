@@ -100,12 +100,28 @@ const conclusions = computed<Bullet[]>(() => {
   const tv = t.value;
   if (!tv) return out;
 
-  // Trend
+  // Trend — pisahkan jangka panjang (MA200) vs pendek (MA20/MA50), arah dari DMI.
+  // ADX hanya mengukur KEKUATAN, bukan arah — arah ditentukan +DI vs -DI.
   if (tv.sma200 != null) {
-    const adxTxt = tv.adx != null ? (tv.adx >= 25 ? `tren kuat (ADX ${Math.round(tv.adx)})` : `tren lemah (ADX ${Math.round(tv.adx)})`) : '';
-    out.push(isUptrend.value
-      ? { text: `Uptrend jangka panjang — harga di atas MA200${adxTxt ? ', ' + adxTxt : ''}.`, tone: 'bull' }
-      : { text: `Downtrend jangka panjang — harga di bawah MA200${adxTxt ? ', ' + adxTxt : ''}. Beli melawan tren berisiko tinggi.`, tone: 'bear' });
+    const longUp = tv.price > tv.sma200;
+    const aboveMA20 = tv.sma20 != null && tv.price > tv.sma20;
+    const aboveMA50 = tv.sma50 != null && tv.price > tv.sma50;
+    const shortUp = aboveMA20; // reclaim MA tercepat = pemulihan jangka pendek
+    const diDir = tv.plusDI != null && tv.minusDI != null ? (tv.plusDI > tv.minusDI ? 'naik' : 'turun') : null;
+    const adxTxt = tv.adx != null
+      ? `ADX ${Math.round(tv.adx)} (${tv.adx >= 25 ? 'kuat' : 'lemah'})${diDir ? `, arah ${diDir}` : ''}`
+      : '';
+    const maShort = aboveMA20 && aboveMA50 ? 'MA20 & MA50' : aboveMA20 ? 'MA20' : 'MA20/MA50';
+
+    if (longUp && shortUp) {
+      out.push({ text: `Uptrend selaras — harga di atas MA200 dan ${maShort}${adxTxt ? ` (${adxTxt})` : ''}.`, tone: 'bull' });
+    } else if (!longUp && shortUp) {
+      out.push({ text: `Jangka panjang masih lemah (di bawah MA200), TAPI jangka pendek memantul — harga sudah reclaim ${maShort}${adxTxt ? ` (${adxTxt})` : ''}. Pola pemulihan/reversal awal; konfirmasi bila tembus & bertahan di atas MA200.`, tone: 'warn' });
+    } else if (longUp && !shortUp) {
+      out.push({ text: `Uptrend jangka panjang (di atas MA200) tapi sedang koreksi jangka pendek (di bawah MA20)${adxTxt ? ` (${adxTxt})` : ''}.`, tone: 'warn' });
+    } else {
+      out.push({ text: `Downtrend — harga di bawah MA200 dan MA20${adxTxt ? ` (${adxTxt})` : ''}. Beli melawan tren berisiko tinggi.`, tone: 'bear' });
+    }
   }
 
   // Score

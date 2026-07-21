@@ -1,150 +1,315 @@
 <template>
-  <div class="min-h-screen bg-slate-950 text-slate-50 selection:bg-emerald-500/30 selection:text-emerald-200 font-sans flex flex-col">
+  <div class="min-h-screen bg-slate-950 text-slate-50 font-sans flex flex-col antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
     <NuxtRouteAnnouncer />
-    
-    <!-- Shared Navbar -->
-    <nav class="border-b border-slate-900 bg-slate-950/80 backdrop-blur-md sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <!-- Logo / Brand -->
-        <NuxtLink to="/screening" class="flex items-center gap-3 group">
-          <div class="p-2 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl shadow-lg shadow-emerald-500/10 group-hover:scale-105 transition-transform">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-            </svg>
-          </div>
-          <div>
-            <h1 class="text-lg font-bold text-slate-50 tracking-tight">
-              Saham IDX <span class="text-xs bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">PORTAL</span>
-            </h1>
-            <p class="text-[10px] text-slate-400">Analisis Musiman & Keuangan Saham BEI</p>
-          </div>
-        </NuxtLink>
 
-        <!-- Navbar Links -->
-        <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-          <NuxtLink
-            to="/pasar"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/pasar') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Pasar
-          </NuxtLink>
-          <NuxtLink
-            to="/screening"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/screening') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Screening
-          </NuxtLink>
-          <NuxtLink
-            :to="`/analisa/${lastSymbol}`"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/analisa') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Analisa
-          </NuxtLink>
-          <NuxtLink
-            :to="`/forecast?symbol=${lastSymbol}`"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/forecast') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Forecast
-          </NuxtLink>
-          <NuxtLink
-            to="/backtest"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/backtest') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Backtest
-          </NuxtLink>
-          <NuxtLink
-            :to="`/seasonal?symbol=${lastSymbol}`"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/seasonal') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Pola Musiman
-          </NuxtLink>
-          <NuxtLink
-            :to="`/saham?symbol=${lastSymbol}`"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Chart & Keuangan
-          </NuxtLink>
-          <NuxtLink
-            :to="`/profil-saham?symbol=${lastSymbol}`"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/profil-saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Profil
-          </NuxtLink>
-          <span class="hidden sm:block w-px h-4 bg-slate-800"></span>
-          <NuxtLink
-            to="/watchlist"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/watchlist') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            ⭐ Watchlist
-          </NuxtLink>
-          <NuxtLink
-            to="/portofolio"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/portofolio') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            Portofolio
-          </NuxtLink>
-          <NuxtLink
-            to="/edukasi"
-            class="text-sm font-semibold transition-colors flex items-center gap-1"
-            :class="[route.path.startsWith('/edukasi') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
-          >
-            <span>📚</span> Edukasi
-          </NuxtLink>
-          <NuxtLink
-            to="/pengembangan"
-            class="px-3 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5"
-            :class="[
-              route.path.startsWith('/pengembangan')
-                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
-                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:border-emerald-500/50'
-            ]"
-          >
-            <span>🛠️</span> Pengembangan
-          </NuxtLink>
+    <div class="flex flex-1 relative min-h-screen overflow-x-hidden">
+      <!-- Mobile Backdrop Overlay -->
+      <div
+        v-if="isMobileOpen"
+        @click="isMobileOpen = false"
+        class="fixed inset-0 z-40 bg-slate-950/80 backdrop-blur-sm lg:hidden transition-opacity"
+      ></div>
+
+      <!-- SIDEBAR -->
+      <aside
+        class="fixed lg:sticky top-0 left-0 z-50 h-screen bg-slate-950 border-r border-slate-900 flex flex-col justify-between transition-all duration-300 shadow-2xl shrink-0"
+        :class="[
+          isMobileOpen ? 'translate-x-0 w-64' : '-translate-x-full lg:translate-x-0',
+          isCollapsed ? 'lg:w-20' : 'lg:w-64'
+        ]"
+      >
+        <!-- Sidebar Top Logo Section -->
+        <div>
+          <div class="p-4 border-b border-slate-900 flex items-center justify-between gap-3 h-16">
+            <NuxtLink to="/screening" class="flex items-center gap-3 group overflow-hidden">
+              <div class="p-2 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-xl shadow-lg shadow-emerald-500/10 group-hover:scale-105 transition-transform shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-slate-950" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+              </div>
+              <div v-if="!isCollapsed" class="whitespace-nowrap transition-opacity">
+                <h1 class="text-sm font-bold text-slate-50 tracking-tight flex items-center gap-1.5">
+                  Saham IDX <span class="text-[10px] bg-emerald-500/10 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-500/20 font-mono">PRO</span>
+                </h1>
+                <p class="text-[10px] text-slate-400">Analisis Saham BEI</p>
+              </div>
+            </NuxtLink>
+
+            <!-- Toggle Collapse Desktop -->
+            <button
+              @click="isCollapsed = !isCollapsed"
+              class="hidden lg:flex items-center justify-center p-1.5 text-slate-400 hover:text-slate-100 hover:bg-slate-900 rounded-lg transition-colors"
+              :title="isCollapsed ? 'Perluas Sidebar' : 'Ciutkan Sidebar'"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 transition-transform duration-300" :class="{ 'rotate-180': isCollapsed }" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Navigation Links List -->
+          <div class="px-3 py-4 space-y-6 overflow-y-auto max-h-[calc(100vh-140px)] scrollbar-none">
+            <!-- Group 1: Pasar & Screening -->
+            <div class="space-y-1">
+              <div v-if="!isCollapsed" class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Pasar &amp; Screener
+              </div>
+
+              <NuxtLink
+                to="/pasar"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/pasar') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Pasar' : ''"
+              >
+                <span class="text-sm shrink-0">🏛️</span>
+                <span v-if="!isCollapsed" class="truncate">Pasar (Market)</span>
+              </NuxtLink>
+
+              <NuxtLink
+                to="/screening"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/screening') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Screening' : ''"
+              >
+                <span class="text-sm shrink-0">🔍</span>
+                <span v-if="!isCollapsed" class="truncate">Screening Saham</span>
+              </NuxtLink>
+            </div>
+
+            <!-- Group 2: Analisis Saham Individual -->
+            <div class="space-y-1">
+              <div v-if="!isCollapsed" class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Analisis Emiten ({{ lastSymbol }})
+              </div>
+
+              <NuxtLink
+                :to="`/analisa/${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/analisa') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Analisa' : ''"
+              >
+                <span class="text-sm shrink-0">📊</span>
+                <span v-if="!isCollapsed" class="truncate">Hub Analisa {{ lastSymbol }}</span>
+              </NuxtLink>
+
+              <NuxtLink
+                :to="`/saham?symbol=${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/saham') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Chart & Keuangan' : ''"
+              >
+                <span class="text-sm shrink-0">📈</span>
+                <span v-if="!isCollapsed" class="truncate">Chart &amp; Keuangan</span>
+              </NuxtLink>
+
+              <NuxtLink
+                :to="`/forecast?symbol=${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/forecast') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Forecast' : ''"
+              >
+                <span class="text-sm shrink-0">🎯</span>
+                <span v-if="!isCollapsed" class="truncate">Forecast Harga</span>
+              </NuxtLink>
+
+              <NuxtLink
+                :to="`/seasonal?symbol=${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/seasonal') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Pola Musiman' : ''"
+              >
+                <span class="text-sm shrink-0">🗓️</span>
+                <span v-if="!isCollapsed" class="truncate">Pola Musiman</span>
+              </NuxtLink>
+
+              <NuxtLink
+                :to="`/profil-saham?symbol=${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/profil-saham') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Profil Emiten' : ''"
+              >
+                <span class="text-sm shrink-0">🏢</span>
+                <span v-if="!isCollapsed" class="truncate">Profil Emiten</span>
+              </NuxtLink>
+            </div>
+
+            <!-- Group 3: Portofolio & Tooling -->
+            <div class="space-y-1">
+              <div v-if="!isCollapsed" class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Portofolio &amp; Riset
+              </div>
+
+              <NuxtLink
+                to="/watchlist"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/watchlist') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Watchlist' : ''"
+              >
+                <span class="text-sm shrink-0">⭐</span>
+                <span v-if="!isCollapsed" class="truncate">Watchlist</span>
+              </NuxtLink>
+
+              <NuxtLink
+                to="/portofolio"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/portofolio') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Portofolio' : ''"
+              >
+                <span class="text-sm shrink-0">💼</span>
+                <span v-if="!isCollapsed" class="truncate">Portofolio</span>
+              </NuxtLink>
+
+              <NuxtLink
+                to="/backtest"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/backtest') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Backtest' : ''"
+              >
+                <span class="text-sm shrink-0">🧪</span>
+                <span v-if="!isCollapsed" class="truncate">Backtest Strategi</span>
+              </NuxtLink>
+            </div>
+
+            <!-- Group 4: Pengetahuan & Infrastruktur -->
+            <div class="space-y-1">
+              <div v-if="!isCollapsed" class="px-3 text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Edukasi &amp; Sistem
+              </div>
+
+              <NuxtLink
+                to="/edukasi"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/edukasi') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Edukasi' : ''"
+              >
+                <span class="text-sm shrink-0">📚</span>
+                <span v-if="!isCollapsed" class="truncate">Materi Edukasi</span>
+              </NuxtLink>
+
+              <NuxtLink
+                to="/pengembangan"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/pengembangan') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Pengembangan' : ''"
+              >
+                <span class="text-sm shrink-0">🛠️</span>
+                <span v-if="!isCollapsed" class="truncate">Arsitektur WMI</span>
+              </NuxtLink>
+            </div>
+          </div>
         </div>
-      </div>
-    </nav>
 
-    <!-- Page Content Container -->
-    <div class="flex-grow flex flex-col">
-      <NuxtPage />
+        <!-- Sidebar Footer Status -->
+        <div class="p-3 border-t border-slate-900 bg-slate-950/80">
+          <div v-if="!isCollapsed" class="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs">
+            <div>
+              <div class="text-[10px] text-slate-500 font-bold uppercase">Saham Terakhir</div>
+              <div class="font-extrabold text-emerald-400">{{ lastSymbol }}</div>
+            </div>
+            <NuxtLink :to="`/analisa/${lastSymbol}`" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold rounded">
+              Buka
+            </NuxtLink>
+          </div>
+          <div v-else class="text-center font-bold text-xs text-emerald-400 py-1">
+            {{ lastSymbol }}
+          </div>
+        </div>
+      </aside>
+
+      <!-- MAIN CONTENT WRAPPER -->
+      <div class="flex-1 flex flex-col min-w-0">
+        <!-- TOP HEADER BAR -->
+        <header class="sticky top-0 z-30 h-16 bg-slate-950/80 backdrop-blur-md border-b border-slate-900 px-4 sm:px-6 flex items-center justify-between gap-4">
+          <!-- Left: Mobile Menu Toggle & Breadcrumb -->
+          <div class="flex items-center gap-3">
+            <button
+              @click="isMobileOpen = !isMobileOpen"
+              class="lg:hidden p-2 rounded-xl text-slate-400 hover:text-slate-100 hover:bg-slate-900 transition-colors"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-400">
+              <span class="hidden sm:inline text-slate-500">Analisis Saham BEI</span>
+              <span class="hidden sm:inline text-slate-700">/</span>
+              <span class="text-slate-200 capitalize font-bold">{{ currentPageTitle }}</span>
+            </div>
+          </div>
+
+          <!-- Right: Stock Search & Market Badge -->
+          <div class="flex items-center gap-3">
+            <div class="hidden sm:flex items-center gap-2 text-xs bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-slate-400">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span>BEI Daily Feed</span>
+            </div>
+
+            <NuxtLink
+              :to="`/analisa/${lastSymbol}`"
+              class="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 text-xs font-bold transition-all flex items-center gap-1.5"
+            >
+              <span>⚡</span> {{ lastSymbol }}
+            </NuxtLink>
+          </div>
+        </header>
+
+        <!-- PAGE CONTENT CONTAINER -->
+        <main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
+          <NuxtPage />
+        </main>
+
+        <!-- ADMIN FOOTER -->
+        <footer class="border-t border-slate-900 bg-slate-950 py-5 text-slate-500 text-xs mt-auto px-4 sm:px-6">
+          <div class="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div>© Analisis Saham BEI — Admin Dashboard Interface</div>
+            <div class="flex items-center gap-4 text-slate-400">
+              <NuxtLink to="/edukasi" class="hover:text-emerald-400">📚 Materi Edukasi</NuxtLink>
+              <NuxtLink to="/pengembangan" class="hover:text-emerald-400">📐 Cetak Biru WMI</NuxtLink>
+            </div>
+          </div>
+        </footer>
+      </div>
     </div>
-
-    <!-- Shared Footer -->
-    <footer class="border-t border-slate-900 bg-slate-950 py-6 text-slate-400 text-xs mt-auto">
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-4">
-        <div class="flex items-center gap-2">
-          <span>© Analisis Saham BEI (IDX)</span>
-          <span>•</span>
-          <span class="text-slate-400">Personal Knowledge &amp; Institutional WMI Blueprint</span>
-        </div>
-        <div class="flex items-center gap-4">
-          <NuxtLink to="/edukasi" class="text-slate-300 hover:text-emerald-400 flex items-center gap-1">
-            <span>📚</span> Materi Edukasi
-          </NuxtLink>
-          <NuxtLink to="/pengembangan" class="text-emerald-400 hover:underline flex items-center gap-1 font-medium">
-            <span>📐</span> Dokumen Pengembangan
-          </NuxtLink>
-        </div>
-      </div>
-    </footer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
+
 const route = useRoute();
-// Shared "last viewed symbol" so single-stock nav links open the last stock
+const isCollapsed = ref(false);
+const isMobileOpen = ref(false);
+
 const { last: lastSymbol, hydrate } = useLastSymbol();
 onMounted(hydrate);
+
+const currentPageTitle = computed(() => {
+  const p = route.path;
+  if (p.startsWith('/pasar')) return 'Pasar (Market Breadth)';
+  if (p.startsWith('/screening')) return 'Screening Saham';
+  if (p.startsWith('/analisa')) return 'Hub Analisa Emiten';
+  if (p.startsWith('/forecast')) return 'Forecast & Proyeksi';
+  if (p.startsWith('/backtest')) return 'Backtest Strategi';
+  if (p.startsWith('/seasonal')) return 'Pola Musiman';
+  if (p.startsWith('/saham')) return 'Chart & Keuangan';
+  if (p.startsWith('/profil-saham')) return 'Profil Emiten';
+  if (p.startsWith('/watchlist')) return 'Watchlist';
+  if (p.startsWith('/portofolio')) return 'Portofolio';
+  if (p.startsWith('/edukasi')) return 'Pusat Edukasi & Catatan';
+  if (p.startsWith('/pengembangan')) return 'Arsitektur & WMI Blueprint';
+  return 'Dashboard';
+});
 </script>

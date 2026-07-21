@@ -71,6 +71,21 @@
           >
             Profil
           </NuxtLink>
+          <span class="hidden sm:block w-px h-4 bg-slate-800"></span>
+          <NuxtLink
+            to="/watchlist"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/watchlist') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            ⭐ Watchlist
+          </NuxtLink>
+          <NuxtLink
+            to="/portofolio"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/portofolio') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Portofolio
+          </NuxtLink>
         </div>
       </div>
     </nav>

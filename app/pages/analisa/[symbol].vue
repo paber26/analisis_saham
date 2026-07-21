@@ -1,11 +1,33 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { calculateSeasonalStats, MONTH_LABELS } from '../../utils/seasonalCalculator';
 
 const route = useRoute();
 const router = useRouter();
 
 const symbol = computed(() => ((route.params.symbol as string) || 'BBCA').toUpperCase().trim());
+const codeOnly = computed(() => symbol.value.replace('.JK', ''));
+
+// Watchlist star (token-gated)
+const { token, authHeaders } = useAppToken();
+const watchlisted = ref(false);
+async function loadWatch() {
+  if (!token.value) { watchlisted.value = false; return; }
+  try {
+    const d = await $fetch<any>('/api/watchlist', { headers: authHeaders.value });
+    watchlisted.value = (d.codes || []).includes(codeOnly.value);
+  } catch { watchlisted.value = false; }
+}
+async function toggleStar() {
+  if (!token.value) { router.push('/watchlist'); return; }
+  const action = watchlisted.value ? 'remove' : 'add';
+  watchlisted.value = !watchlisted.value; // optimistic
+  try {
+    await $fetch('/api/watchlist', { method: 'POST', headers: authHeaders.value, body: { code: codeOnly.value, action } });
+  } catch { watchlisted.value = !watchlisted.value; }
+}
+onMounted(loadWatch);
+watch(codeOnly, loadWatch);
 
 useHead(() => ({
   title: `Analisa ${symbol.value} — Teknikal, Level, Musiman & Forecast`,
@@ -281,6 +303,10 @@ const verdict = computed(() => {
             <div>
               <div class="flex items-center gap-3 flex-wrap">
                 <h3 class="text-2xl font-extrabold text-slate-50">{{ an.code }}</h3>
+                <button type="button" class="text-xl leading-none transition-transform hover:scale-110"
+                  :class="watchlisted ? 'text-amber-400' : 'text-slate-600 hover:text-slate-400'"
+                  :title="token ? (watchlisted ? 'Hapus dari watchlist' : 'Tambah ke watchlist') : 'Buka watchlist untuk menyimpan'"
+                  @click="toggleStar">{{ watchlisted ? '★' : '☆' }}</button>
                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="ratingClass(t.rating)">{{ t.rating }} · {{ t.score }}/100</span>
                 <span v-if="verdict" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="verdict.cls">{{ verdict.label }}</span>
                 <span v-if="rsChip" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="rsChip.cls"

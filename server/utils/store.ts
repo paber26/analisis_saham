@@ -50,3 +50,41 @@ export async function loadScreenSnapshot(): Promise<ScreenSnapshot | null> {
     return null;
   }
 }
+
+// ---- Generic atomic JSON read/write (single-user personal data) ----
+async function readJson<T>(file: string, fallback: T): Promise<T> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(DIR, file), 'utf-8')) as T;
+  } catch {
+    return fallback;
+  }
+}
+async function writeJson(file: string, data: unknown): Promise<void> {
+  await fs.mkdir(DIR, { recursive: true });
+  const tmp = path.join(DIR, file + '.tmp');
+  await fs.writeFile(tmp, JSON.stringify(data), 'utf-8');
+  await fs.rename(tmp, path.join(DIR, file));
+}
+
+// ---- Watchlist ----
+export async function getWatchlist(): Promise<string[]> {
+  return readJson<string[]>('watchlist.json', []);
+}
+export async function setWatchlist(codes: string[]): Promise<void> {
+  const clean = Array.from(new Set(codes.map((c) => c.toUpperCase().trim()).filter(Boolean)));
+  await writeJson('watchlist.json', clean);
+}
+
+// ---- Portfolio ----
+export interface Holding {
+  symbol: string;   // display code, e.g. 'BBCA'
+  lots: number;     // 1 lot = 100 shares
+  avgPrice: number; // average buy price (IDR)
+  date?: string;
+}
+export async function getPortfolio(): Promise<Holding[]> {
+  return readJson<Holding[]>('portfolio.json', []);
+}
+export async function setPortfolio(holdings: Holding[]): Promise<void> {
+  await writeJson('portfolio.json', holdings);
+}

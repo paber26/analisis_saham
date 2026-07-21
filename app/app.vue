@@ -93,6 +93,13 @@
           >
             Portofolio
           </NuxtLink>
+          <NuxtLink
+            to="/pengembangan"
+            class="text-sm font-semibold transition-colors"
+            :class="[route.path.startsWith('/pengembangan') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+          >
+            Pengembangan
+          </NuxtLink>
         </div>
       </div>
     </nav>

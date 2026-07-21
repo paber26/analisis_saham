@@ -111,3 +111,53 @@ didokumentasikan terpisah di **[ROADMAP.md](ROADMAP.md)** (Tier 1–4).
 - **Tier 2**: microservice Python (statsmodels/LightGBM) untuk model lanjutan,
   training terjadwal, hasil disajikan via cache JSON.
 - Watchlist/alert pribadi (butuh persistence — saat itulah database masuk).
+
+---
+
+## Cetak Biru (Blueprint) Analisis Institusional — Perspective Wakil Manajer Investasi (WMI)
+
+### 1. 3 Pilar Utama Pengelolaan Reksa Dana Saham
+- **AUM Preservation (Proteksi Modal / Risk Control)**: Mencegah *major drawdown* saat pasar bearish, mengendalikan korelasi portofolio, VaR (Value at Risk 95%), dan likuiditas eksekusi.
+- **Alpha Generation & Outperformance vs Benchmark**: Mengalahkan benchmark (IHSG / LQ45 / IDX80) secara konsisten menggunakan *Factor Investing* (Value, Quality, Momentum, Low Volatility).
+- **AUM Growth & Investor Trust**: Konsistensi Risk-Adjusted Return (Sharpe Ratio, Sortino Ratio, Information Ratio) yang menarik inflows dana baru dari nasabah/distributor.
+
+### 2. Arsitektur Analitis 5 Layer Institusional
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ 1. LAYER ENTERPRISE DASHBOARD & DECISION SUPPORT (UI/UX)                   │
+│   • Multi-Portfolio Dashboard (Core Equity Fund, Dividend Yield Fund)       │
+│   • Risk & Drawdown Monitor  • Factor Exposure Matrix  • Rebalancing Suite  │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ REST / SSR
+┌──────────────────────────────────────┴──────────────────────────────────────┐
+│ 2. LAYER ENGINE ANALITIK WMI (Nitro Server Engine)                          │
+│                                                                             │
+│  [A. Institutional Screener]     [B. Portfolio Construction]               │
+│  • Filter ADV (> Rp 5M/hari)     • Max 10% Single Issuer Cap (OJK Rule)     │
+│  • Multi-Factor Rating (QVM)     • Limit Sektor (Max 25-30%)               │
+│                                  • Equal Risk Contribution / Risk Parity    │
+│                                                                             │
+│  [C. Risk & Stress Test Engine]  [D. Performance Attribution]              │
+│  • Value at Risk (VaR 95%)       • Brinson Sector Attribution (Alloc/Select)│
+│  • Correlation Matrix Heatmap    • Sharpe, Sortino, Information Ratio       │
+│  • Days-to-Liquid (Likuiditas)   • Tracking Error vs IHSG / LQ45            │
+│                                                                             │
+│  [E. Market Breadth & TAA]       [F. Rebalancing Guardrail]                 │
+│  • Market Regime (Risk-On/Off)   • Target vs Current Allocation Drift       │
+│  • Cash Allocation Adjuster      • Rebalance Trigger Signal                 │
+└──────────────────────────────────────┬──────────────────────────────────────┘
+                                       │ Async Pipeline / Cron Sync
+┌──────────────────────────────────────┴──────────────────────────────────────┐
+│ 3. LAYER DATA MANAGEMENT & TIME-SERIES STORE                                │
+│  • Data Store Harian (.data-store/ / SQLite)                                │
+│  • Benchmark Index Store (^JKSE, ^LQ45, IDX80)                             │
+│  • Corporate Actions & Fundamentals Registry (PER, PBV, ROE, DER, FreeFloat)│
+└──────────────────────────────────────┬──────────────────────────────────────┘
+```
+
+### 3. Modul WMI Utama
+- **Institutional Screener**: Mandat likuiditas harian (ADV > Rp 5M/hari, Free Float > 15%) & Smart Beta Scoring (Quality, Value, Momentum).
+- **Portfolio Guardrails**: Single Issuer Cap max 10% NAV, Limit Sektor max 25-30%, Dynamic Cash Buffer (0-20%).
+- **Risk Management**: Parametric VaR (95%), Days-to-Liquid Stress Test, Correlation Matrix Heatmap (>0.75 warning).
+- **Attribution & Benchmarking**: Brinson Sector Attribution (Allocation Effect & Selection Effect), Sharpe/Sortino/Information Ratio vs IHSG.
+

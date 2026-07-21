@@ -1,5 +1,5 @@
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 export interface MaterialItem {
   id: string;
@@ -13,7 +13,7 @@ export interface MaterialItem {
   isCustom?: boolean;
 }
 
-const STORE_DIR = path.resolve(process.cwd(), '.data-store');
+const STORE_DIR = path.resolve(process.env.DATA_STORE_DIR || path.resolve(process.cwd(), '.data-store'));
 const STORE_FILE = path.join(STORE_DIR, 'materials.json');
 
 const INITIAL_MATERIALS: MaterialItem[] = [

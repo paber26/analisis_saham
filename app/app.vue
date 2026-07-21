@@ -95,10 +95,14 @@
           </NuxtLink>
           <NuxtLink
             to="/pengembangan"
-            class="text-sm font-semibold transition-colors"
-            :class="[route.path.startsWith('/pengembangan') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
+            class="px-3 py-1 rounded-lg text-xs font-bold transition-all border flex items-center gap-1.5"
+            :class="[
+              route.path.startsWith('/pengembangan')
+                ? 'bg-emerald-500 text-slate-950 border-emerald-400 shadow-md shadow-emerald-500/20'
+                : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 hover:border-emerald-500/50'
+            ]"
           >
-            Pengembangan
+            <span>🛠️</span> Pengembangan
           </NuxtLink>
         </div>
       </div>
@@ -108,6 +112,22 @@
     <div class="flex-grow flex flex-col">
       <NuxtPage />
     </div>
+
+    <!-- Shared Footer -->
+    <footer class="border-t border-slate-900 bg-slate-950 py-6 text-slate-400 text-xs mt-auto">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div class="flex items-center gap-2">
+          <span>© Analisis Saham BEI (IDX)</span>
+          <span>•</span>
+          <span class="text-slate-400">Institutional WMI Blueprint & Architecture</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <NuxtLink to="/pengembangan" class="text-emerald-400 hover:underline flex items-center gap-1 font-medium">
+            <span>📐</span> Dokumen Pengembangan & Arsitektur
+          </NuxtLink>
+        </div>
+      </div>
+    </footer>
   </div>
 </template>
 

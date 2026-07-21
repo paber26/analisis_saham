@@ -48,7 +48,19 @@ const bestLabel = computed(() => {
   if (!b) return '—';
   return b === 'ar' ? `AR(${data.value.arOrder || '–'})` : MODEL_LABELS[b];
 });
-const beatsNaive = computed(() => data.value && data.value.best !== 'naive');
+// Honest verdict vs random walk: only claim victory when the best model beats
+// naive by a meaningful margin (>=0.5% lower RMSE), else "setara" / "belum".
+const naiveVerdict = computed(() => {
+  const d = data.value;
+  if (!d) return { label: '—', cls: 'text-slate-400' };
+  if (d.best === 'naive') return { label: '⚠ Belum mengungguli random walk', cls: 'text-amber-400' };
+  const nv = d.metrics?.naive?.rmse;
+  const bt = d.metrics?.[d.best]?.rmse;
+  if (nv != null && bt != null && bt < nv * 0.995) {
+    return { label: '✓ Mengungguli random walk', cls: 'text-emerald-400' };
+  }
+  return { label: '≈ Setara random walk (beda tipis)', cls: 'text-amber-400' };
+});
 const weightsText = computed(() => {
   const w = data.value?.weights || [];
   if (!w.length) return null;
@@ -198,9 +210,7 @@ const chartOption = computed(() => {
           <div class="glow-card rounded-2xl p-5">
             <p class="text-[11px] text-slate-400 uppercase tracking-wide">Model Terbaik (RMSE uji)</p>
             <p class="text-xl font-extrabold text-slate-50 mt-1">{{ bestLabel }}</p>
-            <p class="text-[11px] mt-1" :class="beatsNaive ? 'text-emerald-400' : 'text-amber-400'">
-              {{ beatsNaive ? '✓ Mengungguli random walk' : '⚠ Belum mengungguli random walk' }}
-            </p>
+            <p class="text-[11px] mt-1" :class="naiveVerdict.cls">{{ naiveVerdict.label }}</p>
           </div>
 
           <div class="glow-card rounded-2xl p-5">

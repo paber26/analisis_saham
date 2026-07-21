@@ -34,7 +34,7 @@ const QUICK_SIGNALS: QuickSignal[] = [
   { key: 'macd', label: 'MACD Bullish', test: (x) => x.macd != null && x.macdSignal != null && x.macd > x.macdSignal },
   { key: 'volume', label: 'Volume Spike ≥1.5x', test: (x) => x.volRatio != null && x.volRatio >= 1.5 },
   { key: 'near52h', label: 'Dekat 52W High', test: (x) => x.pctFromHigh != null && x.pctFromHigh >= -8 },
-  { key: 'outperform', label: 'Outperform IHSG', needsFund: true, test: (x) => x.rs3m != null && x.rs3m > 0 },
+  { key: 'outperform', label: 'Outperform IHSG (RS>2%)', needsFund: true, test: (x) => x.rs3m != null && x.rs3m > 2 },
   { key: 'quality', label: 'Berkualitas (ROE≥12 & tumbuh)', needsFund: true, test: (x) => x.roe != null && x.roe >= 12 && ((x.earningsGrowth != null && x.earningsGrowth > 0) || (x.revenueGrowth != null && x.revenueGrowth > 0)) }
 ];
 const activeQuickSignals = ref<Set<string>>(new Set());

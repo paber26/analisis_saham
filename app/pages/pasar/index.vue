@@ -14,16 +14,26 @@ const breadth = computed(() => data.value?.breadth || null);
 const sectors = computed<any[]>(() => data.value?.sectors || []);
 
 const regimeMeta = computed(() => {
-  const r = breadth.value?.regime;
-  if (r === 'risk-on') return { label: 'RISK-ON', desc: 'Mayoritas saham di atas MA200 — momentum pasar positif.', cls: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/[0.06]', bar: 'bg-emerald-500' };
-  if (r === 'risk-off') return { label: 'RISK-OFF', desc: 'Mayoritas saham di bawah MA200 — pasar defensif, hati-hati.', cls: 'text-rose-300 border-rose-500/30 bg-rose-500/[0.06]', bar: 'bg-rose-500' };
-  return { label: 'NETRAL', desc: 'Pasar campuran — pilih saham secara selektif.', cls: 'text-amber-300 border-amber-500/30 bg-amber-500/[0.06]', bar: 'bg-amber-500' };
+  const b = breadth.value;
+  // Deskripsi memakai angka breadth aktual agar tidak bertentangan dgn stat di bawahnya
+  const p = b ? `${b.aboveMA200Pct}% saham di atas MA200` : '';
+  const r = b?.regime;
+  if (r === 'risk-on') return { label: 'RISK-ON', desc: `${p} — breadth kuat, momentum pasar cenderung positif.`, cls: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/[0.06]', bar: 'bg-emerald-500' };
+  if (r === 'risk-off') return { label: 'RISK-OFF', desc: `${p} — breadth lemah, pasar defensif, hati-hati beli.`, cls: 'text-rose-300 border-rose-500/30 bg-rose-500/[0.06]', bar: 'bg-rose-500' };
+  return { label: 'NETRAL', desc: `${p} — pasar campuran, pilih saham secara selektif.`, cls: 'text-amber-300 border-amber-500/30 bg-amber-500/[0.06]', bar: 'bg-amber-500' };
 });
 
+// Rata-rata skor sektor → warna bar RELATIF (memimpin/tertinggal), bukan absolut,
+// supaya tetap membedakan sektor meski di pasar lemah skornya sama-sama rendah.
+const sectorMean = computed(() => {
+  const s = sectors.value;
+  return s.length ? s.reduce((a, b) => a + b.avgScore, 0) / s.length : 0;
+});
 function sectorBarClass(score: number) {
-  if (score >= 60) return 'bg-emerald-500';
-  if (score >= 50) return 'bg-sky-500';
-  if (score >= 40) return 'bg-slate-500';
+  const m = sectorMean.value;
+  if (score >= m + 3) return 'bg-emerald-500';
+  if (score >= m) return 'bg-sky-500';
+  if (score >= m - 3) return 'bg-slate-500';
   return 'bg-rose-500';
 }
 const pct = (n: number | null | undefined) => (n == null ? '—' : n + '%');

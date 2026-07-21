@@ -230,6 +230,17 @@ const conclusions = computed<Bullet[]>(() => {
   return out;
 });
 
+// Header RS chip — deadband ±2% agar konsisten dgn bullet kesimpulan
+const rsChip = computed(() => {
+  const r = an.value?.relative;
+  if (!r || r.rs3m == null) return null;
+  const v = r.rs3m;
+  const s = (v >= 0 ? '+' : '') + v + '%';
+  if (Math.abs(v) <= 2) return { label: `≈ Setara IHSG ${s}`, cls: 'text-slate-300 bg-slate-800/60 border-slate-700' };
+  if (v > 0) return { label: `↑ Outperform IHSG ${s}`, cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' };
+  return { label: `↓ Underperform ${s}`, cls: 'text-rose-300 bg-rose-500/10 border-rose-500/25' };
+});
+
 const verdict = computed(() => {
   const tv = t.value;
   if (!tv) return null;
@@ -272,11 +283,8 @@ const verdict = computed(() => {
                 <h3 class="text-2xl font-extrabold text-slate-50">{{ an.code }}</h3>
                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="ratingClass(t.rating)">{{ t.rating }} · {{ t.score }}/100</span>
                 <span v-if="verdict" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="verdict.cls">{{ verdict.label }}</span>
-                <span v-if="an.relative && an.relative.rs3m != null" class="text-[10px] font-bold px-2.5 py-1 rounded-full border"
-                  :class="an.relative.outperform ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-rose-300 bg-rose-500/10 border-rose-500/25'"
-                  title="Relative strength 3 bulan vs IHSG">
-                  {{ an.relative.outperform ? '↑ Outperform IHSG' : '↓ Underperform' }} {{ an.relative.rs3m >= 0 ? '+' : '' }}{{ an.relative.rs3m }}%
-                </span>
+                <span v-if="rsChip" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="rsChip.cls"
+                  title="Relative strength 3 bulan vs IHSG">{{ rsChip.label }}</span>
               </div>
               <p class="text-xs text-slate-400 mt-1">{{ an.name }}<span v-if="liveFund?.sector"> · {{ liveFund.sector }}</span></p>
             </div>

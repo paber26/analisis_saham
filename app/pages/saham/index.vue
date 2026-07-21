@@ -21,6 +21,9 @@ watch(activeSymbol, (sym) => {
   router.replace({ query: { ...route.query, symbol: sym } });
 });
 
+const { setLast } = useLastSymbol();
+watch(activeSymbol, setLast, { immediate: true });
+
 // Fetch live stock details from server API (now queries 1 year range)
 const {
   data: stockDetail,

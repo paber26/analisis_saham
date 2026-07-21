@@ -37,14 +37,14 @@
             Screening
           </NuxtLink>
           <NuxtLink
-            to="/analisa/BBCA"
+            :to="`/analisa/${lastSymbol}`"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/analisa') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
             Analisa
           </NuxtLink>
           <NuxtLink
-            to="/forecast"
+            :to="`/forecast?symbol=${lastSymbol}`"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/forecast') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
@@ -58,21 +58,21 @@
             Backtest
           </NuxtLink>
           <NuxtLink
-            to="/seasonal"
+            :to="`/seasonal?symbol=${lastSymbol}`"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/seasonal') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
             Pola Musiman
           </NuxtLink>
           <NuxtLink
-            to="/saham"
+            :to="`/saham?symbol=${lastSymbol}`"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
             Chart & Keuangan
           </NuxtLink>
           <NuxtLink
-            to="/profil-saham"
+            :to="`/profil-saham?symbol=${lastSymbol}`"
             class="text-sm font-semibold transition-colors"
             :class="[route.path.startsWith('/profil-saham') ? 'text-emerald-400' : 'text-slate-400 hover:text-slate-200']"
           >
@@ -105,5 +105,9 @@
 </template>
 
 <script setup lang="ts">
+import { onMounted } from 'vue';
 const route = useRoute();
+// Shared "last viewed symbol" so single-stock nav links open the last stock
+const { last: lastSymbol, hydrate } = useLastSymbol();
+onMounted(hydrate);
 </script>

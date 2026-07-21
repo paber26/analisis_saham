@@ -20,6 +20,9 @@ watch(activeSymbol, (sym) => {
   router.replace({ query: { ...route.query, symbol: sym } });
 });
 
+const { setLast } = useLastSymbol();
+watch(activeSymbol, setLast, { immediate: true });
+
 const { data: profile, pending, error } = await useFetch<any>(() => '/api/profile', {
   params: { symbol: activeSymbol },
   watch: [activeSymbol]

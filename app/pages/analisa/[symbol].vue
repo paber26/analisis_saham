@@ -29,6 +29,10 @@ async function toggleStar() {
 onMounted(loadWatch);
 watch(codeOnly, loadWatch);
 
+// Remember last viewed symbol (shared across pages)
+const { setLast } = useLastSymbol();
+watch(codeOnly, setLast, { immediate: true });
+
 useHead(() => ({
   title: `Analisa ${symbol.value} — Teknikal, Level, Musiman & Forecast`,
   meta: [

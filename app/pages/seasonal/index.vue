@@ -33,6 +33,9 @@ watch([activeSymbol, selectedPeriodType], () => {
   });
 });
 
+const { setLast } = useLastSymbol();
+watch(activeSymbol, setLast, { immediate: true });
+
 // Fetch active stock data dynamically from API
 const { 
   data: fetchedStockData, 

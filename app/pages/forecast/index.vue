@@ -17,6 +17,10 @@ watch([activeSymbol, horizon], () => {
   router.replace({ query: { ...route.query, symbol: activeSymbol.value, horizon: horizon.value } });
 });
 
+// Remember last viewed symbol (shared across pages)
+const { setLast } = useLastSymbol();
+watch(activeSymbol, setLast, { immediate: true });
+
 const { data, pending, error } = await useFetch<any>(() => '/api/forecast', {
   params: { symbol: activeSymbol, horizon },
   watch: [activeSymbol, horizon]
@@ -188,6 +192,13 @@ const chartOption = computed(() => {
       </div>
 
       <template v-else-if="data">
+        <!-- Active stock -->
+        <div class="flex items-baseline gap-3 flex-wrap px-1">
+          <h3 class="text-2xl font-extrabold text-slate-50">{{ (data.symbol || '').replace('.JK', '') }}</h3>
+          <span class="text-sm text-slate-400">{{ data.name }}</span>
+          <NuxtLink :to="`/analisa/${(data.symbol || '').replace('.JK', '')}`" class="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold ml-auto">→ Analisa lengkap</NuxtLink>
+        </div>
+
         <!-- Summary cards -->
         <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="glow-card rounded-2xl p-5">

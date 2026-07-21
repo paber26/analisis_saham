@@ -1,5 +1,5 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 
 export interface MaterialItem {
   id: string;
@@ -13,8 +13,8 @@ export interface MaterialItem {
   isCustom?: boolean;
 }
 
-const STORE_DIR = path.resolve(process.env.DATA_STORE_DIR || path.resolve(process.cwd(), '.data-store'));
-const STORE_FILE = path.join(STORE_DIR, 'materials.json');
+const STORE_DIR = resolve(process.env.DATA_STORE_DIR || resolve(process.cwd(), '.data-store'));
+const STORE_FILE = join(STORE_DIR, 'materials.json');
 
 const INITIAL_MATERIALS: MaterialItem[] = [
   {
@@ -140,19 +140,19 @@ Jangan pernah meletakkan seluruh modal Anda dalam risiko. Batasi maksimal risiko
 ];
 
 function ensureDirectoryExists() {
-  if (!fs.existsSync(STORE_DIR)) {
-    fs.mkdirSync(STORE_DIR, { recursive: true });
+  if (!existsSync(STORE_DIR)) {
+    mkdirSync(STORE_DIR, { recursive: true });
   }
 }
 
 export function getMaterials(): MaterialItem[] {
   try {
     ensureDirectoryExists();
-    if (!fs.existsSync(STORE_FILE)) {
-      fs.writeFileSync(STORE_FILE, JSON.stringify(INITIAL_MATERIALS, null, 2), 'utf-8');
+    if (!existsSync(STORE_FILE)) {
+      writeFileSync(STORE_FILE, JSON.stringify(INITIAL_MATERIALS, null, 2), 'utf-8');
       return INITIAL_MATERIALS;
     }
-    const raw = fs.readFileSync(STORE_FILE, 'utf-8');
+    const raw = readFileSync(STORE_FILE, 'utf-8');
     const items = JSON.parse(raw) as MaterialItem[];
     return Array.isArray(items) && items.length > 0 ? items : INITIAL_MATERIALS;
   } catch (err) {
@@ -165,8 +165,8 @@ export function saveMaterials(materials: MaterialItem[]): boolean {
   try {
     ensureDirectoryExists();
     const tempFile = `${STORE_FILE}.tmp.${Date.now()}`;
-    fs.writeFileSync(tempFile, JSON.stringify(materials, null, 2), 'utf-8');
-    fs.renameSync(tempFile, STORE_FILE);
+    writeFileSync(tempFile, JSON.stringify(materials, null, 2), 'utf-8');
+    renameSync(tempFile, STORE_FILE);
     return true;
   } catch (err) {
     console.error('Failed saving materials store:', err);

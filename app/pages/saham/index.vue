@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue';
 import { stockFundamentals, getStockFundamentals } from '../../data/stockFundamentals';
+import { useLastSymbol } from '~/composables/useLastSymbol';
 
 // Page Title and SEO Meta
 useHead({
@@ -22,7 +23,7 @@ watch(activeSymbol, (sym) => {
 });
 
 const { setLast } = useLastSymbol();
-watch(activeSymbol, setLast, { immediate: true });
+watch(activeSymbol, (sym) => setLast(sym), { immediate: true });
 
 // Fetch live stock details from server API (now queries 1 year range)
 const {

@@ -2,16 +2,17 @@
 import { ref } from 'vue';
 
 useHead({
-  title: 'Pengembangan & Arsitektur Institusional - Saham IDX',
+  title: 'Rencana Pengembangan & Akademi WMI - Saham IDX',
   meta: [
     {
       name: 'description',
-      content: 'Dokumentasi arsitektur sistem, cetak biru analisis Wakil Manajer Investasi (WMI) Reksa Dana Saham, panduan deployment server, dan roadmap pengembangan.'
+      content: 'Rencana pengembangan profesional, cetak biru arsitektur analisis institusional Wakil Manajer Investasi (WMI) Reksa Dana Saham, dan modul pembelajaran edukasi pasar modal.'
     }
   ]
 });
 
-const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
+const activeTab = ref<'academy' | 'wmi' | 'architecture' | 'deploy' | 'roadmap'>('academy');
+const activeModule = ref<number>(1);
 </script>
 
 <template>
@@ -23,13 +24,13 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
         <div>
           <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-3">
             <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            PORTAL PENGEMBANGAN & ARSITEKTUR
+            PORTAL ARSITEKTUR & AKADEMI INVESTASI WMI
           </div>
           <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-50 tracking-tight">
-            Arsitektur Sistem & Cetak Biru Institusional (WMI)
+            Rencana Pengembangan & Akademi Analisis Institusional
           </h1>
-          <p class="text-sm text-slate-400 mt-2 max-w-3xl">
-            Dokumentasi lengkap arsitektur aplikasi <span class="text-slate-200 font-medium">analisis_saham</span>, panduan deployment infrastruktur server produksi, serta rancangan pengolahan reksa dana saham institusional.
+          <p class="text-sm text-slate-400 mt-2 max-w-3xl leading-relaxed">
+            Rancangan platform analisis saham standar institusional (Wakil Manajer Investasi / Fund Manager Reksa Dana Saham) dilengkapi dengan <span class="text-emerald-400 font-semibold">Modul Edukasi Analisis Profesional</span> untuk memperdalam ilmu pasar modal.
           </p>
         </div>
 
@@ -50,6 +51,18 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
 
     <!-- Navigation Tabs -->
     <div class="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
+      <button
+        @click="activeTab = 'academy'"
+        class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+        :class="[
+          activeTab === 'academy'
+            ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20'
+            : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+        ]"
+      >
+        <span>🎓</span> Materi Edukasi &amp; Akademi WMI
+      </button>
+
       <button
         @click="activeTab = 'wmi'"
         class="px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
@@ -83,7 +96,7 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
             : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
         ]"
       >
-        <span>🚀</span> Panduan Deploy & Server (DEPLOY.md)
+        <span>🚀</span> Panduan Deploy &amp; Server (DEPLOY.md)
       </button>
 
       <button
@@ -99,7 +112,289 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
       </button>
     </div>
 
-    <!-- TAB 1: WMI INSTITUTIONAL BLUEPRINT -->
+    <!-- TAB 1: ACADEMY / MATERI EDUKASI WMI -->
+    <div v-if="activeTab === 'academy'" class="space-y-8">
+      <!-- Intro Section -->
+      <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+          <h2 class="text-xl font-bold text-slate-100 flex items-center gap-2">
+            <span>🎓</span> Modul Kurikulum Edukasi Manajer Investasi (WMI)
+          </h2>
+          <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">
+            Institutional Fund Management Series
+          </span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Materi ini dirancang secara sistematis berdasarkan metodologi analisis yang digunakan oleh <strong>Buy-Side Equity Analysts, Portfolio Managers, dan Manajer Investasi Institusional</strong> untuk memilih saham, mengukur efisiensi portofolio, membatasi risiko kerugian, dan mencetak <i>Alpha</i> secara konsisten.
+        </p>
+
+        <!-- Module Picker Sub-tabs -->
+        <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2">
+          <button
+            @click="activeModule = 1"
+            class="p-3 rounded-xl text-left border transition-all text-xs font-semibold"
+            :class="[activeModule === 1 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200']"
+          >
+            <div class="text-[10px] text-slate-400">Modul 1</div>
+            <div>Top-Down &amp; Bottom-Up</div>
+          </button>
+
+          <button
+            @click="activeModule = 2"
+            class="p-3 rounded-xl text-left border transition-all text-xs font-semibold"
+            :class="[activeModule === 2 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200']"
+          >
+            <div class="text-[10px] text-slate-400">Modul 2</div>
+            <div>DuPont &amp; Valuasi DCF</div>
+          </button>
+
+          <button
+            @click="activeModule = 3"
+            class="p-3 rounded-xl text-left border transition-all text-xs font-semibold"
+            :class="[activeModule === 3 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200']"
+          >
+            <div class="text-[10px] text-slate-400">Modul 3</div>
+            <div>Quantitative Factor (Smart Beta)</div>
+          </button>
+
+          <button
+            @click="activeModule = 4"
+            class="p-3 rounded-xl text-left border transition-all text-xs font-semibold"
+            :class="[activeModule === 4 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200']"
+          >
+            <div class="text-[10px] text-slate-400">Modul 4</div>
+            <div>Risk Analytics (VaR &amp; Brinson)</div>
+          </button>
+
+          <button
+            @click="activeModule = 5"
+            class="p-3 rounded-xl text-left border transition-all text-xs font-semibold"
+            :class="[activeModule === 5 ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400' : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200']"
+          >
+            <div class="text-[10px] text-slate-400">Modul 5</div>
+            <div>Guardrails &amp; Likuiditas</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- MODULE 1 CONTENT -->
+      <div v-if="activeModule === 1" class="space-y-6">
+        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+          <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+            <span>🌐</span> Modul 1: Kerangka Kerja Investasi Top-Down &amp; Bottom-Up
+          </h3>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-300 leading-relaxed">
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span>🏛️</span> 1. Top-Down Macro &amp; Sector Allocation
+              </h4>
+              <p>
+                Analisis dimulai dari kondisi makroekonomi global &amp; domestik (Suku Bunga BI/Fed, Inflasi, Pertumbuhan PDB, Nilai Tukar Rupiah), lalu menentukan alokasi sektor sesuai siklus ekonomi:
+              </p>
+              <ul class="list-disc list-inside space-y-1 text-slate-400">
+                <li><strong class="text-slate-200">Ekspansi / Early-Cycle</strong>: Sektor Keuangan (Perbankan), Properti, Otomotif.</li>
+                <li><strong class="text-slate-200">Peak / Commodity Boom</strong>: Sektor Pertambangan, Energi, Industri Dasar.</li>
+                <li><strong class="text-slate-200">Resesi / Late-Cycle</strong>: Sektor Barang Konsumen Primer (Consumer Staples), Telekomunikasi, Kesehatan.</li>
+              </ul>
+            </div>
+
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span>🔍</span> 2. Bottom-Up Stock Selection &amp; Economic Moat
+              </h4>
+              <p>
+                Menganalisis emiten secara individual untuk menemukan perusahaan berkuantitas tinggi (*high quality*) yang memiliki parit ekonomi (*Economic Moat*):
+              </p>
+              <ul class="list-disc list-inside space-y-1 text-slate-400">
+                <li><strong class="text-slate-200">Cost Advantage</strong>: Efisiensi biaya produksi terendah dibanding pesaing.</li>
+                <li><strong class="text-slate-200">Switching Cost</strong>: Biaya tinggi bagi konsumen jika berpindah ke produk lain.</li>
+                <li><strong class="text-slate-200">Network Effect</strong>: Nilai produk meningkat seiring bertambahnya pengguna.</li>
+                <li><strong class="text-slate-200">ROIC vs WACC</strong>: Return on Invested Capital konsisten di atas Weighted Average Cost of Capital.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 2 CONTENT -->
+      <div v-if="activeModule === 2" class="space-y-6">
+        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+          <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+            <span>🧮</span> Modul 2: Analisis Laporan Keuangan DuPont &amp; Valuation Engine
+          </h3>
+
+          <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+            <!-- DuPont Analysis Explanation -->
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span>📈</span> DuPont 3-Step Analysis (Membedah Sumber ROE)
+              </h4>
+              <p>
+                Seorang WMI tidak hanya melihat ROE yang tinggi, tetapi membedah apakah ROE tinggi tersebut berasal dari efisiensi profit margin, efisiensi aset, atau risiko utang yang berbahaya:
+              </p>
+              <div class="bg-slate-900 p-4 rounded-xl border border-slate-800 font-mono text-emerald-400 text-center text-xs">
+                ROE = (Net Profit Margin) × (Asset Turnover) × (Financial Leverage)
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 text-slate-300">
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                  <div class="font-bold text-slate-200">1. Net Profit Margin</div>
+                  <div class="text-[11px] text-slate-400">Laba Bersih / Penjualan. Menandakan daya saing harga &amp; efisiensi operasional.</div>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                  <div class="font-bold text-slate-200">2. Asset Turnover</div>
+                  <div class="text-[11px] text-slate-400">Penjualan / Total Aset. Menandakan seberapa produktif aset perusahaan menghasilkan pendapatan.</div>
+                </div>
+                <div class="bg-slate-900/60 p-3 rounded-lg border border-slate-800">
+                  <div class="font-bold text-slate-200">3. Financial Leverage</div>
+                  <div class="text-[11px] text-slate-400">Total Aset / Ekuitas. Jika rasio ini terlalu tinggi (&gt; 3x), ROE semu karena utang yang berisiko.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Free Cash Flow & Valuation -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+                <h4 class="font-bold text-slate-100 text-sm">Quality of Earnings &amp; Free Cash Flow</h4>
+                <p>
+                  Laba bersih pada laporan laba rugi bisa direkayasa dengan pencatatan akrual. Institusi menggunakan **Free Cash Flow (FCF)**:
+                </p>
+                <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-emerald-400 text-xs">
+                  FCF = Arus Kas Operasi - CapEx
+                </div>
+                <p class="text-slate-400">
+                  Emiten sehat wajib memiliki <i>Cash Conversion Ratio</i> (FCF / Laba Bersih) &gt; 0.8.
+                </p>
+              </div>
+
+              <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+                <h4 class="font-bold text-slate-100 text-sm">Historical Valuation Bands (PE/PBV Standard Deviation)</h4>
+                <p>
+                  Menilai harga saham bukan dari murah nominal, melainkan posisi valuasi relatif terhadap rata-rata historis 5-tahun:
+                </p>
+                <ul class="list-disc list-inside text-slate-400 space-y-1">
+                  <li><strong class="text-emerald-400">Undervalued Zone</strong>: Valuasi di bawah -1σ hingga -2σ standar deviasi.</li>
+                  <li><strong class="text-amber-400">Fair Value Zone</strong>: Valuasi di sekitar Mean (rata-rata 5-tahun).</li>
+                  <li><strong class="text-rose-400">Overvalued Zone</strong>: Valuasi melampaui +1σ hingga +2σ standar deviasi.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 3 CONTENT -->
+      <div v-if="activeModule === 3" class="space-y-6">
+        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+          <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+            <span>⚡</span> Modul 3: Quantitative Factor Investing (Smart Beta Rating)
+          </h3>
+
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <i>Factor Investing</i> adalah pendekatan kuantitatif yang mengelompokkan saham berdasarkan karakteristik risiko-hasil yang telah terbukti secara akademis dan historis mengalahkan pasar (Fama-French Multi-Factor Model).
+          </p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <div class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span class="text-emerald-400">1. Quality Factor</span>
+              </div>
+              <p class="text-slate-400">Menyaring emiten dengan neraca kuat, profitabilitas tinggi, dan volatilitas laba rendah. Metrik: ROE &gt; 15%, Debt to Equity &lt; 1.0, Gross Margin tinggi.</p>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <div class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span class="text-emerald-400">2. Value Factor</span>
+              </div>
+              <p class="text-slate-400">Menyaring emiten yang harganya terdiskon dibanding nilai fundamentalnya. Metrik: High Earnings Yield (1/PE), High Book-to-Market (1/PBV), EV/EBITDA rendah.</p>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <div class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span class="text-emerald-400">3. Momentum Factor</span>
+              </div>
+              <p class="text-slate-400">Saham yang sedang dalam tren kenaikan kuat cenderung melanjutkan trennya dalam jangka menengah. Metrik: Return 6M/12M dikurangi return bulan terakhir.</p>
+            </div>
+
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+              <div class="font-bold text-slate-100 text-sm flex items-center gap-2">
+                <span class="text-emerald-400">4. Low Volatility Factor</span>
+              </div>
+              <p class="text-slate-400">Anomali pasar di mana saham ber-volatilitas terendah menghasilkan *risk-adjusted return* lebih tinggi dalam jangka panjang dibanding saham sangat fluktuatif.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 4 CONTENT -->
+      <div v-if="activeModule === 4" class="space-y-6">
+        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+          <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+            <span>📊</span> Modul 4: Portofolio Analytics, VaR &amp; Brinson Attribution
+          </h3>
+
+          <div class="space-y-4 text-xs text-slate-300 leading-relaxed">
+            <!-- VaR & CVaR -->
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm">1. Value at Risk (VaR 95%) &amp; Expected Shortfall (CVaR)</h4>
+              <p>
+                Menghitung batas potensi kerugian maksimum portofolio harian pada tingkat kepercayaan 95%. Jika pasar mengalami kepanikan ekstrem di luar batas VaR, **Expected Shortfall (CVaR)** mengukur rata-rata kerugian di area *tail risk*.
+              </p>
+              <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-emerald-400 text-xs">
+                VaR (95%) = Portofolio Value × (Mean Return - 1.645 × Portfolio Volatility)
+              </div>
+            </div>
+
+            <!-- Brinson Attribution -->
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm">2. Brinson-Fachler Performance Attribution Model</h4>
+              <p>
+                Model standar internasional untuk membedah sumber keunggulan return WMI dibanding Indeks Acuan (IHSG / LQ45):
+              </p>
+              <ul class="list-disc list-inside text-slate-400 space-y-1">
+                <li><strong class="text-slate-200">Allocation Effect</strong>: Keuntungan yang didapat dari keputusan memperbesar (*overweight*) porsi sektor yang berkinerja unggul.</li>
+                <li><strong class="text-slate-200">Selection Effect</strong>: Keuntungan yang didapat dari kejelian memilih saham terbaik di dalam sektor tersebut.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 5 CONTENT -->
+      <div v-if="activeModule === 5" class="space-y-6">
+        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
+          <h3 class="text-lg font-bold text-emerald-400 flex items-center gap-2">
+            <span>⚖️</span> Modul 5: Risk Guardrails &amp; Likuiditas Institusional
+          </h3>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs text-slate-300 leading-relaxed">
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm">OJK Mandate Rules (Batasan Regulasi)</h4>
+              <ul class="list-disc list-inside text-slate-400 space-y-2">
+                <li><strong class="text-slate-200">Single Issuer Cap</strong>: Porsi kepemilikan 1 emiten tidak boleh melebihi 10% dari total nilai portofolio (NAV).</li>
+                <li><strong class="text-slate-200">Minimal Porsi Saham</strong>: Reksa Dana Saham wajib mengalokasikan minimal 80% NAV pada efek bersifat ekuitas.</li>
+                <li><strong class="text-slate-200">Batas Sektor</strong>: Maksimal 25-30% NAV dialokasikan pada 1 sektor usaha.</li>
+              </ul>
+            </div>
+
+            <div class="bg-slate-950 p-5 rounded-xl border border-slate-800 space-y-3">
+              <h4 class="font-bold text-slate-100 text-sm">Days-to-Liquid (Stress Test Likuiditas)</h4>
+              <p>
+                Rasio untuk mengukur berapa hari yang dibutuhkan WMI untuk mencairkan seluruh posisi 1 saham tanpa merusak harga pasar:
+              </p>
+              <div class="bg-slate-900 p-3 rounded-lg border border-slate-800 font-mono text-emerald-400 text-xs">
+                Days to Liquid = Posisi Portofolio / (10% × ADV 30-Hari)
+              </div>
+              <p class="text-slate-400">
+                Jika Days to Liquid &gt; 5 hari, saham tersebut berisiko tinggi saat terjadi <i>redemption</i> masif.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: WMI INSTITUTIONAL BLUEPRINT -->
     <div v-if="activeTab === 'wmi'" class="space-y-8">
       <!-- 3 Pillars Card Grid -->
       <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -127,9 +422,9 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
           <div class="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold mb-4 text-lg">
             📈
           </div>
-          <h3 class="text-base font-bold text-slate-100 mb-2">3. AUM Growth & Investor Trust</h3>
+          <h3 class="text-base font-bold text-slate-100 mb-2">3. AUM Growth &amp; Investor Trust</h3>
           <p class="text-xs text-slate-400 leading-relaxed">
-            Menghasilkan konsistensi *Risk-Adjusted Return* (Sharpe Ratio, Sortino Ratio, Information Ratio) tinggi untuk menarik kepercayaan investor & inflow dana kelolaan baru.
+            Menghasilkan konsistensi *Risk-Adjusted Return* (Sharpe Ratio, Sortino Ratio, Information Ratio) tinggi untuk menarik kepercayaan investor &amp; inflow dana kelolaan baru.
           </p>
         </div>
       </div>
@@ -178,60 +473,9 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
 </pre>
         </div>
       </div>
-
-      <!-- Core WMI Analytics Modules Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-3">
-          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
-            <span>🎯</span> 1. Institutional Screener (Filter Liquid & Factor)
-          </h3>
-          <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside leading-relaxed">
-            <li><strong class="text-slate-100">ADV Limit</strong>: Rata-rata transaksi harian (ADV) &gt; Rp 5 Milyar/hari untuk mencegah <i>liquidity trap</i>.</li>
-            <li><strong class="text-slate-100">Free Float</strong>: Minimal 15-20% saham beredar publik.</li>
-            <li><strong class="text-slate-100">Quality Score</strong>: ROE &gt; 12%, DER &lt; 1.2x, positive Free Cash Flow.</li>
-            <li><strong class="text-slate-100">Value & Momentum</strong>: PE/PBV vs historis &amp; Trend RS vs IHSG.</li>
-          </ul>
-        </div>
-
-        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-3">
-          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
-            <span>⚖️</span> 2. Portfolio Guardrails (Kepatuhan Mandat OJK)
-          </h3>
-          <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside leading-relaxed">
-            <li><strong class="text-slate-100">Single Issuer Cap</strong>: Maksimal 10% NAV pada 1 emiten (regulasi OJK).</li>
-            <li><strong class="text-slate-100">Sektor Limit</strong>: Maksimal 25-30% NAV per sektor.</li>
-            <li><strong class="text-slate-100">Cash Buffer</strong>: Porsi kas 0–20% yang disesuaikan secara dinamis (*Tactical Asset Allocation*).</li>
-            <li><strong class="text-slate-100">Rebalance Drift</strong>: Sinyal otomatis jika porsi saham terdistorsi &gt; 2%.</li>
-          </ul>
-        </div>
-
-        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-3">
-          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
-            <span>📊</span> 3. Performance Attribution (Brinson Model)
-          </h3>
-          <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside leading-relaxed">
-            <li><strong class="text-slate-100">Allocation Effect</strong>: Keunggulan WMI karena alokasi bobot sektor.</li>
-            <li><strong class="text-slate-100">Selection Effect</strong>: Keunggulan WMI karena pemilihan saham di dalam sektor.</li>
-            <li><strong class="text-slate-100">Rasio Risiko</strong>: Sharpe Ratio, Sortino Ratio, Information Ratio.</li>
-            <li><strong class="text-slate-100">Tracking Error</strong>: Mengukur konsistensi penyimpangan vs IHSG/LQ45.</li>
-          </ul>
-        </div>
-
-        <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-3">
-          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
-            <span>🚨</span> 4. Risk Management & Stress Testing
-          </h3>
-          <ul class="text-xs text-slate-300 space-y-2 list-disc list-inside leading-relaxed">
-            <li><strong class="text-slate-100">Value at Risk (VaR 95%)</strong>: Estimasi kerugian maksimum portofolio.</li>
-            <li><strong class="text-slate-100">Correlation Heatmap</strong>: Deteksi korelasi tinggi (&gt; 0.75) antar holding.</li>
-            <li><strong class="text-slate-100">Days-to-Liquid</strong>: Simulasi hari eksekusi jika mengambil max 10% transaksi harian pasar.</li>
-            <li><strong class="text-slate-100">Drawdown Monitor</strong>: Pelacakan masa pemulihan *peak-to-trough*.</li>
-          </ul>
-        </div>
-      </div>
     </div>
 
-    <!-- TAB 2: SYSTEM ARCHITECTURE (ARCHITECTURE.md) -->
+    <!-- TAB 3: SYSTEM ARCHITECTURE (ARCHITECTURE.md) -->
     <div v-if="activeTab === 'architecture'" class="space-y-6">
       <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
         <h2 class="text-xl font-bold text-slate-100 border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -273,16 +517,11 @@ const activeTab = ref<'wmi' | 'architecture' | 'deploy' | 'roadmap'>('wmi');
             <li><strong>Ensemble</strong>: Rata-rata berbobot 1/RMSE² dari model yang mengalahkan naive pada window validasi 60 hari.</li>
             <li><strong>EWMA Volatilitas (λ=0.94)</strong>: Estimasi pita probabilitas proyeksi ~80%.</li>
           </ul>
-
-          <h3 class="text-sm font-bold text-emerald-400 mt-4">Data Store Pipeline Harian</h3>
-          <p>
-            Endpoint <code>/api/sync</code> dijalankan otomatis oleh <strong>cron harian sore WIB</strong> untuk membangun snapshot <code>.data-store/screen-latest.json</code>. Screener dapat menampilkan ratusan emiten secara instan tanpa re-computation.
-          </p>
         </div>
       </div>
     </div>
 
-    <!-- TAB 3: DEPLOYMENT GUIDE (DEPLOY.md) -->
+    <!-- TAB 4: DEPLOYMENT GUIDE (DEPLOY.md) -->
     <div v-if="activeTab === 'deploy'" class="space-y-6">
       <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
         <h2 class="text-xl font-bold text-slate-100 border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -314,18 +553,11 @@ Nginx Reverse Proxy (Origin Server) ──► Node / Nitro :3200 (PM2 app: "saha
             <li>Mengunggah folder <code>.output</code> ke server via <code>rsync</code>.</li>
             <li>Membersihkan cache harian (<code>.cache</code>) dan merestart PM2 process <code>saham</code> di port 3200.</li>
           </ol>
-
-          <h3 class="text-sm font-bold text-emerald-400 mt-4">Perintah Monitoring &amp; Troubleshooting Server</h3>
-          <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 font-mono text-[11px] text-slate-300 space-y-1">
-            <p><span class="text-emerald-400">pm2 list</span> - Cek status aplikasi</p>
-            <p><span class="text-emerald-400">pm2 logs saham</span> - Cek log real-time server</p>
-            <p><span class="text-emerald-400">pm2 restart saham</span> - Restart manual aplikasi PM2</p>
-          </div>
         </div>
       </div>
     </div>
 
-    <!-- TAB 4: ROADMAP ARCHITECTURE (ROADMAP.md) -->
+    <!-- TAB 5: ROADMAP ARCHITECTURE (ROADMAP.md) -->
     <div v-if="activeTab === 'roadmap'" class="space-y-6">
       <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
         <h2 class="text-xl font-bold text-slate-100 border-b border-slate-800 pb-3 flex items-center justify-between">
@@ -333,25 +565,25 @@ Nginx Reverse Proxy (Origin Server) ──► Node / Nitro :3200 (PM2 app: "saha
           <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full">Tier 1 – Tier 4</span>
         </h2>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-            <div class="text-emerald-400 font-bold text-xs">TIER 1 — Market Context &amp; Deep Fundamentals</div>
-            <p class="text-slate-300 text-xs">Market Breadth (% saham &gt; MA200), Rotasi Sektor, Relative Strength vs IHSG, dan Fundamental Rasio Pertumbuhan/DER/Margin.</p>
+            <div class="text-emerald-400 font-bold">TIER 1 — Market Context &amp; Deep Fundamentals</div>
+            <p class="text-slate-300">Market Breadth (% saham &gt; MA200), Rotasi Sektor, Relative Strength vs IHSG, dan Fundamental Rasio Pertumbuhan/DER/Margin.</p>
           </div>
 
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-            <div class="text-emerald-400 font-bold text-xs">TIER 2 — Watchlist &amp; Portfolio Management</div>
-            <p class="text-slate-300 text-xs">Penyimpanan posisi portofolio, perhitungan P&amp;L, Matriks Korelasi (Heatmap), dan Analisis Risiko Portofolio (Volatilitas, VaR, Beta).</p>
+            <div class="text-emerald-400 font-bold">TIER 2 — Watchlist &amp; Portfolio Management</div>
+            <p class="text-slate-300">Penyimpanan posisi portofolio, perhitungan P&amp;L, Matriks Korelasi (Heatmap), dan Analisis Risiko Portofolio (Volatilitas, VaR, Beta).</p>
           </div>
 
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-            <div class="text-emerald-400 font-bold text-xs">TIER 3 — Backtesting Engine &amp; Strategy Audit</div>
-            <p class="text-slate-300 text-xs">Engine simulasi tanpa look-ahead bias untuk menguji efektivitas Screener, Score, dan Musiman dibanding Indeks Acuan (IHSG).</p>
+            <div class="text-emerald-400 font-bold">TIER 3 — Backtesting Engine &amp; Strategy Audit</div>
+            <p class="text-slate-300">Engine simulasi tanpa look-ahead bias untuk menguji efektivitas Screener, Score, dan Musiman dibanding Indeks Acuan (IHSG).</p>
           </div>
 
           <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-            <div class="text-emerald-400 font-bold text-xs">TIER 4 — Automated Alert &amp; Notifications</div>
-            <p class="text-slate-300 text-xs">Integrasi Telegram Bot yang terhubung dengan Cron Harian untuk mengirimkan notifikasi saat sinyal/setup muncul.</p>
+            <div class="text-emerald-400 font-bold">TIER 4 — Automated Alert &amp; Notifications</div>
+            <p class="text-slate-300">Integrasi Telegram Bot yang terhubung dengan Cron Harian untuk mengirimkan notifikasi saat sinyal/setup muncul.</p>
           </div>
         </div>
       </div>

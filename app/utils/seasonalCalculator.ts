@@ -101,12 +101,12 @@ export function aggregateDataByPeriod(
         }
       }
     } else if (periodType === 'yearly') {
-      // Compound all 12 months
+      // Compound all 12 months for each year
       if (monthlyData.length > 0) {
         const yReturn = compoundReturns(monthlyData.map(m => m.returnVal));
         result.push({
           year,
-          periodLabel: 'Tahunan',
+          periodLabel: String(year),
           returnVal: yReturn
         });
       }
@@ -128,7 +128,7 @@ export function calculateSeasonalStats(
     ? MONTH_LABELS
     : periodType === 'quarterly'
       ? QUARTER_LABELS
-      : ['Tahunan'];
+      : Array.from(new Set(aggregated.map(item => item.periodLabel))).sort((a, b) => Number(a) - Number(b));
 
   const stats: SeasonalPeriodStats[] = [];
 

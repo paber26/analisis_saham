@@ -17,11 +17,11 @@ const chartOption = computed(() => {
 
   // Extract unique sorted years and period labels
   const years = Array.from(new Set(props.history.map(h => h.year))).sort((a, b) => a - b);
-  const periodLabels = props.stats.map(s => s.periodLabel);
+  const periodLabels = props.periodType === 'yearly' ? ['Return Tahunan'] : props.stats.map(s => s.periodLabel);
 
   // Map to [xIndex, yIndex, value] format
   const seriesData = aggregated.map(item => {
-    const xIndex = periodLabels.indexOf(item.periodLabel);
+    const xIndex = props.periodType === 'yearly' ? 0 : periodLabels.indexOf(item.periodLabel);
     const yIndex = years.indexOf(item.year);
     return [xIndex, yIndex, item.returnVal];
   });

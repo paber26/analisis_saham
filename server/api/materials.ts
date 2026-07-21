@@ -40,7 +40,7 @@ export default defineEventHandler(async (event) => {
     const items = getMaterials();
     const existingIndex = items.findIndex(m => m.id === body.id);
 
-    const now = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString().slice(0, 10);
 
     if (existingIndex >= 0) {
       items[existingIndex] = {

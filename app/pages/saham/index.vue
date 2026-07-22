@@ -15,6 +15,13 @@ useHead({
 const route = useRoute();
 const router = useRouter();
 const activeSymbol = ref(((route.query.symbol as string) || 'BBCA').toUpperCase().trim());
+
+// Sync URL query → state so external navigation (e.g. the screening rail) updates
+// the page without a remount.
+watch(() => route.query.symbol, (s) => {
+  const v = ((s as string) || '').toUpperCase().trim();
+  if (v && v !== activeSymbol.value) activeSymbol.value = v;
+});
 const selectedRange = ref<'1m' | '3m' | '6m' | '1y'>('6m');
 
 // Reflect the active symbol in the URL query for shareable links

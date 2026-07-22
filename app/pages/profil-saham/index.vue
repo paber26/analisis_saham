@@ -16,6 +16,13 @@ const route = useRoute();
 const router = useRouter();
 const activeSymbol = ref(((route.query.symbol as string) || 'BBCA').toUpperCase().trim());
 
+// Sync URL query → state so external navigation (e.g. the screening rail) updates
+// the page without a remount.
+watch(() => route.query.symbol, (s) => {
+  const v = ((s as string) || '').toUpperCase().trim();
+  if (v && v !== activeSymbol.value) activeSymbol.value = v;
+});
+
 watch(activeSymbol, (sym) => {
   router.replace({ query: { ...route.query, symbol: sym } });
 });

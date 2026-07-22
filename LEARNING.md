@@ -39,10 +39,19 @@ Melengkapi [ARCHITECTURE.md](ARCHITECTURE.md) (kondisi app) &
 
 ## Model data
 
-**Kurikulum (statis, di kode)** — 3 jalur × 12 lesson:
+**Kurikulum (statis, di kode)** — 4 jalur × 19 lesson:
 - `pemula` (4): mekanisme BEI · rasio fundamental · candlestick/S&R · money management
 - `menengah` (4): laporan keuangan · indikator (MA/RSI/MACD) · seasonality · portofolio
 - `lanjutan` (4): bandarmologi · literasi forecast · literasi backtest · jurnal & psikologi
+- `wmi` (7, level Profesi): profesi & regulasi OJK · nilai waktu uang · valuasi saham (Gordon) ·
+  valuasi obligasi & durasi · teori portofolio Markowitz · CAPM/SML · evaluasi kinerja & NAB.
+  Praktik menaut ke **Lembar Kerja WMI**.
+
+**Lembar Kerja WMI** (`/belajar/lembar-kerja.vue`) — halaman statis (route lebih
+prioritas dari `[lesson].vue`) berisi 7 kalkulator interaktif klien-saja (tanpa
+API): TVM, Gordon Growth, valuasi obligasi + durasi Macaulay/modified, portofolio
+2 aset, CAPM/SML, Sharpe/Treynor/Jensen, NAB reksa dana. Tiap lembar menampilkan
+rumusnya agar berguna sebagai template belajar ujian.
 
 Tiap lesson: `materialId?` (pakai ulang prosa materi) **atau** `content` inline,
 plus `practice` (deep-link ke tool: `/screening`, `/analisa/{symbol}`,

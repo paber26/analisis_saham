@@ -49,6 +49,7 @@ const ACCENT: Record<string, { text: string; bg: string; border: string; ring: s
   emerald: { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/25', ring: 'text-emerald-400', bar: 'bg-emerald-500' },
   sky: { text: 'text-sky-400', bg: 'bg-sky-500/10', border: 'border-sky-500/25', ring: 'text-sky-400', bar: 'bg-sky-500' },
   violet: { text: 'text-violet-400', bg: 'bg-violet-500/10', border: 'border-violet-500/25', ring: 'text-violet-400', bar: 'bg-violet-500' },
+  amber: { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/25', ring: 'text-amber-400', bar: 'bg-amber-500' },
 };
 function accent(p: Path) { return ACCENT[p.accent] ?? ACCENT.emerald; }
 </script>
@@ -122,6 +123,25 @@ function accent(p: Path) { return ACCENT[p.accent] ?? ACCENT.emerald; }
         </div>
       </div>
     </div>
+
+    <!-- Lembar Kerja WMI shortcut -->
+    <NuxtLink
+      to="/belajar/lembar-kerja"
+      class="block rounded-2xl border border-amber-500/25 bg-gradient-to-r from-amber-500/10 to-slate-900/40 p-5 hover:border-amber-500/50 transition-all group"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">🧮</span>
+          <div>
+            <div class="text-sm font-bold text-amber-300">Lembar Kerja WMI (7 Kalkulator Ujian)</div>
+            <p class="text-xs text-slate-400 mt-0.5 max-w-2xl leading-relaxed">
+              Nilai waktu uang · valuasi saham (Gordon) · valuasi obligasi &amp; durasi · portofolio 2 aset · CAPM/SML · Sharpe/Treynor/Jensen · NAB reksa dana.
+            </p>
+          </div>
+        </div>
+        <span class="shrink-0 text-amber-400 text-xs font-bold group-hover:translate-x-0.5 transition-transform">Buka lembar kerja →</span>
+      </div>
+    </NuxtLink>
 
     <!-- Learning Paths -->
     <div class="space-y-6">

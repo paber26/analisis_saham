@@ -44,7 +44,7 @@ export interface LearningModule {
 export interface LearningPath {
   id: string;
   title: string;
-  level: 'Pemula' | 'Menengah' | 'Lanjutan';
+  level: 'Pemula' | 'Menengah' | 'Lanjutan' | 'Profesi';
   goal: string;
   icon: string;
   accent: string;         // tailwind color token for the path (e.g. 'emerald')
@@ -446,6 +446,383 @@ Keyakinan bukan bukti. Sebuah strategi (mis. "skor teknikal ≥ 70") harus **dib
               {
                 q: 'Solusi terbaik melawan bias Loss Aversion (enggan cut loss) adalah…',
                 options: ['Menambah posisi (average down) tanpa rencana', 'Memakai automatic stop loss order', 'Menutup aplikasi', 'Menunggu tanpa batas'],
+                answer: 1,
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  {
+    id: 'wmi',
+    title: 'Jalur Profesi — Wakil Manajer Investasi (WMI)',
+    level: 'Profesi',
+    goal: 'Persiapan izin profesi WMI (OJK): regulasi & kode etik, nilai waktu uang, valuasi saham & obligasi, teori portofolio & CAPM, hingga evaluasi kinerja — dilengkapi lembar kerja perhitungan yang lazim dipakai untuk lulus ujian.',
+    icon: '🎓',
+    accent: 'amber',
+    modules: [
+      {
+        id: 'wmi-profesi',
+        title: 'Profesi, Regulasi & Etika',
+        icon: '🏛️',
+        lessons: [
+          {
+            id: 'l-wmi-profesi',
+            title: 'Mengenal Profesi WMI: Izin OJK, TICMI & Kode Etik',
+            summary: 'Peran dan ruang lingkup Wakil Manajer Investasi, jalur sertifikasi, batasan investasi reksa dana, dan pilar kode etik.',
+            minutes: 12,
+            content: `### Apa itu Wakil Manajer Investasi (WMI)?
+WMI adalah orang perseorangan yang mendapat **izin dari OJK** untuk bertindak mewakili Manajer Investasi mengelola portofolio efek untuk kepentingan nasabah (Kontrak Pengelolaan Dana / KPD) atau mengelola **Reksa Dana**. WMI adalah salah satu dari tiga izin wakil di pasar modal:
+- **WMI** — pengelolaan portofolio/investasi (buy-side).
+- **WPPE** (Wakil Perantara Pedagang Efek) — broker/dealer.
+- **WPEE** (Wakil Penjamin Emisi Efek) — underwriting.
+
+### Jalur Memperoleh Izin
+1. **Lulus ujian standar profesi** yang diselenggarakan Panitia Standar Profesi (materi & pelatihan lazim melalui **TICMI** — The Indonesia Capital Market Institute).
+2. **Mengajukan izin ke OJK** dengan bukti kelulusan + syarat administratif (tidak pernah dihukum tindak pidana keuangan, dsb).
+3. Menjaga izin lewat **Program Pendidikan Berkelanjutan (PPL)**.
+
+### Cakupan Ujian WMI (garis besar)
+1. **Ekonomi, Keuangan & Analisis Investasi** — makroekonomi, nilai waktu uang, analisis laporan keuangan.
+2. **Valuasi Efek** — saham (DDM, relatif), obligasi (harga, YTM, durasi).
+3. **Teori Portofolio & Manajemen Investasi** — Markowitz, CAPM, alokasi aset, diversifikasi.
+4. **Evaluasi Kinerja & Manajemen Risiko** — Sharpe/Treynor/Jensen, VaR, benchmark.
+5. **Reksa Dana** — jenis, NAB/Unit, biaya.
+6. **Etika & Peraturan Pasar Modal** — UU Pasar Modal, POJK reksa dana, kode etik.
+
+### Batasan Investasi Reksa Dana (contoh aturan wajib hafal)
+- Maksimum **10%** NAB pada efek satu emiten (kecuali SBN).
+- Maksimum **5%** NAB pada efek yang diterbitkan satu pihak untuk *money market*.
+- Larangan konflik kepentingan & *front running*.
+
+### Pilar Kode Etik WMI
+- **Integritas & Objektivitas** — bebas benturan kepentingan.
+- **Kehati-hatian (Prudent Man Rule)** — mengelola dana orang lain seperti dana sendiri yang berhati-hati.
+- **Kerahasiaan** data nasabah.
+- **Kepatuhan** pada hukum & peraturan.
+
+> Prinsip inti WMI: **fidusia** — mendahulukan kepentingan nasabah di atas kepentingan pribadi/perusahaan.`,
+            practice: {
+              label: 'Lihat Cetak Biru Institusional WMI',
+              to: '/pengembangan',
+              hint: 'Halaman Arsitektur WMI merangkum 3 pilar pengelolaan reksa dana & guardrail portofolio institusional.',
+            },
+            quiz: [
+              {
+                q: 'WMI memperoleh izin resmi dari…',
+                options: ['BEI', 'OJK', 'KSEI', 'TICMI'],
+                answer: 1,
+                explain: 'TICMI menyelenggarakan pelatihan/ujian; izin profesi diterbitkan OJK.',
+              },
+              {
+                q: 'Batas maksimum investasi reksa dana pada efek satu emiten (non-SBN) umumnya…',
+                options: ['5% NAB', '10% NAB', '25% NAB', 'Tanpa batas'],
+                answer: 1,
+              },
+              {
+                q: 'Prinsip fidusia mewajibkan WMI…',
+                options: ['Mendahulukan kepentingan pribadi', 'Mendahulukan kepentingan nasabah', 'Menjamin untung pasti', 'Menghindari diversifikasi'],
+                answer: 1,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'wmi-ekonomi',
+        title: 'Ekonomi & Nilai Waktu Uang',
+        icon: '⏳',
+        lessons: [
+          {
+            id: 'l-wmi-tvm',
+            title: 'Nilai Waktu Uang (Time Value of Money) & Anuitas',
+            summary: 'Konsep PV/FV, diskonto, anuitas, dan tingkat diskonto — fondasi seluruh valuasi.',
+            minutes: 11,
+            content: `### Prinsip Dasar
+Uang Rp 1 hari ini bernilai lebih dari Rp 1 di masa depan karena bisa diinvestasikan. Seluruh valuasi (saham, obligasi, proyek) bermuara pada **mendiskonto arus kas masa depan** ke nilai sekarang.
+
+### Rumus Inti
+- **Future Value**: \`FV = PV × (1 + r)^n\`
+- **Present Value**: \`PV = FV / (1 + r)^n\`
+- **FV Anuitas (ordinary)**: \`FV = PMT × [((1+r)^n − 1) / r]\`
+- **PV Anuitas (ordinary)**: \`PV = PMT × [(1 − (1+r)^-n) / r]\`
+- **Perpetuitas**: \`PV = PMT / r\`
+
+di mana *r* = tingkat bunga/diskonto per periode, *n* = jumlah periode, *PMT* = pembayaran berkala.
+
+### Tingkat Diskonto (Discount Rate)
+Semakin tinggi risiko/inflasi, semakin tinggi *r* → nilai sekarang arus kas masa depan makin kecil. Inilah mengapa saat suku bunga acuan naik, valuasi aset cenderung turun.
+
+> Gunakan **Lembar Kerja Nilai Waktu Uang** untuk latihan hitung PV/FV & anuitas seperti soal ujian.`,
+            practice: {
+              label: 'Buka Lembar Kerja: Nilai Waktu Uang',
+              to: '/belajar/lembar-kerja#tvm',
+              hint: 'Hitung FV, PV, dan anuitas secara interaktif.',
+            },
+            quiz: [
+              {
+                q: 'Bila tingkat diskonto naik, nilai sekarang (PV) arus kas masa depan…',
+                options: ['Naik', 'Turun', 'Tetap', 'Menjadi nol'],
+                answer: 1,
+              },
+              {
+                q: 'PV dari perpetuitas Rp 100/tahun pada r = 10% adalah…',
+                options: ['Rp 100', 'Rp 1.000', 'Rp 10.000', 'Tak terhingga'],
+                answer: 1,
+                explain: 'PV = PMT / r = 100 / 0,10 = 1.000.',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'wmi-valuasi',
+        title: 'Valuasi Efek',
+        icon: '🧮',
+        lessons: [
+          {
+            id: 'l-wmi-valuasi-saham',
+            title: 'Valuasi Saham: Dividend Discount Model (Gordon Growth)',
+            summary: 'Menghitung nilai wajar saham dari dividen & pertumbuhan, plus PER justified.',
+            minutes: 10,
+            content: `### Dividend Discount Model (DDM)
+Nilai saham = present value dari seluruh dividen masa depan.
+
+### Model Pertumbuhan Konstan (Gordon Growth)
+Bila dividen tumbuh konstan sebesar *g* selamanya:
+\`\`\`
+P0 = D1 / (r − g)
+D1 = D0 × (1 + g)
+\`\`\`
+- **P0** = nilai wajar saham hari ini
+- **D0** = dividen terakhir dibayar; **D1** = dividen tahun depan
+- **r** = tingkat pengembalian disyaratkan (dari CAPM)
+- **g** = pertumbuhan dividen (syarat: **g < r**)
+
+### PER Justified (Turunan)
+\`PER wajar = (D1/EPS1) / (r − g)\` = *payout ratio* / (r − g). Berguna membandingkan dengan PER pasar: bila PER pasar < PER justified → berpotensi *undervalued*.
+
+### Keterbatasan
+Sensitif terhadap asumsi *g* dan *r*; tidak cocok untuk emiten tanpa dividen atau pertumbuhan tak stabil (pakai FCF/relatif).
+
+> Latih di **Lembar Kerja Valuasi Saham (Gordon Growth)** lalu bandingkan dengan harga & PER live di Hub Analisa.`,
+            practice: {
+              label: 'Buka Lembar Kerja: Valuasi Saham',
+              to: '/belajar/lembar-kerja#gordon',
+              hint: 'Masukkan D0, g, dan r untuk mendapat nilai wajar P0 & PER justified.',
+            },
+            quiz: [
+              {
+                q: 'Syarat agar model Gordon Growth valid adalah…',
+                options: ['g > r', 'g = r', 'g < r', 'g = 0 selalu'],
+                answer: 2,
+              },
+              {
+                q: 'Saham dengan D1 = Rp 200, r = 12%, g = 4%. Nilai wajar P0 ≈…',
+                options: ['Rp 1.667', 'Rp 2.500', 'Rp 5.000', 'Rp 800'],
+                answer: 1,
+                explain: 'P0 = 200 / (0,12 − 0,04) = 200 / 0,08 = 2.500.',
+              },
+            ],
+          },
+          {
+            id: 'l-wmi-valuasi-obligasi',
+            title: 'Valuasi Obligasi: Harga, YTM, Durasi & Konveksitas',
+            summary: 'Menghitung harga obligasi dari kupon & yield, current yield, serta durasi Macaulay/modified.',
+            minutes: 12,
+            content: `### Harga Obligasi = PV Seluruh Arus Kas
+\`\`\`
+Harga = Σ [ Kupon / (1+y)^t ]  +  Nilai Nominal / (1+y)^n
+\`\`\`
+- **Kupon** = tingkat kupon × nilai nominal
+- **y** = yield to maturity (per periode); **n** = jumlah periode
+
+### Hubungan Harga & Yield (WAJIB paham)
+- **y > kupon** → harga di **bawah** par (*discount*).
+- **y = kupon** → harga **sama** dengan par.
+- **y < kupon** → harga di **atas** par (*premium*).
+- Harga dan yield **bergerak berlawanan arah**.
+
+### Ukuran Imbal Hasil
+- **Current Yield** = Kupon tahunan / Harga pasar.
+- **YTM** = yield yang menyamakan PV arus kas dengan harga pasar (dicari iteratif).
+
+### Durasi & Risiko Suku Bunga
+- **Durasi Macaulay** = rata-rata tertimbang waktu penerimaan arus kas.
+- **Durasi Modified** = Macaulay / (1 + y) → **estimasi % perubahan harga** untuk perubahan yield 1%.
+  \`ΔHarga% ≈ − Durasi Modified × Δy\`
+- **Konveksitas** mengoreksi estimasi durasi untuk perubahan yield besar (hubungan harga-yield melengkung, bukan lurus).
+
+> Gunakan **Lembar Kerja Valuasi Obligasi** untuk menghitung harga, current yield, dan durasi.`,
+            practice: {
+              label: 'Buka Lembar Kerja: Valuasi Obligasi',
+              to: '/belajar/lembar-kerja#bond',
+              hint: 'Hitung harga obligasi, current yield, dan durasi Macaulay/modified.',
+            },
+            quiz: [
+              {
+                q: 'Jika YTM > tingkat kupon, obligasi diperdagangkan…',
+                options: ['Di atas par (premium)', 'Sama dengan par', 'Di bawah par (discount)', 'Tanpa harga'],
+                answer: 2,
+              },
+              {
+                q: 'Durasi modified 5 dan yield naik 1%, harga obligasi kira-kira…',
+                options: ['Naik 5%', 'Turun 5%', 'Tetap', 'Turun 1%'],
+                answer: 1,
+                explain: 'ΔHarga% ≈ −DurasiMod × Δy = −5 × 1% = −5%.',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'wmi-portofolio',
+        title: 'Teori Portofolio & CAPM',
+        icon: '📊',
+        lessons: [
+          {
+            id: 'l-wmi-portfolio-theory',
+            title: 'Teori Portofolio Markowitz & Diversifikasi',
+            summary: 'Return & risiko portofolio, peran korelasi, dan efficient frontier.',
+            minutes: 11,
+            content: `### Return & Risiko Portofolio 2 Aset
+\`\`\`
+E(Rp) = w1·E(R1) + w2·E(R2)
+σp²   = w1²σ1² + w2²σ2² + 2·w1·w2·ρ12·σ1·σ2
+\`\`\`
+- **w** = bobot; **σ** = deviasi standar (risiko); **ρ12** = korelasi antar aset.
+
+### Kunci Diversifikasi
+Risiko portofolio **lebih kecil** dari rata-rata tertimbang risiko masing-masing aset **selama ρ < 1**. Semakin rendah (apalagi negatif) korelasi, semakin besar manfaat diversifikasi.
+
+### Efficient Frontier & Portofolio Optimal
+- **Efficient frontier** = kumpulan portofolio dengan return tertinggi pada tiap tingkat risiko.
+- Menambahkan **aset bebas risiko (Rf)** menghasilkan **Capital Market Line (CML)**; titik singgungnya = **portofolio pasar (market portfolio)**.
+
+### Risiko Sistematis vs Tidak Sistematis
+- **Tidak sistematis** (spesifik emiten) → bisa dihilangkan lewat diversifikasi.
+- **Sistematis** (pasar) → tidak bisa didiversifikasi, diukur oleh **beta (β)**.
+
+> Latih di **Lembar Kerja Portofolio 2 Aset**, lalu lihat matriks korelasi & risiko portofolio nyata Anda di halaman Portofolio.`,
+            practice: {
+              label: 'Buka Lembar Kerja: Portofolio 2 Aset',
+              to: '/belajar/lembar-kerja#portfolio2',
+              hint: 'Ubah bobot & korelasi untuk melihat efek diversifikasi pada risiko portofolio.',
+            },
+            quiz: [
+              {
+                q: 'Manfaat diversifikasi paling besar ketika korelasi antar aset…',
+                options: ['= +1', 'Mendekati 0 atau negatif', 'Selalu positif tinggi', 'Tidak berpengaruh'],
+                answer: 1,
+              },
+              {
+                q: 'Risiko yang TIDAK bisa dihilangkan lewat diversifikasi disebut…',
+                options: ['Risiko tidak sistematis', 'Risiko spesifik', 'Risiko sistematis (pasar)', 'Risiko likuiditas'],
+                answer: 2,
+              },
+            ],
+          },
+          {
+            id: 'l-wmi-capm',
+            title: 'CAPM, Beta & Security Market Line (SML)',
+            summary: 'Menghitung tingkat pengembalian disyaratkan dari beta & premi risiko pasar.',
+            minutes: 10,
+            content: `### Capital Asset Pricing Model
+\`\`\`
+E(R) = Rf + β × (Rm − Rf)
+\`\`\`
+- **Rf** = tingkat bebas risiko (mis. yield SBN).
+- **Rm** = ekspektasi return pasar (IHSG).
+- **(Rm − Rf)** = **premi risiko pasar** (*market risk premium*).
+- **β (beta)** = sensitivitas aset terhadap pergerakan pasar.
+
+### Membaca Beta
+- **β = 1** → bergerak seiring pasar.
+- **β > 1** → lebih agresif/volatil dari pasar.
+- **β < 1** → lebih defensif.
+- **β < 0** → berlawanan arah pasar (langka).
+
+### Security Market Line (SML)
+Garis yang memetakan E(R) terhadap β. Saham **di atas SML** → *undervalued* (return ditawarkan > yang disyaratkan); **di bawah SML** → *overvalued*.
+
+### Pemakaian
+Output CAPM (*r*) menjadi input **tingkat diskonto** untuk DDM/valuasi — menyambungkan teori portofolio dengan valuasi.
+
+> Hitung E(R) di **Lembar Kerja CAPM/SML** dan pakai hasilnya sebagai *r* di lembar kerja valuasi saham.`,
+            practice: {
+              label: 'Buka Lembar Kerja: CAPM / SML',
+              to: '/belajar/lembar-kerja#capm',
+              hint: 'Masukkan Rf, Rm, dan beta untuk mendapat tingkat pengembalian disyaratkan.',
+            },
+            quiz: [
+              {
+                q: 'Saham dengan β = 1,5; Rf = 6%; Rm = 12%. E(R) menurut CAPM =…',
+                options: ['12%', '15%', '18%', '9%'],
+                answer: 1,
+                explain: 'E(R) = 6% + 1,5 × (12% − 6%) = 6% + 9% = 15%.',
+              },
+              {
+                q: 'Saham yang berada DI ATAS Security Market Line dinilai…',
+                options: ['Overvalued', 'Undervalued', 'Wajar (fair)', 'Tidak bisa dinilai'],
+                answer: 1,
+              },
+            ],
+          },
+        ],
+      },
+      {
+        id: 'wmi-kinerja',
+        title: 'Evaluasi Kinerja & Reksa Dana',
+        icon: '💼',
+        lessons: [
+          {
+            id: 'l-wmi-kinerja',
+            title: 'Evaluasi Kinerja: Sharpe, Treynor, Jensen & NAB Reksa Dana',
+            summary: 'Mengukur kinerja disesuaikan risiko dan menghitung Nilai Aktiva Bersih per unit.',
+            minutes: 12,
+            content: `### Kinerja Disesuaikan Risiko (Risk-Adjusted Return)
+Return mentah menyesatkan tanpa memperhitungkan risiko. Tiga ukuran wajib WMI:
+\`\`\`
+Sharpe  = (Rp − Rf) / σp        → per unit risiko TOTAL (deviasi standar)
+Treynor = (Rp − Rf) / βp        → per unit risiko SISTEMATIS (beta)
+Jensen α = Rp − [Rf + βp(Rm − Rf)]  → return di atas ekspektasi CAPM
+\`\`\`
+- **Sharpe** cocok untuk portofolio yang belum terdiversifikasi penuh (pakai risiko total).
+- **Treynor** cocok bila portofolio bagian dari portofolio besar yang terdiversifikasi (pakai beta).
+- **Jensen's Alpha > 0** → manajer menambah nilai (*outperform* setelah disesuaikan risiko).
+- **Information Ratio** = (Rp − Rbenchmark) / tracking error → konsistensi alpha.
+
+### Nilai Aktiva Bersih (NAB / NAV) Reksa Dana
+\`\`\`
+NAB = Total Nilai Pasar Aset − Total Kewajiban
+NAB per Unit (NAB/UP) = NAB / Jumlah Unit Penyertaan beredar
+\`\`\`
+- Harga beli/jual investor mengacu **NAB/UP** akhir hari.
+- **Unit diperoleh** = Dana investasi / NAB/UP (setelah biaya pembelian bila ada).
+- **Expense Ratio** = total biaya / rata-rata NAB → makin rendah makin baik.
+
+> Gunakan **Lembar Kerja Evaluasi Kinerja** & **Lembar Kerja NAB Reksa Dana**, lalu bandingkan dengan Sharpe/risiko portofolio nyata Anda.`,
+            practice: {
+              label: 'Buka Lembar Kerja: Evaluasi Kinerja & NAB',
+              to: '/belajar/lembar-kerja#performance',
+              hint: 'Hitung Sharpe/Treynor/Jensen dan NAB per unit reksa dana.',
+            },
+            quiz: [
+              {
+                q: 'Ukuran kinerja yang memakai risiko SISTEMATIS (beta) adalah…',
+                options: ['Sharpe Ratio', 'Treynor Ratio', 'Standard deviation', 'Current yield'],
+                answer: 1,
+              },
+              {
+                q: 'Alpha Jensen yang positif berarti portofolio…',
+                options: ['Kalah dari ekspektasi CAPM', 'Sesuai ekspektasi CAPM', 'Mengalahkan ekspektasi CAPM (menambah nilai)', 'Tidak berisiko'],
+                answer: 2,
+              },
+              {
+                q: 'NAB per Unit dihitung dari…',
+                options: ['Total aset ÷ jumlah unit', '(Total aset − kewajiban) ÷ jumlah unit penyertaan', 'Kewajiban ÷ unit', 'Return ÷ risiko'],
                 answer: 1,
               },
             ],

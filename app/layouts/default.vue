@@ -280,10 +280,18 @@
           </div>
         </header>
 
-        <!-- PAGE CONTENT CONTAINER -->
-        <main class="flex-grow p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto">
-          <slot />
-        </main>
+        <!-- PAGE CONTENT CONTAINER (+ optional screening rail on analysis pages) -->
+        <div class="flex-grow flex min-w-0 items-start">
+          <main class="flex-grow min-w-0 p-4 sm:p-6 lg:p-8" :class="{ 'max-w-7xl w-full mx-auto': !showRail }">
+            <slot />
+          </main>
+          <aside
+            v-if="showRail"
+            class="hidden xl:block w-[340px] shrink-0 sticky top-16 h-[calc(100vh-4rem)] border-l border-slate-900 bg-slate-950/60 overflow-hidden"
+          >
+            <ScreenRail />
+          </aside>
+        </div>
 
         <!-- ADMIN FOOTER -->
         <footer class="border-t border-slate-900 bg-slate-950 py-5 text-slate-500 text-xs mt-auto px-4 sm:px-6">
@@ -306,6 +314,11 @@ import { ref, computed, onMounted } from 'vue';
 const route = useRoute();
 const isCollapsed = ref(false);
 const isMobileOpen = ref(false);
+
+// Emiten-analysis pages get a screening list in the right rail (desktop) so the
+// user can switch stocks without going back to /screening.
+const RAIL_PREFIXES = ['/analisa', '/saham', '/forecast', '/seasonal', '/profil-saham'];
+const showRail = computed(() => RAIL_PREFIXES.some((p) => route.path.startsWith(p)));
 
 const { last: lastSymbol, hydrate } = useLastSymbol();
 onMounted(hydrate);

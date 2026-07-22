@@ -187,6 +187,17 @@
               </div>
 
               <NuxtLink
+                to="/belajar"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/belajar') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Belajar Terpandu' : ''"
+              >
+                <span class="text-sm shrink-0">🎓</span>
+                <span v-if="!isCollapsed" class="truncate">Belajar Terpandu</span>
+              </NuxtLink>
+
+              <NuxtLink
                 to="/edukasi"
                 @click="isMobileOpen = false"
                 class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
@@ -194,7 +205,7 @@
                 :title="isCollapsed ? 'Edukasi' : ''"
               >
                 <span class="text-sm shrink-0">📚</span>
-                <span v-if="!isCollapsed" class="truncate">Materi Edukasi</span>
+                <span v-if="!isCollapsed" class="truncate">Perpustakaan &amp; Catatan</span>
               </NuxtLink>
 
               <NuxtLink
@@ -313,7 +324,8 @@ const currentPageTitle = computed(() => {
   if (p.startsWith('/profil-saham')) return 'Profil Emiten';
   if (p.startsWith('/watchlist')) return 'Watchlist';
   if (p.startsWith('/portofolio')) return 'Portofolio';
-  if (p.startsWith('/edukasi')) return 'Pusat Edukasi & Catatan';
+  if (p.startsWith('/belajar')) return 'Belajar Terpandu';
+  if (p.startsWith('/edukasi')) return 'Perpustakaan & Catatan';
   if (p.startsWith('/pengembangan')) return 'Arsitektur & WMI Blueprint';
   return 'Dashboard';
 });

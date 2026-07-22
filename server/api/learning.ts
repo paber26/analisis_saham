@@ -2,10 +2,10 @@ import { getMethod, readBody, getQuery, createError } from 'h3';
 import { requireAppToken } from '../utils/auth';
 import { getMaterials } from '../utils/materialsStore';
 import {
-  CURRICULUM,
+  PROGRAMS,
   findLesson,
   totalLessonCount,
-  type LearningPath,
+  type Program,
 } from '../utils/curriculum';
 import {
   getProgress,
@@ -15,23 +15,26 @@ import {
 } from '../utils/learningStore';
 
 // Merge each lesson with its resolved prose (from materialsStore by materialId,
-// or the lesson's inline content). Returns curriculum enriched for the client.
-function resolveCurriculum(): LearningPath[] {
+// or the lesson's inline content). Returns programs enriched for the client.
+function resolvePrograms(): Program[] {
   const materials = getMaterials();
   const byId = new Map(materials.map((m) => [m.id, m]));
-  return CURRICULUM.map((path) => ({
-    ...path,
-    modules: path.modules.map((mod) => ({
-      ...mod,
-      lessons: mod.lessons.map((lesson) => {
-        const mat = lesson.materialId ? byId.get(lesson.materialId) : undefined;
-        return {
-          ...lesson,
-          content: lesson.content ?? mat?.content ?? '',
-          tags: mat?.tags ?? [],
-          level: mat?.level ?? path.level,
-        };
-      }),
+  return PROGRAMS.map((program) => ({
+    ...program,
+    paths: program.paths.map((path) => ({
+      ...path,
+      modules: path.modules.map((mod) => ({
+        ...mod,
+        lessons: mod.lessons.map((lesson) => {
+          const mat = lesson.materialId ? byId.get(lesson.materialId) : undefined;
+          return {
+            ...lesson,
+            content: lesson.content ?? mat?.content ?? '',
+            tags: mat?.tags ?? [],
+            level: mat?.level ?? path.level,
+          };
+        }),
+      })),
     })),
   }));
 }
@@ -65,9 +68,12 @@ export default defineEventHandler(async (event) => {
   // ---- GET: public read (curriculum + progress + stats) ----
   if (method === 'GET') {
     const progress = await getProgress();
+    const programs = resolvePrograms();
     return {
       success: true,
-      paths: resolveCurriculum(),
+      programs,
+      // Flattened path list kept for backward compatibility.
+      paths: programs.flatMap((p) => p.paths),
       progress,
       stats: computeStats(progress),
     };

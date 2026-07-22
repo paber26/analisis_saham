@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 
+definePageMeta({ layout: 'learning' });
+
 useHead({
   title: 'Lembar Kerja WMI — Kalkulator Ujian Wakil Manajer Investasi',
   meta: [

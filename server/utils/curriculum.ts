@@ -51,7 +51,22 @@ export interface LearningPath {
   modules: LearningModule[];
 }
 
-export const CURRICULUM: LearningPath[] = [
+// A Program groups one or more paths under a named track/certification.
+export interface Program {
+  id: string;
+  title: string;
+  short: string;                       // sidebar/nav short name (e.g. "WMI")
+  category: 'Fondasi' | 'Sertifikasi';
+  provider: string;                    // issuing body / origin
+  icon: string;
+  accent: string;                      // tailwind color token
+  blurb: string;
+  status: 'aktif' | 'pengembangan';    // content maturity flag
+  paths: LearningPath[];
+}
+
+// Base paths (grouped into Programs further below).
+const BASE_PATHS: LearningPath[] = [
   {
     id: 'pemula',
     title: 'Jalur Pemula — Fondasi Investor BEI',
@@ -833,6 +848,465 @@ NAB per Unit (NAB/UP) = NAB / Jumlah Unit Penyertaan beredar
   },
 ];
 
+// ======================================================================
+// Certification programs (CFA / CTA / CSA)
+// Faithful syllabus scaffolds with a genuine intro lesson per topic area.
+// Depth is grown over time — including materials the user summarizes in.
+// ======================================================================
+
+const CFA_PATH: LearningPath = {
+  id: 'cfa-l1',
+  title: 'CFA Program — Level I',
+  level: 'Profesi',
+  goal: 'Ikhtisar 10 area topik CFA Level I: dari Etika hingga Manajemen Portofolio, sebagai peta belajar dan tempat merangkum materi lebih dalam.',
+  icon: '📘',
+  accent: 'sky',
+  modules: [
+    {
+      id: 'cfa-ethics', title: 'Ethical & Professional Standards', icon: '⚖️',
+      lessons: [{
+        id: 'l-cfa-ethics', title: 'Kode Etik & Standar Perilaku Profesional', minutes: 12,
+        summary: 'Enam komponen Kode Etik CFA dan tujuh Standar Perilaku Profesional yang menjadi fondasi ujian.',
+        content: `### Mengapa Etika = Bobot Terbesar
+Etika adalah salah satu area berbobot tertinggi di Level I dan sering menentukan kelulusan (*ethics adjustment*).
+
+### Kode Etik (Code of Ethics)
+Bertindak dengan **integritas, kompetensi, kehati-hatian, hormat**, dan mendahulukan integritas pasar modal serta kepentingan klien di atas kepentingan pribadi.
+
+### Tujuh Standar Perilaku Profesional (Standards of Professional Conduct)
+1. **Professionalism** — pengetahuan hukum, independensi & objektivitas, misrepresentasi, misconduct.
+2. **Integrity of Capital Markets** — material nonpublic information, market manipulation.
+3. **Duties to Clients** — loyalitas/kehati-hatian, fair dealing, suitability, performance presentation, kerahasiaan.
+4. **Duties to Employers** — loyalitas, additional compensation, tanggung jawab supervisor.
+5. **Investment Analysis & Recommendations** — diligence, komunikasi, retensi catatan.
+6. **Conflicts of Interest** — disclosure, prioritas transaksi, referral fees.
+7. **Responsibilities as a CFA Member/Candidate.**
+
+> Kunci ujian: kenali pelanggaran spesifik pada studi kasus, bukan sekadar hafal judul standar.`,
+        quiz: [
+          { q: 'Informasi material nonpublik masuk ke standar…', options: ['Professionalism', 'Integrity of Capital Markets', 'Duties to Employers', 'Conflicts of Interest'], answer: 1 },
+          { q: 'Mendahulukan kepentingan klien di atas kepentingan pribadi adalah bagian dari…', options: ['Kode Etik & Duties to Clients', 'Derivatif', 'Ekonomi', 'Quant'], answer: 0 },
+        ],
+      }],
+    },
+    {
+      id: 'cfa-quant', title: 'Quantitative Methods', icon: '📐',
+      lessons: [{
+        id: 'l-cfa-quant', title: 'Time Value of Money, Statistik & Probabilitas', minutes: 11,
+        summary: 'TVM, ukuran pemusatan & sebaran, distribusi, sampling, dan dasar regresi.',
+        content: `### Cakupan
+- **Time Value of Money** — PV/FV, anuitas, NPV & IRR.
+- **Statistik deskriptif** — mean, median, varians, skewness, kurtosis.
+- **Probabilitas** — ekspektasi, kovarians, Bayes.
+- **Distribusi** — normal, lognormal, Student-t; *confidence interval*.
+- **Sampling & hipotesis** — central limit theorem, uji-t/z, p-value.
+- **Regresi linear** sederhana.
+
+### Fokus Level I
+Perhitungan TVM dan interpretasi statistik dominan. Kuasai kalkulator finansial (BA II Plus).
+
+> Latih inti TVM di Lembar Kerja WMI (#tvm) — konsepnya identik.`,
+        practice: { label: 'Latihan TVM di Lembar Kerja', to: '/belajar/lembar-kerja#tvm', hint: 'PV/FV & anuitas sama persis dengan materi Quant CFA.' },
+      }],
+    },
+    {
+      id: 'cfa-econ', title: 'Economics', icon: '🌐',
+      lessons: [{
+        id: 'l-cfa-econ', title: 'Mikro, Makro, Siklus Bisnis & Nilai Tukar', minutes: 10,
+        summary: 'Permintaan-penawaran, struktur pasar, agregat makro, kebijakan moneter/fiskal, dan kurs.',
+        content: `### Mikroekonomi
+Elastisitas, teori produksi & biaya, struktur pasar (persaingan sempurna → monopoli).
+
+### Makroekonomi
+PDB, agregat demand/supply, **siklus bisnis**, inflasi & pengangguran, **kebijakan moneter & fiskal**.
+
+### Ekonomi Internasional
+Perdagangan, neraca pembayaran, rezim & penentuan **nilai tukar** (paritas suku bunga & daya beli).
+
+> Hubungkan ke pasar riil: rezim makro menentukan *market regime* — lihat halaman Pasar di aplikasi analisis.`,
+        practice: { label: 'Lihat Market Regime (Pasar)', to: '/pasar', hint: 'Konteks makro tempat teori ekonomi bertemu data BEI.' },
+      }],
+    },
+    {
+      id: 'cfa-fra', title: 'Financial Statement Analysis', icon: '🧾',
+      lessons: [{
+        id: 'l-cfa-fra', title: 'Membaca & Menganalisis 3 Laporan Keuangan', minutes: 12,
+        summary: 'Income statement, balance sheet, cash flow, kualitas laba, dan analisis rasio.',
+        content: `### Tiga Laporan
+- **Income Statement** — revenue → net income (accrual).
+- **Balance Sheet** — aset, liabilitas, ekuitas.
+- **Cash Flow** — CFO/CFI/CFF; rekonsiliasi laba ke kas.
+
+### Analisis
+- **Rasio**: aktivitas, likuiditas, solvabilitas, profitabilitas, valuasi — plus **DuPont** (ROE).
+- **Kualitas laba**: CFO vs net income; deteksi *earnings manipulation*.
+- **Inventory (FIFO/LIFO)**, depresiasi, pajak tangguhan, lease.
+
+> Terapkan di data emiten nyata: buka Chart & Keuangan sebuah saham BEI.`,
+        practice: { label: 'Buka Chart & Keuangan', to: '/saham?symbol=BBCA', hint: 'Analisis laporan keuangan emiten sungguhan.' },
+      }],
+    },
+    {
+      id: 'cfa-corp', title: 'Corporate Issuers', icon: '🏢',
+      lessons: [{
+        id: 'l-cfa-corp', title: 'Tata Kelola, Struktur Modal & Capital Budgeting', minutes: 9,
+        summary: 'Governance & stakeholder, WACC, capital budgeting (NPV/IRR), dan struktur modal.',
+        content: `### Topik Inti
+- **Corporate governance** & analisis pemangku kepentingan.
+- **Capital budgeting** — NPV, IRR, payback; keputusan investasi.
+- **Cost of capital** — WACC, biaya utang & ekuitas.
+- **Leverage** operasional & finansial; struktur modal (Modigliani-Miller sebagai kerangka).
+- **Working capital** management.
+
+> WACC memakai *cost of equity* dari CAPM — jembatan ke topik Equity & Portfolio.`,
+      }],
+    },
+    {
+      id: 'cfa-equity', title: 'Equity Investments', icon: '📊',
+      lessons: [{
+        id: 'l-cfa-equity', title: 'Pasar Ekuitas & Model Valuasi Saham', minutes: 10,
+        summary: 'Efisiensi pasar, indeks, dan valuasi (DDM, multiplier, FCFE).',
+        content: `### Cakupan
+- **Struktur & efisiensi pasar** (weak/semi-strong/strong).
+- **Indeks** ekuitas: konstruksi & bias.
+- **Valuasi**: **DDM/Gordon**, *multiplier* (P/E, P/B, EV/EBITDA), pendekatan *free cash flow*.
+- **Industry & company analysis** (Porter's five forces).
+
+> Gordon Growth identik dengan Lembar Kerja WMI (#gordon); bandingkan output dengan PER live di Hub Analisa.`,
+        practice: { label: 'Buka Hub Analisa', to: '/analisa/BBCA', hint: 'Cocokkan valuasi teori dengan rasio live emiten.' },
+      }],
+    },
+    {
+      id: 'cfa-fi', title: 'Fixed Income', icon: '🏦',
+      lessons: [{
+        id: 'l-cfa-fi', title: 'Obligasi: Harga, Yield, Durasi & Risiko Kredit', minutes: 11,
+        summary: 'Fitur obligasi, penetapan harga, kurva yield, durasi/konveksitas, dan risiko kredit.',
+        content: `### Topik Inti
+- **Fitur & jenis** obligasi; pasar penerbitan.
+- **Penetapan harga** = PV arus kas; hubungan harga–yield.
+- **Yield**: current yield, YTM, spot/forward.
+- **Risiko suku bunga**: **durasi Macaulay/modified, konveksitas**.
+- **Risiko kredit**: rating, spread, recovery.
+- **Sekuritisasi** (ABS/MBS) dasar.
+
+> Latih harga & durasi di Lembar Kerja WMI (#bond).`,
+        practice: { label: 'Latihan Valuasi Obligasi', to: '/belajar/lembar-kerja#bond', hint: 'Harga, current yield, dan durasi identik materi CFA Fixed Income.' },
+      }],
+    },
+    {
+      id: 'cfa-deriv', title: 'Derivatives', icon: '🔀',
+      lessons: [{
+        id: 'l-cfa-deriv', title: 'Forward, Futures, Opsi & Swap', minutes: 9,
+        summary: 'Karakteristik derivatif, penetapan harga dasar, dan penggunaan hedging.',
+        content: `### Cakupan
+- **Forward & futures** — mekanisme, marking-to-market, *cost of carry*.
+- **Opsi** — call/put, payoff, *put-call parity*, faktor penentu harga (dasar Black-Scholes).
+- **Swap** — arus kas, penggunaan.
+- **Arbitrase & replikasi** sebagai prinsip penetapan harga.
+
+> Fokus Level I: intuisi payoff & no-arbitrage, bukan matematika berat.`,
+      }],
+    },
+    {
+      id: 'cfa-alt', title: 'Alternative Investments', icon: '🏗️',
+      lessons: [{
+        id: 'l-cfa-alt', title: 'Real Estate, PE, Hedge Fund & Komoditas', minutes: 8,
+        summary: 'Karakteristik aset alternatif, struktur biaya, dan peran diversifikasi.',
+        content: `### Kelas Aset
+- **Private equity & venture capital**, **hedge funds** (strategi & biaya "2 dan 20"), **real estate**, **komoditas**, **infrastruktur**.
+- **Karakteristik**: likuiditas rendah, biaya tinggi, potensi diversifikasi & *return* non-korelasi.
+- **Isu**: valuasi, *survivorship/backfill bias* pada data.
+
+> Peran utama dalam portofolio: diversifikasi terhadap saham/obligasi tradisional.`,
+      }],
+    },
+    {
+      id: 'cfa-pm', title: 'Portfolio Management', icon: '💼',
+      lessons: [{
+        id: 'l-cfa-pm', title: 'Proses Portofolio, Teori Pasar Modal & Risiko', minutes: 10,
+        summary: 'IPS, teori portofolio, CAPM/SML, dan manajemen risiko.',
+        content: `### Proses
+- **Investment Policy Statement (IPS)** — tujuan (return/risiko) & batasan (likuiditas, horizon, pajak, hukum, unik).
+- **Teori portofolio**: efficient frontier, **CML**, diversifikasi.
+- **CAPM & SML**, beta, risiko sistematis vs tidak sistematis.
+- **Manajemen risiko**: pengukuran, alokasi, rebalancing.
+
+> CAPM & portofolio 2-aset dapat dilatih di Lembar Kerja WMI (#capm, #portfolio2) dan diamati di halaman Portofolio.`,
+        practice: { label: 'Buka Portofolio', to: '/portofolio', hint: 'Alokasi, korelasi & risiko portofolio nyata Anda.' },
+      }],
+    },
+  ],
+};
+
+const CTA_PATH: LearningPath = {
+  id: 'cta-core',
+  title: 'Certified Technical Analyst — Inti',
+  level: 'Profesi',
+  goal: 'Pendalaman analisis teknikal tingkat profesional: teori Dow, pola & tren, indikator, Elliott/Fibonacci, hingga desain sistem & manajemen risiko.',
+  icon: '📈',
+  accent: 'violet',
+  modules: [
+    {
+      id: 'cta-dow', title: 'Teori Dow & Filosofi Teknikal', icon: '📜',
+      lessons: [{
+        id: 'l-cta-dow', title: 'Fondasi Analisis Teknikal & Teori Dow', minutes: 9,
+        summary: 'Tiga premis teknikal, enam prinsip Teori Dow, dan peran volume.',
+        content: `### Tiga Premis Analisis Teknikal
+1. **Harga mendiskon segalanya** (market action discounts everything).
+2. **Harga bergerak dalam tren.**
+3. **Sejarah berulang** (psikologi pasar konstan).
+
+### Enam Prinsip Teori Dow
+Indeks mendiskon semua · pasar punya tiga tren (primer/sekunder/minor) · tren primer tiga fase (akumulasi–partisipasi–distribusi) · indeks harus saling konfirmasi · **volume mengonfirmasi tren** · tren berlaku sampai sinyal pembalikan jelas.
+
+> Fondasi ini menghubungkan seluruh modul CTA berikutnya.`,
+        practice: { label: 'Amati tren di Chart', to: '/saham?symbol=BBCA', hint: 'Identifikasi fase tren & konfirmasi volume pada grafik nyata.' },
+      }],
+    },
+    {
+      id: 'cta-pattern', title: 'Analisis Tren & Pola Harga', icon: '📐',
+      lessons: [{
+        id: 'l-cta-pattern', title: 'Garis Tren, Pola Pembalikan & Kelanjutan', minutes: 10,
+        summary: 'Support/resistance, channel, head & shoulders, triangle, flag, dan target proyeksi.',
+        content: `### Struktur & Level
+Garis tren, channel, **support/resistance**, dan *role reversal*.
+
+### Pola Pembalikan (Reversal)
+Head & Shoulders (+ inverse), double/triple top-bottom, rounding.
+
+### Pola Kelanjutan (Continuation)
+Triangle (symmetrical/ascending/descending), flag, pennant, rectangle.
+
+### Pengukuran Target
+Tinggi pola diproyeksikan dari titik breakout untuk estimasi target harga; konfirmasi dengan volume.
+
+> Hub Analisa aplikasi mengklaster support/resistance ber-ATR secara otomatis.`,
+        practice: { label: 'Lihat level S/R otomatis', to: '/analisa/BBCA', hint: 'Bandingkan level algoritmik dengan pola manual Anda.' },
+      }],
+    },
+    {
+      id: 'cta-indicator', title: 'Indikator & Osilator', icon: '📉',
+      lessons: [{
+        id: 'l-cta-indicator', title: 'Moving Average, Momentum & Volume', minutes: 10,
+        summary: 'MA/EMA, RSI, MACD, stochastic, Bollinger Bands, divergence, dan indikator volume.',
+        content: `### Kategori Indikator
+- **Tren**: MA/EMA, MACD, ADX.
+- **Momentum/Osilator**: RSI, Stochastic, CCI — kondisi *overbought/oversold* & **divergence**.
+- **Volatilitas**: Bollinger Bands, ATR.
+- **Volume**: OBV, volume profile.
+
+### Prinsip Pemakaian
+Gabungkan indikator yang **saling melengkapi** (tren + momentum), hindari redundansi. Sinyal terbaik = konfluensi beberapa alat + struktur harga.
+
+> Grid indikator Hub Analisa menghitung RSI/MACD/ADX/BB/ATR live.`,
+        practice: { label: 'Buka grid indikator', to: '/analisa/BBCA', hint: 'Cocokkan sinyal indikator dengan teori CTA.' },
+      }],
+    },
+    {
+      id: 'cta-elliott', title: 'Elliott Wave & Fibonacci', icon: '🌊',
+      lessons: [{
+        id: 'l-cta-elliott', title: 'Struktur Gelombang & Rasio Fibonacci', minutes: 9,
+        summary: 'Pola 5-3 Elliott, aturan gelombang, dan retracement/extension Fibonacci.',
+        content: `### Elliott Wave
+Tren impulsif **5 gelombang** searah tren + koreksi **3 gelombang** (A-B-C). Aturan inti: gelombang 2 tak menembus awal 1; gelombang 3 bukan terpendek; gelombang 4 tak tumpang tindih 1.
+
+### Fibonacci
+- **Retracement**: 23,6% · 38,2% · 50% · 61,8% · 78,6% — area koreksi potensial.
+- **Extension**: 127,2% · 161,8% — target proyeksi.
+
+> Kombinasikan retracement Fibonacci dengan level S/R & Elliott untuk konfluensi.`,
+      }],
+    },
+    {
+      id: 'cta-system', title: 'Sistem Trading & Manajemen Risiko', icon: '🛡️',
+      lessons: [{
+        id: 'l-cta-system', title: 'Desain Sistem, Backtest & Position Sizing', minutes: 10,
+        summary: 'Membangun aturan objektif, validasi backtest, expectancy, dan manajemen risiko.',
+        content: `### Sistem yang Teruji
+Aturan **entry/exit objektif**, lalu **backtest tanpa look-ahead** (sinyal ≤ t, entry t+1, biaya & slippage dimodelkan).
+
+### Metrik
+Win rate, **expectancy** = (WinRate×RRR) − (LossRate×1), max drawdown, Sharpe. Selalu banding **buy & hold IHSG**.
+
+### Manajemen Risiko
+Risiko 1–2% per posisi, *position sizing* dari stop, RRR ≥ 1:2.
+
+> Uji strategi pada data BEI nyata di halaman Backtest.`,
+        practice: { label: 'Buka Backtest Strategi', to: '/backtest', hint: 'Validasi sistem teknikal vs benchmark IHSG.' },
+        quiz: [
+          { q: 'Aturan anti look-ahead pada backtest berarti sinyal hari-t memakai data…', options: ['≤ t', 'Termasuk esok', 'Seluruh masa depan', 'Acak'], answer: 0 },
+        ],
+      }],
+    },
+  ],
+};
+
+const CSA_PATH: LearningPath = {
+  id: 'csa-core',
+  title: 'Certified Securities Analyst — Inti',
+  level: 'Profesi',
+  goal: 'Analisis efek tingkat lanjut ala CSA (TICMI): pendekatan top-down, laporan keuangan lanjutan, valuasi ekuitas (DCF/FCF), analisis fixed income, dan etika analis.',
+  icon: '📗',
+  accent: 'rose',
+  modules: [
+    {
+      id: 'csa-topdown', title: 'Analisis Ekonomi & Industri (Top-Down)', icon: '🔭',
+      lessons: [{
+        id: 'l-csa-topdown', title: 'Pendekatan Top-Down: Makro → Sektor → Emiten', minutes: 9,
+        summary: 'Menghubungkan siklus ekonomi, rotasi sektor, dan pemilihan emiten.',
+        content: `### Kerangka Top-Down
+1. **Makro** — siklus ekonomi, suku bunga, inflasi, nilai tukar.
+2. **Industri/Sektor** — analisis **Porter's five forces**, siklus & sensitivitas sektor terhadap makro.
+3. **Perusahaan** — posisi kompetitif, *moat*, kualitas manajemen.
+
+### Rotasi Sektor
+Tiap fase siklus memihak sektor berbeda (mis. defensif saat perlambatan, siklikal saat ekspansi).
+
+> Lihat rotasi sektor & breadth pada halaman Pasar aplikasi.`,
+        practice: { label: 'Lihat rotasi sektor (Pasar)', to: '/pasar', hint: 'Data breadth & kekuatan sektor BEI aktual.' },
+      }],
+    },
+    {
+      id: 'csa-fsa', title: 'Analisis Laporan Keuangan Lanjutan', icon: '🔬',
+      lessons: [{
+        id: 'l-csa-fsa', title: 'Kualitas Laba, Common-Size & Red Flags', minutes: 11,
+        summary: 'Analisis vertikal/horizontal, DuPont, akrual, dan deteksi manipulasi.',
+        content: `### Teknik
+- **Common-size** (vertikal) & analisis tren (horizontal).
+- **DuPont** bertingkat untuk membedah ROE.
+- **Accruals ratio** & kualitas laba (CFO vs net income).
+
+### Red Flags
+Piutang/persediaan tumbuh melebihi penjualan, kapitalisasi biaya agresif, *related party*, pergantian auditor, arus kas operasi negatif kronis.
+
+> Terapkan pada laporan keuangan emiten di menu Chart & Keuangan.`,
+        practice: { label: 'Analisis keuangan emiten', to: '/saham?symbol=BBCA', hint: 'Uji kualitas laba pada emiten nyata.' },
+      }],
+    },
+    {
+      id: 'csa-equity', title: 'Valuasi Ekuitas (DCF & Relatif)', icon: '💵',
+      lessons: [{
+        id: 'l-csa-equity', title: 'FCFF/FCFE, DDM & Valuasi Relatif', minutes: 12,
+        summary: 'Membangun model arus kas terdiskonto dan valuasi multiplier.',
+        content: `### Absolute (DCF)
+- **FCFF** = arus kas ke seluruh penyedia modal (didiskon dengan **WACC**).
+- **FCFE** = arus kas ke pemegang saham (didiskon dengan *cost of equity*).
+- **DDM/Gordon** untuk emiten dividen stabil; model dua/tiga tahap untuk pertumbuhan berubah.
+
+### Relatif (Multiplier)
+P/E, P/B, EV/EBITDA, PEG — bandingkan antar-peer & historis. Pahami *driver* tiap multiple.
+
+### Terminal Value
+Bagian terbesar nilai DCF → uji sensitivitas terhadap g & discount rate.
+
+> Latih Gordon di Lembar Kerja (#gordon) & CAPM (#capm) untuk discount rate.`,
+        practice: { label: 'Latihan valuasi saham', to: '/belajar/lembar-kerja#gordon', hint: 'Gordon Growth + CAPM = fondasi DCF.' },
+        quiz: [
+          { q: 'FCFF didiskon menggunakan…', options: ['Cost of equity', 'WACC', 'Risk-free rate', 'Dividend yield'], answer: 1 },
+        ],
+      }],
+    },
+    {
+      id: 'csa-fi', title: 'Analisis Efek Pendapatan Tetap', icon: '🏦',
+      lessons: [{
+        id: 'l-csa-fi', title: 'Valuasi Obligasi, Kurva Yield & Risiko', minutes: 10,
+        summary: 'Harga & yield, durasi/konveksitas, kurva imbal hasil, dan analisis kredit.',
+        content: `### Inti
+- **Harga = PV arus kas**; hubungan harga–yield terbalik.
+- **Durasi & konveksitas** untuk risiko suku bunga.
+- **Kurva yield** (normal/inverted) & implikasi ekonomi.
+- **Analisis kredit**: rating, spread, *default & recovery*.
+
+> Praktik hitung di Lembar Kerja Obligasi (#bond).`,
+        practice: { label: 'Lembar Kerja Obligasi', to: '/belajar/lembar-kerja#bond', hint: 'Harga, current yield & durasi.' },
+      }],
+    },
+    {
+      id: 'csa-ethics', title: 'Etika & Standar Analis Efek', icon: '⚖️',
+      lessons: [{
+        id: 'l-csa-ethics', title: 'Independensi, Objektivitas & Konflik Kepentingan', minutes: 8,
+        summary: 'Standar profesional analis, pengungkapan konflik, dan integritas riset.',
+        content: `### Prinsip
+- **Independensi & objektivitas** riset — bebas tekanan emiten/banking.
+- **Pengungkapan konflik kepentingan** (kepemilikan, hubungan bisnis).
+- **Basis wajar & memadai** untuk rekomendasi; retensi catatan.
+- **Larangan** penyalahgunaan informasi material nonpublik & manipulasi pasar.
+
+> Selaras dengan Kode Etik CFA & aturan OJK bagi analis/WMI.`,
+      }],
+    },
+  ],
+};
+
+// ======================================================================
+// PROGRAMS — top-level grouping consumed by the API & LMS pages.
+// ======================================================================
+export const PROGRAMS: Program[] = [
+  {
+    id: 'fondasi',
+    title: 'Fondasi Saham BEI',
+    short: 'Fondasi Saham',
+    category: 'Fondasi',
+    provider: 'Kurikulum Mandiri',
+    icon: '🌱',
+    accent: 'emerald',
+    blurb: 'Dari nol hingga mahir: pemula, menengah, dan lanjutan — mekanisme bursa, fundamental, teknikal, hingga strategi & validasi.',
+    status: 'aktif',
+    paths: BASE_PATHS.filter((p) => ['pemula', 'menengah', 'lanjutan'].includes(p.id)),
+  },
+  {
+    id: 'wmi',
+    title: 'Wakil Manajer Investasi (WMI)',
+    short: 'Sertifikasi WMI',
+    category: 'Sertifikasi',
+    provider: 'OJK / TICMI',
+    icon: '🎓',
+    accent: 'amber',
+    blurb: 'Persiapan izin profesi WMI: regulasi & etika, valuasi, teori portofolio, CAPM, evaluasi kinerja — plus 7 lembar kerja perhitungan ujian.',
+    status: 'aktif',
+    paths: BASE_PATHS.filter((p) => p.id === 'wmi'),
+  },
+  {
+    id: 'cfa',
+    title: 'CFA Program — Level I',
+    short: 'CFA Level I',
+    category: 'Sertifikasi',
+    provider: 'CFA Institute',
+    icon: '📘',
+    accent: 'sky',
+    blurb: 'Peta 10 area topik CFA Level I dari Etika hingga Portfolio Management. Kerangka global untuk memperdalam ilmu.',
+    status: 'pengembangan',
+    paths: [CFA_PATH],
+  },
+  {
+    id: 'cta',
+    title: 'Certified Technical Analyst (CTA)',
+    short: 'CTA — Teknikal',
+    category: 'Sertifikasi',
+    provider: 'Technical Analysis',
+    icon: '📈',
+    accent: 'violet',
+    blurb: 'Analisis teknikal tingkat profesional: Teori Dow, pola & tren, indikator, Elliott/Fibonacci, hingga desain sistem trading.',
+    status: 'pengembangan',
+    paths: [CTA_PATH],
+  },
+  {
+    id: 'csa',
+    title: 'Certified Securities Analyst (CSA)',
+    short: 'CSA — Analis Efek',
+    category: 'Sertifikasi',
+    provider: 'TICMI',
+    icon: '📗',
+    accent: 'rose',
+    blurb: 'Analisis efek lanjutan: top-down, laporan keuangan mendalam, valuasi DCF/FCF, fixed income, dan etika analis.',
+    status: 'pengembangan',
+    paths: [CSA_PATH],
+  },
+];
+
+// Backward-compatible flat path list (all programs' paths).
+export const CURRICULUM: LearningPath[] = PROGRAMS.flatMap((p) => p.paths);
+
 // ---- Derived helpers (pure) ----
 
 export function allLessons(): Lesson[] {
@@ -844,20 +1318,27 @@ export function totalLessonCount(): number {
 }
 
 export function findLesson(lessonId: string): {
+  program: Program;
   path: LearningPath;
   module: LearningModule;
   lesson: Lesson;
 } | null {
-  for (const path of CURRICULUM) {
-    for (const module of path.modules) {
-      const lesson = module.lessons.find((l) => l.id === lessonId);
-      if (lesson) return { path, module, lesson };
+  for (const program of PROGRAMS) {
+    for (const path of program.paths) {
+      for (const module of path.modules) {
+        const lesson = module.lessons.find((l) => l.id === lessonId);
+        if (lesson) return { program, path, module, lesson };
+      }
     }
   }
   return null;
 }
 
-// Flat ordered lesson ids for prev/next navigation.
+export function findProgram(programId: string): Program | null {
+  return PROGRAMS.find((p) => p.id === programId) ?? null;
+}
+
+// Flat ordered lesson ids for prev/next navigation (program → path → module).
 export function orderedLessonIds(): string[] {
   return allLessons().map((l) => l.id);
 }

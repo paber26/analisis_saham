@@ -1,41 +1,69 @@
-# Arsitektur Modul Belajar Terpandu (`/belajar`)
+# Arsitektur LMS Pembelajaran (`/belajar`)
 
-Modul pembelajaran saham berjenjang dengan filosofi **Learn by Doing**: tiap
-lesson menghubungkan *teori → praktik langsung di tool analisis nyata aplikasi
-ini → kuis → progres tersimpan*. Ini pembeda utama dari sekadar perpustakaan
-artikel (yang tetap tersedia di `/edukasi`).
+Learning Management System dengan **shell/tampilan terpisah** dari dashboard
+analisis (Nuxt layout `learning`), berfilosofi **Learn by Doing**: tiap lesson
+menghubungkan *teori → praktik langsung di tool analisis nyata → kuis → progres
+tersimpan*. Materi dikelompokkan ke dalam **Program** (Fondasi + sertifikasi).
 
 Melengkapi [ARCHITECTURE.md](ARCHITECTURE.md) (kondisi app) &
-[ROADMAP.md](ROADMAP.md) (Tier 1–4). Konsisten dengan prinsip yang sama:
+[ROADMAP.md](ROADMAP.md) (Tier 1–4). Prinsip sama:
 **single-user, file-store, tanpa native module, jujur & berbasis bukti.**
+
+## Pemisahan tampilan (Nuxt layouts)
+
+`app.vue` hanya `<NuxtLayout><NuxtPage/></NuxtLayout>`. Dua layout:
+- **`layouts/default.vue`** — shell analisis (sidebar Pasar/Screening/Analisa/…).
+  Dipakai semua halaman analisis. Ada tombol masuk ke **Pusat Belajar (LMS)**.
+- **`layouts/learning.vue`** — shell LMS (tema indigo): sidebar daftar **Program**
+  + progres mini + streak, tombol **← Kembali ke Analisis**. Dipakai semua
+  halaman `/belajar/**` via `definePageMeta({ layout: 'learning' })`.
 
 ## Diagram
 
 ```
 ┌──────────────────────────── Browser ────────────────────────────────┐
-│ /belajar            ikhtisar jalur + progres + streak + kuis stats  │
-│ /belajar/[lesson]   konten + CTA praktik + kuis interaktif + prev/next│
-│ /edukasi            perpustakaan materi + catatan pribadi (existing) │
+│ LAYOUT default (analisis)         LAYOUT learning (LMS, indigo)       │
+│  /pasar /screening /analisa …      /belajar               beranda program│
+│                                    /belajar/program/[id]  detail program│
+│                                    /belajar/[lesson]      viewer lesson │
+│                                    /belajar/lembar-kerja  7 kalkulator  │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 │ useFetch (GET publik) · $fetch (POST token)
 ┌────────────────────────── Nitro API ─────────────────────────────────┐
 │ /api/learning                                                        │
-│   GET  → { paths (konten teresolusi), progress, stats }   (publik)   │
+│   GET  → { programs (konten teresolusi), paths, progress, stats }    │
 │   POST → complete | uncomplete | quiz | visit             (token)    │
 │                                                                      │
 │ server/utils/                                                        │
-│  ├─ curriculum.ts     STRUKTUR: path → module → lesson (statis).     │
+│  ├─ curriculum.ts     STRUKTUR: PROGRAM → path → module → lesson.    │
 │  │                    Lesson menaut materi via materialId (reuse)    │
-│  │                    atau content inline (tool-literacy) + practice │
-│  │                    link + quiz. Helper: findLesson, orderedIds.   │
+│  │                    atau content inline + practice link + quiz.    │
+│  │                    Helper: findLesson, findProgram, orderedIds.   │
 │  ├─ learningStore.ts  PERSISTENSI progres (BATAS STORAGE — satu-      │
-│  │                    satunya penyentuh storage; getProgress/        │
-│  │                    saveProgress + bumpStreak). Atomic tmp+rename. │
+│  │                    satunya penyentuh storage). Atomic tmp+rename. │
 │  └─ materialsStore.ts (existing) sumber prosa materi.                │
 └───────────────────────────────┬──────────────────────────────────────┘
                                 ▼
                 .data-store/learning-progress.json  (gitignored)
 ```
+
+## Program (5) — 39 lesson
+
+| Program | Kategori | Isi | Status |
+|---|---|---|---|
+| `fondasi` | Fondasi | 3 path (pemula/menengah/lanjutan), 12 lesson | aktif |
+| `wmi` | Sertifikasi | 7 lesson + 7 lembar kerja | aktif |
+| `cfa` | Sertifikasi | CFA Level I — 10 modul topik, 10 lesson intro | dikembangkan |
+| `cta` | Sertifikasi | Technical Analyst — 5 modul, 5 lesson | dikembangkan |
+| `csa` | Sertifikasi | Securities Analyst (TICMI) — 5 modul, 5 lesson | dikembangkan |
+
+## Menambah materi (alur dengan asisten)
+
+Bukan form isian mandiri: pengguna memberi garis besar / PDF makalah → **asisten
+merangkum & menuliskannya sebagai lesson** di `curriculum.ts` (inline `content`
+atau materi baru di `materialsStore.ts`) pada program yang sesuai, lalu deploy.
+Kurikulum sengaja dibuat mudah diperluas (tambah objek lesson/modul/program;
+`level` union & accent map sudah menampung nilai baru).
 
 ## Model data
 

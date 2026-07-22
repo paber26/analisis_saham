@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from 'vue';
 
+definePageMeta({ layout: 'learning' });
+
 interface QuizQuestion { q: string; options: string[]; answer: number; explain?: string }
 interface Practice { label: string; to: string; hint: string }
 interface Lesson {
@@ -10,21 +12,22 @@ interface Lesson {
 }
 interface Module { id: string; title: string; icon: string; lessons: Lesson[] }
 interface Path { id: string; title: string; level: string; icon: string; accent: string; modules: Module[] }
+interface Program { id: string; short: string; icon: string; paths: Path[] }
 interface Progress { completed: string[]; quiz: Record<string, { score: number; total: number }> }
 
 const route = useRoute();
 const lessonId = computed(() => String(route.params.lesson));
 
-const { data, refresh } = await useFetch<{ paths: Path[]; progress: Progress }>('/api/learning');
+const { data, refresh } = await useFetch<{ programs: Program[]; progress: Progress }>('/api/learning');
 const { renderMarkdown } = useMarkdown();
 const { token, setToken, authHeaders } = useAppToken();
 const { last: lastSymbol, hydrate } = useLastSymbol();
 
 // Locate the current lesson within the curriculum, plus prev/next.
 const located = computed(() => {
-  const paths = data.value?.paths ?? [];
-  const flat: { path: Path; module: Module; lesson: Lesson }[] = [];
-  for (const p of paths) for (const m of p.modules) for (const l of m.lessons) flat.push({ path: p, module: m, lesson: l });
+  const programs = data.value?.programs ?? [];
+  const flat: { program: Program; path: Path; module: Module; lesson: Lesson }[] = [];
+  for (const prog of programs) for (const p of prog.paths) for (const m of p.modules) for (const l of m.lessons) flat.push({ program: prog, path: p, module: m, lesson: l });
   const idx = flat.findIndex((f) => f.lesson.id === lessonId.value);
   if (idx < 0) return null;
   return {
@@ -101,9 +104,9 @@ onMounted(() => {
     <template v-if="lesson && located">
       <!-- Breadcrumb -->
       <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
-        <NuxtLink to="/belajar" class="hover:text-emerald-400 font-semibold">🎓 Belajar</NuxtLink>
+        <NuxtLink to="/belajar" class="hover:text-indigo-300 font-semibold">🏠 Belajar</NuxtLink>
         <span class="text-slate-700">/</span>
-        <span>{{ located.path.icon }} {{ located.path.title }}</span>
+        <NuxtLink :to="`/belajar/program/${located.program.id}`" class="hover:text-indigo-300">{{ located.program.icon }} {{ located.program.short }}</NuxtLink>
         <span class="text-slate-700">/</span>
         <span class="text-slate-300">{{ located.module.icon }} {{ located.module.title }}</span>
       </div>

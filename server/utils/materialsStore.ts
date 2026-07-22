@@ -1,5 +1,8 @@
+// File-store for education materials (/edukasi): ships seed articles, merges in
+// user-authored notes, and re-seeds any missing/updated built-ins on read.
+// Lives in .data-store (outside .output → survives deploys); Node fs only.
 import { existsSync, readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { join } from 'node:path';
 
 export interface MaterialItem {
   id: string;

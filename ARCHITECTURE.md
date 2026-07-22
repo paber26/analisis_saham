@@ -101,6 +101,24 @@ Menggabungkan semua sudut pandang dalam satu halaman:
 - Skala ke ~900: cukup tambah kode ke `idxTickers.ts` (invalid auto-skip).
 - SQLite bisa menggantikan store file bila butuh query SQL ad-hoc (opsional).
 
+### Faktor, risiko per-saham, histori & event study (baru)
+
+- **Risiko per-saham** (`server/utils/risk.ts` → `/api/analysis`): volatilitas
+  tahunan, VaR 95% harian, max drawdown 1th, beta vs IHSG + rating. Tampil di
+  Hub Analisa.
+- **Multi-faktor QVM** (`server/utils/factor.ts` → `/api/screen`): peringkat
+  persentil lintas-universe Value(PER/PBV/DY)+Quality(ROE/DER/growth)+Momentum
+  (RS/skor). Kolom QVM + sort + sinyal "QVM Top 20" di screening.
+- **Histori harian** (`server/utils/history.ts`): `/api/sync` meng-append
+  `.data-store/history/YYYY-MM-DD.json` (compact: close/score/rating/PER/RS/QVM)
+  — fondasi tren & backtest fundamental lintas waktu. Akumulatif dari sync
+  pertama; `/api/history?symbol` juga membackfill tren skor on-demand (recompute
+  skor pada potongan historis, tanpa look-ahead) → sparkline di Hub.
+- **Event study** (`server/utils/eventStudy.ts` → `/api/eventstudy`): distribusi
+  return ke depan (5/10/20/60 hari) setelah sinyal (golden/ma200/rsi30/breakout)
+  lintas universe likuid 5th, dibandingkan baseline (edge). Tanpa look-ahead.
+  Tampil di halaman Backtest melengkapi engine kurva-ekuitas yang sudah ada.
+
 ## Roadmap berikutnya
 
 Rancangan analisa lanjutan (konteks pasar, portofolio, backtest, alert)

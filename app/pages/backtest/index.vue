@@ -32,6 +32,18 @@ const beatsIhsg = computed(() => bench.value && bench.value.alphaCagrPct > 0);
 
 const fmtPct = (n: number | null | undefined) => (n == null ? '—' : (n >= 0 ? '+' : '') + n + '%');
 
+// ---- Event study: forward returns after a signal, vs baseline ----
+const evSignal = ref('golden');
+const EV_SIGNALS = [
+  { key: 'golden', label: 'Golden Cross' },
+  { key: 'ma200', label: 'Reclaim MA200' },
+  { key: 'rsi30', label: 'RSI keluar oversold' },
+  { key: 'breakout', label: 'Breakout 20 hari' }
+];
+const { data: ev, pending: evPending, error: evError } = await useFetch<any>(() => '/api/eventstudy', {
+  params: { signal: evSignal }, watch: [evSignal], lazy: true
+});
+
 const chartOption = computed(() => {
   const d = data.value;
   if (!d?.equity?.length) return {};
@@ -130,6 +142,60 @@ const chartOption = computed(() => {
           </p>
         </footer>
       </template>
+
+      <!-- ================= EVENT STUDY ================= -->
+      <section class="glow-card rounded-2xl p-6 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-50">Event Study — "Apa yang terjadi setelah sinyal?"</h2>
+            <p class="text-xs text-slate-400 mt-1">Return rata-rata ke depan setelah sinyal muncul, lintas universe likuid &amp; 5 tahun, dibandingkan baseline (return acak). Edge = sinyal − baseline.</p>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              v-for="s in EV_SIGNALS" :key="s.key"
+              @click="evSignal = s.key"
+              class="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
+              :class="evSignal === s.key ? 'bg-emerald-500 text-slate-950' : 'bg-slate-900 border border-slate-800 text-slate-300 hover:text-slate-100'"
+            >{{ s.label }}</button>
+          </div>
+        </div>
+
+        <div v-if="evPending && !ev" class="py-8 text-center text-sm text-slate-500">Menghitung event study…</div>
+        <div v-else-if="evError" class="py-8 text-center text-sm text-rose-400">Gagal memuat event study. Coba lagi.</div>
+        <template v-else-if="ev">
+          <p class="text-xs text-slate-400">
+            <strong class="text-slate-100">{{ ev.events.toLocaleString('id-ID') }}</strong> kejadian sinyal terdeteksi pada {{ ev.universeSize }} saham.
+            Sinyal: <span class="text-emerald-300">{{ ev.label }}</span>
+          </p>
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm min-w-[560px]">
+              <thead>
+                <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                  <th class="px-3 py-2 font-semibold">Horizon</th>
+                  <th class="px-3 py-2 font-semibold text-right">Return rata-rata</th>
+                  <th class="px-3 py-2 font-semibold text-right">Median</th>
+                  <th class="px-3 py-2 font-semibold text-right">Win rate</th>
+                  <th class="px-3 py-2 font-semibold text-right">Baseline</th>
+                  <th class="px-3 py-2 font-semibold text-right">Edge</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="h in ev.horizons" :key="h.h" class="border-b border-slate-900/70">
+                  <td class="px-3 py-2.5 font-semibold text-slate-200">+{{ h.h }} hari</td>
+                  <td class="px-3 py-2.5 text-right font-semibold" :class="h.avgPct >= 0 ? 'text-emerald-300' : 'text-rose-300'">{{ fmtPct(h.avgPct) }}</td>
+                  <td class="px-3 py-2.5 text-right text-slate-300">{{ fmtPct(h.medianPct) }}</td>
+                  <td class="px-3 py-2.5 text-right" :class="h.winRatePct >= 50 ? 'text-emerald-300' : 'text-slate-400'">{{ h.winRatePct }}%</td>
+                  <td class="px-3 py-2.5 text-right text-slate-500">{{ fmtPct(h.baselineAvgPct) }}</td>
+                  <td class="px-3 py-2.5 text-right font-extrabold" :class="h.edgePct > 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(h.edgePct) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            Deteksi memakai data ≤ hari sinyal (tanpa look-ahead); return diukur ke depan. <strong class="text-slate-300">Edge positif</strong> = sinyal mengungguli hari acak. Universe likuid saat ini (survivorship bias) — indikatif, bukan janji.
+          </p>
+        </template>
+      </section>
 
     </main>
   </div>

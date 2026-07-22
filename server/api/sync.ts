@@ -6,6 +6,8 @@ import { fetchFundamentals } from '../utils/fundamentals';
 import { rs3mOnly } from '../utils/relative';
 import { IDX_TICKERS } from '../utils/idxTickers';
 import { saveScreenSnapshot, type ScreenRow, type ScreenSnapshot } from '../utils/store';
+import { computeFactors } from '../utils/factor';
+import { appendDailyHistory, type HistoryRow } from '../utils/history';
 import { tradingDay } from '../utils/cacheKey';
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
@@ -92,6 +94,24 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; date: st
     rows
   };
   await saveScreenSnapshot(snapshot);
+
+  // Append a compact daily history record (score/RS/QVM/fundamentals) — the
+  // foundation for trends & honest screener backtests over time.
+  try {
+    const scored = computeFactors(rows);
+    const histRows: HistoryRow[] = scored.map((r) => ({
+      code: r.code,
+      close: r.price,
+      score: r.score,
+      rating: r.rating,
+      per: r.per,
+      pbv: r.pbv,
+      roe: r.roe,
+      rs3m: r.rs3m,
+      qvm: r.qvm,
+    }));
+    await appendDailyHistory(snapshot.date, histRows);
+  } catch { /* history is best-effort; never fail the sync over it */ }
 
   return { ok: true, date: snapshot.date, attempted: snapshot.attempted, count: snapshot.count, ms: Date.now() - t0 };
 });

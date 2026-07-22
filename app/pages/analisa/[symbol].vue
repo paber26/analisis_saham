@@ -61,9 +61,29 @@ const { data: fc, pending: fcPending } = await useFetch<any>(() => '/api/forecas
   params: { symbol, horizon: 14 }, watch: [symbol], lazy: true
 });
 
+const { data: hist } = await useFetch<any>(() => '/api/history', {
+  params: { symbol }, watch: [symbol], lazy: true
+});
+
 const t = computed(() => an.value?.technical || null);
 const lv = computed(() => an.value?.levels || null);
 const liveFund = computed(() => (fund.value?.available ? fund.value : null));
+
+// Score trend (backfilled) → inline SVG sparkline
+const scoreTrend = computed<{ date: string; score: number }[]>(() => hist.value?.trend || []);
+const trendSpark = computed(() => {
+  const pts = scoreTrend.value;
+  if (pts.length < 2) return null;
+  const W = 300, H = 56;
+  const coords = pts.map((p, i) => {
+    const x = (i / (pts.length - 1)) * W;
+    const y = H - (Math.max(0, Math.min(100, p.score)) / 100) * H;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  const first = pts[0]!.score;
+  const last = pts[pts.length - 1]!.score;
+  return { points: coords.join(' '), first, last, delta: Math.round(last - first), up: last >= first };
+});
 
 const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('id-ID'));
 const fmtIdr = (n: number | null | undefined) =>
@@ -485,6 +505,22 @@ const verdict = computed(() => {
           <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">
             Volatilitas & VaR memakai deviasi standar return harian (parametrik); beta = kemiringan return saham thd IHSG. Estimasi historis, bukan jaminan masa depan.
           </p>
+
+          <!-- Score trend sparkline -->
+          <div v-if="trendSpark" class="mt-4 pt-4 border-t border-slate-800/60">
+            <div class="flex items-center justify-between mb-2">
+              <p class="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Tren Skor Teknikal (≈1 th)</p>
+              <span class="text-[11px] font-bold" :class="trendSpark.up ? 'text-emerald-400' : 'text-rose-400'">
+                {{ trendSpark.first }} → {{ trendSpark.last }} ({{ trendSpark.delta >= 0 ? '+' : '' }}{{ trendSpark.delta }})
+              </span>
+            </div>
+            <svg viewBox="0 0 300 56" preserveAspectRatio="none" class="w-full h-14">
+              <line x1="0" y1="16.8" x2="300" y2="16.8" stroke="#1e293b" stroke-width="1" stroke-dasharray="3 3" />
+              <line x1="0" y1="28" x2="300" y2="28" stroke="#334155" stroke-width="1" stroke-dasharray="3 3" />
+              <polyline :points="trendSpark.points" fill="none" :stroke="trendSpark.up ? '#34d399' : '#fb7185'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
+            </svg>
+            <p class="text-[10px] text-slate-600 mt-1">Skor 0–100 dihitung ulang pada potongan historis (tanpa look-ahead). Garis: 70 (kuat) & 50.</p>
+          </div>
         </section>
 
         <!-- Trade plan + position calculator -->

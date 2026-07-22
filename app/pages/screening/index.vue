@@ -21,6 +21,7 @@ const ratingFilter = ref<'all' | 'Kuat' | 'Menarik'>('all');
 const searchQ = ref('');
 const onlyUptrend = ref(false);
 const onlyValue = ref(false); // "Murah + Uptrend": PER wajar & di atas MA200
+const sortBy = ref<'score' | 'qvm'>('score'); // ranking column
 
 // Advanced filters
 const minAdx = ref(0); // 0 = off
@@ -35,7 +36,8 @@ const QUICK_SIGNALS: QuickSignal[] = [
   { key: 'volume', label: 'Volume Spike ≥1.5x', test: (x) => x.volRatio != null && x.volRatio >= 1.5 },
   { key: 'near52h', label: 'Dekat 52W High', test: (x) => x.pctFromHigh != null && x.pctFromHigh >= -8 },
   { key: 'outperform', label: 'Outperform IHSG (RS>2%)', needsFund: true, test: (x) => x.rs3m != null && x.rs3m > 2 },
-  { key: 'quality', label: 'Berkualitas (ROE≥12 & tumbuh)', needsFund: true, test: (x) => x.roe != null && x.roe >= 12 && ((x.earningsGrowth != null && x.earningsGrowth > 0) || (x.revenueGrowth != null && x.revenueGrowth > 0)) }
+  { key: 'quality', label: 'Berkualitas (ROE≥12 & tumbuh)', needsFund: true, test: (x) => x.roe != null && x.roe >= 12 && ((x.earningsGrowth != null && x.earningsGrowth > 0) || (x.revenueGrowth != null && x.revenueGrowth > 0)) },
+  { key: 'qvmtop', label: 'QVM Top 20', needsFund: true, test: (x) => x.qvmRank != null && x.qvmRank <= 20 }
 ];
 const activeQuickSignals = ref<Set<string>>(new Set());
 function toggleQuickSignal(key: string) {
@@ -69,8 +71,19 @@ const filtered = computed(() => {
     const active = QUICK_SIGNALS.filter((s) => activeQuickSignals.value.has(s.key));
     r = r.filter((x) => active.every((s) => s.test(x)));
   }
+  if (sortBy.value === 'qvm') {
+    r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
+  }
   return r;
 });
+
+function qvmClass(v: number | null) {
+  if (v == null) return 'text-slate-500';
+  if (v >= 70) return 'text-emerald-300';
+  if (v >= 50) return 'text-sky-300';
+  if (v >= 30) return 'text-slate-300';
+  return 'text-rose-300';
+}
 
 const counts = computed(() => ({
   kuat: rows.value.filter((x) => x.rating === 'Kuat').length,
@@ -288,8 +301,14 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 <th class="px-4 py-3 font-semibold">#</th>
                 <th class="px-4 py-3 font-semibold">Saham</th>
                 <th class="px-4 py-3 font-semibold text-right">Harga</th>
-                <th class="px-4 py-3 font-semibold">Skor Teknikal</th>
+                <th class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300" @click="sortBy = 'score'">
+                  Skor Teknikal <span v-if="sortBy === 'score'" class="text-emerald-400">▼</span>
+                </th>
                 <th class="px-4 py-3 font-semibold text-right">RSI</th>
+                <th v-if="hasFundamentals" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300" @click="sortBy = 'qvm'"
+                  title="Quality–Value–Momentum: peringkat komposit lintas universe">
+                  QVM <span v-if="sortBy === 'qvm'" class="text-emerald-400">▼</span>
+                </th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>
                 <th class="px-4 py-3 font-semibold">Tren</th>
                 <th class="px-4 py-3 font-semibold">Sinyal</th>
@@ -329,6 +348,20 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                   </div>
                 </td>
                 <td class="px-4 py-3 text-right font-semibold" :class="rsiClass(row.rsi)">{{ row.rsi ?? '—' }}</td>
+                <td v-if="hasFundamentals" class="px-4 py-3 whitespace-nowrap">
+                  <div v-if="row.qvm != null" class="flex items-center gap-2">
+                    <span class="text-base font-extrabold w-8" :class="qvmClass(row.qvm)">{{ Math.round(row.qvm) }}</span>
+                    <div>
+                      <div class="flex gap-1 text-[9px] font-bold">
+                        <span class="px-1 py-0.5 rounded bg-slate-800 text-slate-300" title="Value (murah)">V{{ row.value != null ? Math.round(row.value) : '–' }}</span>
+                        <span class="px-1 py-0.5 rounded bg-slate-800 text-slate-300" title="Quality (kualitas)">Q{{ row.quality != null ? Math.round(row.quality) : '–' }}</span>
+                        <span class="px-1 py-0.5 rounded bg-slate-800 text-slate-300" title="Momentum">M{{ row.momentum != null ? Math.round(row.momentum) : '–' }}</span>
+                      </div>
+                      <span v-if="row.qvmRank != null" class="text-[10px] text-slate-500">peringkat #{{ row.qvmRank }}</span>
+                    </div>
+                  </div>
+                  <span v-else class="text-slate-600 text-xs">—</span>
+                </td>
                 <td v-if="hasFundamentals" class="px-4 py-3 text-right whitespace-nowrap">
                   <div class="text-xs font-semibold" :class="row.per != null && row.per > 0 && row.per <= 15 ? 'text-emerald-400' : 'text-slate-300'">
                     {{ row.per != null ? 'PER ' + row.per + '×' : '—' }}
@@ -365,7 +398,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 </td>
               </tr>
               <tr v-if="!filtered.length">
-                <td :colspan="hasFundamentals ? 8 : 7" class="px-4 py-10 text-center text-sm text-slate-500">Tidak ada saham yang cocok dengan filter.</td>
+                <td :colspan="hasFundamentals ? 9 : 7" class="px-4 py-10 text-center text-sm text-slate-500">Tidak ada saham yang cocok dengan filter.</td>
               </tr>
             </tbody>
           </table>

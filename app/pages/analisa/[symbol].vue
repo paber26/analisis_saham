@@ -267,6 +267,23 @@ const rsChip = computed(() => {
   return { label: `↓ Underperform ${s}`, cls: 'text-rose-300 bg-rose-500/10 border-rose-500/25' };
 });
 
+// Per-stock risk profile (beta, volatility, drawdown, VaR)
+const risk = computed(() => an.value?.risk || null);
+const riskRatingCls = computed(() => {
+  const r = risk.value?.rating;
+  if (r === 'Rendah') return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25';
+  if (r === 'Sedang') return 'text-amber-300 bg-amber-500/10 border-amber-500/25';
+  return 'text-rose-300 bg-rose-500/10 border-rose-500/25';
+});
+const betaNote = computed(() => {
+  const b = risk.value?.beta;
+  if (b == null) return '—';
+  if (b < 0) return 'berlawanan arah pasar';
+  if (b > 1.15) return 'lebih agresif dari IHSG';
+  if (b < 0.85) return 'lebih defensif dari IHSG';
+  return 'bergerak seiring IHSG';
+});
+
 const verdict = computed(() => {
   const tv = t.value;
   if (!tv) return null;
@@ -435,6 +452,39 @@ const verdict = computed(() => {
             </template>
             <p v-else class="text-xs text-slate-500">Data belum cukup untuk analisis level.</p>
           </div>
+        </section>
+
+        <!-- Risk profile (per-stock) -->
+        <section v-if="risk" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+            <h4 class="text-sm font-bold text-slate-100">Profil Risiko <span class="text-slate-500 font-normal">(≈1 tahun, {{ risk.n }} hari)</span></h4>
+            <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg border" :class="riskRatingCls">Risiko {{ risk.rating }}</span>
+          </div>
+          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">Volatilitas Tahunan</p>
+              <p class="text-lg font-extrabold text-slate-100 mt-1">{{ risk.volAnnualPct }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">harian {{ risk.volDailyPct }}%</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">Beta vs IHSG</p>
+              <p class="text-lg font-extrabold text-slate-100 mt-1">{{ risk.beta ?? '—' }}</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">{{ betaNote }}</p>
+            </div>
+            <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
+              <p class="text-[10px] text-rose-400 uppercase tracking-wide">Max Drawdown</p>
+              <p class="text-lg font-extrabold text-rose-300 mt-1">−{{ risk.maxDrawdownPct }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">puncak→lembah 1th</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">VaR 95% (harian)</p>
+              <p class="text-lg font-extrabold text-amber-300 mt-1">−{{ risk.var95Pct }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">potensi rugi 1 hari</p>
+            </div>
+          </div>
+          <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">
+            Volatilitas & VaR memakai deviasi standar return harian (parametrik); beta = kemiringan return saham thd IHSG. Estimasi historis, bukan jaminan masa depan.
+          </p>
         </section>
 
         <!-- Trade plan + position calculator -->

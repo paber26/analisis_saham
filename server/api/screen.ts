@@ -4,6 +4,7 @@ import { fetchDailyBars } from '../utils/yahoo';
 import { analyzeTechnical } from '../utils/technical';
 import { SCREENING_UNIVERSE } from '../utils/universe';
 import { loadScreenSnapshot, type ScreenRow } from '../utils/store';
+import { computeFactors, type ScoredRow } from '../utils/factor';
 import { tradingDay, shortHash } from '../utils/cacheKey';
 
 interface ScreenResponse {
@@ -11,7 +12,7 @@ interface ScreenResponse {
   date?: string;
   generatedAt?: string;
   count: number;
-  results: ScreenRow[];
+  results: ScoredRow[];
 }
 
 function parseSymbols(raw: string): string[] {
@@ -71,11 +72,11 @@ export default defineEventHandler(async (event): Promise<ScreenResponse> => {
   if (!symbolsParam) {
     const snap = await loadScreenSnapshot();
     if (snap && snap.rows.length) {
-      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, results: snap.rows };
+      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, results: computeFactors(snap.rows) };
     }
   }
 
   const codes = parseSymbols(symbolsParam);
   const results = await computeLive(codes);
-  return { source: 'live', count: results.length, results };
+  return { source: 'live', count: results.length, results: computeFactors(results) };
 });

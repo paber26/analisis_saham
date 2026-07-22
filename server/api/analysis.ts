@@ -1,9 +1,10 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
-import { fetchDailyBars } from '../utils/yahoo';
+import { fetchDailyBars, type DailyBar } from '../utils/yahoo';
 import { analyzeTechnical, type TechResult } from '../utils/technical';
 import { computeLevels, type Levels } from '../utils/levels';
 import { relativeStrength, type RelStrength } from '../utils/relative';
+import { computeStockRisk, type StockRisk } from '../utils/risk';
 import { tradingDay } from '../utils/cacheKey';
 
 interface AnalysisResponse {
@@ -14,6 +15,7 @@ interface AnalysisResponse {
   technical: TechResult;
   levels: Levels | null;
   relative: RelStrength | null;
+  risk: StockRisk | null;
 }
 
 // Full single-stock technical picture: indicator score + price levels + ATR
@@ -35,14 +37,19 @@ export default defineCachedEventHandler(async (event): Promise<AnalysisResponse>
     });
   }
 
-  // Relative strength vs IHSG (best-effort; index excluded)
-  let relative: RelStrength | null = null;
-  if (!symbol.startsWith('^')) {
+  // IHSG once — powers both relative strength and beta (best-effort).
+  const isIndex = symbol.startsWith('^');
+  let ihsgBars: DailyBar[] | null = null;
+  if (!isIndex) {
     const ihsg = await fetchDailyBars('^JKSE', '1y', false);
-    if (ihsg && ihsg.bars.length) {
-      relative = relativeStrength(fetched.bars.map((b) => b.close), ihsg.bars.map((b) => b.close));
-    }
+    if (ihsg && ihsg.bars.length) ihsgBars = ihsg.bars;
   }
+
+  const relative: RelStrength | null = ihsgBars
+    ? relativeStrength(fetched.bars.map((b) => b.close), ihsgBars.map((b) => b.close))
+    : null;
+
+  const risk = computeStockRisk(fetched.bars, ihsgBars);
 
   return {
     symbol,
@@ -51,7 +58,8 @@ export default defineCachedEventHandler(async (event): Promise<AnalysisResponse>
     currency: fetched.meta?.currency || 'IDR',
     technical,
     levels: computeLevels(fetched.bars),
-    relative
+    relative,
+    risk
   };
 }, {
   maxAge: 60 * 60 * 24, // 1 day (day-keyed)

@@ -15,6 +15,7 @@ type StockProfileResponse = {
   employees?: number;
   description?: string;
   marketCap?: number;
+  enterpriseValue?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
   fiftyDayAverage?: number;
@@ -26,9 +27,14 @@ type StockProfileResponse = {
   roa?: number;
   profitMargins?: number;
   operatingMargins?: number;
+  grossMargins?: number;
   revenueGrowth?: number;
   dividendYield?: number;
   beta?: number;
+  totalCash?: number;
+  totalDebt?: number;
+  bookValue?: number;
+  sharesOutstanding?: number;
   sectorsUrl: string;
 };
 
@@ -88,6 +94,7 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
     employees: typeof assetProfile.fullTimeEmployees === 'number' ? assetProfile.fullTimeEmployees : undefined,
     description: assetProfile.longBusinessSummary || undefined,
     marketCap: summaryDetail.marketCap?.raw,
+    enterpriseValue: defaultKeyStatistics.enterpriseValue?.raw,
     fiftyTwoWeekHigh: summaryDetail.fiftyTwoWeekHigh?.raw,
     fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw,
     fiftyDayAverage: summaryDetail.fiftyDayAverage?.raw,
@@ -99,9 +106,14 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
     roa: financialData.returnOnAssets?.raw,
     profitMargins: financialData.profitMargins?.raw,
     operatingMargins: financialData.operatingMargins?.raw,
+    grossMargins: financialData.grossMargins?.raw,
     revenueGrowth: financialData.revenueGrowth?.raw,
     dividendYield: summaryDetail.dividendYield?.raw ?? summaryDetail.trailingAnnualDividendYield?.raw,
     beta: summaryDetail.beta?.raw ?? defaultKeyStatistics.beta?.raw,
+    totalCash: financialData.totalCash?.raw,
+    totalDebt: financialData.totalDebt?.raw,
+    bookValue: defaultKeyStatistics.bookValue?.raw,
+    sharesOutstanding: defaultKeyStatistics.sharesOutstanding?.raw,
     sectorsUrl: `https://sectors.app/idx/${cleanCode}`
   };
 }, {

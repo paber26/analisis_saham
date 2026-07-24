@@ -43,6 +43,8 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
   return num.toLocaleString('id-ID') + suffix;
 };
 
+const showEmbed = ref(false);
+
 const formatPct = (val?: number) => {
   if (val === undefined || val === null) return '—';
   return (val * 100).toFixed(2) + '%';
@@ -58,7 +60,17 @@ const formatRatio = (val?: number) => {
   <div class="pb-16 bg-slate-950 text-slate-100 flex flex-col flex-grow">
     <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-8 flex-grow w-full space-y-6">
       <section class="glow-card rounded-2xl p-6">
-        <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Profil Emiten</h2>
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-sm font-semibold text-slate-400 uppercase tracking-wider">Profil Emiten</h2>
+          <button
+            v-if="profile?.sectorsUrl"
+            @click="showEmbed = !showEmbed"
+            class="px-3.5 py-1.5 rounded-xl border text-xs font-semibold transition-all flex items-center gap-2"
+            :class="showEmbed ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-xs' : 'bg-slate-900 text-slate-300 border-slate-800 hover:border-slate-700'"
+          >
+            <span>{{ showEmbed ? '📋 Kembali ke Ringkasan Profil' : '🖥️ Tampilkan Tampilan Interaktif Sectors.app' }}</span>
+          </button>
+        </div>
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 items-end">
           <div class="flex flex-col gap-2 sm:col-span-2">
@@ -79,13 +91,32 @@ const formatRatio = (val?: number) => {
               target="_blank"
               rel="noopener noreferrer"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition-colors"
-              title="Buka analisis visual di Sectors.app"
+              title="Buka langsung di tab Sectors.app"
             >
               <span>Sectors.app</span>
               <span class="text-xs">↗</span>
             </a>
           </div>
         </div>
+      </section>
+
+      <!-- Embedded Sectors.app Frame -->
+      <section v-if="showEmbed && profile?.sectorsUrl" class="glow-card rounded-2xl p-4 overflow-hidden animate-fadeIn">
+        <div class="flex items-center justify-between mb-3 px-2">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span class="text-xs font-semibold text-cyan-300">Tampilan Interaktif Sectors.app ({{ activeSymbol }})</span>
+          </div>
+          <a :href="profile.sectorsUrl" target="_blank" rel="noopener" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1">
+            <span>Buka Tab Baru</span>
+            <span>↗</span>
+          </a>
+        </div>
+        <iframe
+          :src="profile.sectorsUrl"
+          class="w-full h-[850px] rounded-xl border border-slate-800 bg-slate-950 shadow-inner"
+          title="Sectors.app Live Interactive Profile"
+        ></iframe>
       </section>
 
       <section v-if="pending" class="glow-card rounded-2xl p-6">
@@ -138,6 +169,12 @@ const formatRatio = (val?: number) => {
                 </span>
               </div>
               <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Return on Assets</span>
+                <span class="text-base font-bold" :class="(profile?.roa || 0) >= 0.05 ? 'text-emerald-400' : 'text-slate-100'">
+                  {{ formatPct(profile?.roa) }}
+                </span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
                 <span class="text-xs text-slate-400 block mb-1">Dividend Yield</span>
                 <span class="text-base font-bold" :class="(profile?.dividendYield || 0) > 0 ? 'text-emerald-400' : 'text-slate-100'">
                   {{ formatPct(profile?.dividendYield) }}
@@ -148,18 +185,14 @@ const formatRatio = (val?: number) => {
                 <span class="text-base font-bold text-slate-100">{{ formatPct(profile?.profitMargins) }}</span>
               </div>
               <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Gross Margin</span>
+                <span class="text-base font-bold text-slate-100">{{ formatPct(profile?.grossMargins) }}</span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
                 <span class="text-xs text-slate-400 block mb-1">Revenue Growth</span>
                 <span class="text-base font-bold" :class="(profile?.revenueGrowth || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
                   {{ formatPct(profile?.revenueGrowth) }}
                 </span>
-              </div>
-              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
-                <span class="text-xs text-slate-400 block mb-1">Forward P/E</span>
-                <span class="text-base font-bold text-slate-100">{{ formatRatio(profile?.forwardPE) }}</span>
-              </div>
-              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
-                <span class="text-xs text-slate-400 block mb-1">Beta (Volatilitas)</span>
-                <span class="text-base font-bold text-slate-100">{{ profile?.beta ? profile.beta.toFixed(2) : '—' }}</span>
               </div>
             </div>
           </div>
@@ -174,11 +207,23 @@ const formatRatio = (val?: number) => {
 
         <aside class="space-y-6">
           <div class="glow-card rounded-2xl p-6">
-            <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Fakta Singkat & Pasar</h4>
+            <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Fakta Singkat & Kapitalisasi</h4>
             <div class="space-y-3 text-sm">
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">Market Cap</span>
                 <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.marketCap) }}</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="text-slate-400">Enterprise Value</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.enterpriseValue) }}</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="text-slate-400">Total Kas</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.totalCash) }}</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="text-slate-400">Total Utang</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.totalDebt) }}</span>
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">52W High</span>
@@ -234,7 +279,7 @@ const formatRatio = (val?: number) => {
 
           <div class="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
             <p class="text-xs text-cyan-200/90 leading-relaxed">
-              💡 Ingin visualisasi sektor & grafik mendalam? Gunakan tombol <strong>Sectors.app ↗</strong> di atas untuk membuka laporan Sectors.app secara langsung.
+              💡 Tekan tombol <strong>🖥️ Tampilkan Tampilan Interaktif Sectors.app</strong> di kanan atas untuk memuat laporan interaktif Sectors.app langsung di dalam dasbor ini.
             </p>
           </div>
         </aside>

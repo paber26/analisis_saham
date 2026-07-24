@@ -68,6 +68,29 @@ const normalizeToken = (t: string | null | undefined): string | null => {
   return s || null;
 };
 
+export function isJwtExpired(token: string): boolean {
+  try {
+    const parts = token.trim().split('.');
+    if (parts.length !== 3) return false;
+    const payloadBuf = Buffer.from(parts[1], 'base64');
+    const payload = JSON.parse(payloadBuf.toString('utf8'));
+    if (payload && typeof payload.exp === 'number') {
+      return (payload.exp * 1000) <= (Date.now() + 60000);
+    }
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+export async function invalidatePushedToken(): Promise<void> {
+  try {
+    await fs.unlink(TOKEN_FILE);
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * The freshest Stockbit bearer token. Prefers the token pushed by the browser
  * extension (.data-store/stockbit-token.json) — kept up to date automatically as
@@ -77,11 +100,13 @@ export async function getStockbitToken(): Promise<string | null> {
   try {
     const j = JSON.parse(await fs.readFile(TOKEN_FILE, 'utf-8'));
     const fromFile = normalizeToken(j?.token);
-    if (fromFile) return fromFile;
+    if (fromFile && !isJwtExpired(fromFile)) return fromFile;
   } catch {
-    // no pushed token yet → fall back to env
+    // no pushed token yet or expired → fall back to env
   }
-  return normalizeToken(process.env.STOCKBIT_TOKEN);
+  const fromEnv = normalizeToken(process.env.STOCKBIT_TOKEN);
+  if (fromEnv && !isJwtExpired(fromEnv)) return fromEnv;
+  return fromEnv;
 }
 
 /** Persist a token pushed by the extension (atomic write). */
@@ -259,6 +284,9 @@ export async function fetchBandarDetector(rawSymbol: string, period: string = '1
     return parsed;
   } catch (err: any) {
     console.error(`[stockbit] bandar fetch failed for ${symbol}:`, err?.status || err?.message || err);
+    if (err?.status === 401 || err?.statusCode === 401) {
+      await invalidatePushedToken();
+    }
     // Fall back to freshest cached data if live fetch failed
     return readLatestAnyCache<BandarDetector>('bandar', key);
   }
@@ -297,6 +325,9 @@ async function stockbitGet(apiPath: string): Promise<any | null> {
     return await $fetch<any>(`${STOCKBIT_API}${apiPath}`, { headers: stockbitHeaders(token) });
   } catch (err: any) {
     console.error('[stockbit] GET failed', apiPath, err?.status || err?.message || err);
+    if (err?.status === 401 || err?.statusCode === 401) {
+      await invalidatePushedToken();
+    }
     return null;
   }
 }

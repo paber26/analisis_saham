@@ -239,6 +239,14 @@ const sankeyOption = computed(() => {
         </div>
 
         <template v-else>
+          <!-- Stale cache warning banner -->
+          <div v-if="summary?.isStale" class="px-4 py-3 rounded-2xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs flex items-center justify-between gap-3 shadow-sm">
+            <div class="flex items-center gap-2">
+              <span class="text-sm">⚠️</span>
+              <span><strong>Menampilkan data cache terakhir:</strong> Token Stockbit kedaluwarsa, namun data tersimpan berhasil ditampilkan. Extension akan memperbarui token otomatis di latar belakang saat Chrome dibuka.</span>
+            </div>
+          </div>
+
           <!-- Panel: Broker Summary (meter + net buy/sell tables) -->
           <section v-if="summary" class="glow-card rounded-2xl p-6">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">

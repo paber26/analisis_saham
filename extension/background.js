@@ -72,6 +72,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   }
 });
 
+// --- Source 5: Background Periodic Alarm Sync ---
+// Scans cookies every 30 minutes and silently refreshes/pushes token to server
+// so user never has to manually open stockbit.com tab.
+chrome.runtime.onInstalled?.addListener(() => {
+  chrome.alarms.create('periodic-token-sync', { periodInMinutes: 30 });
+});
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm && alarm.name === 'periodic-token-sync') {
+    log('running background periodic token sync alarm...');
+    scanCookies('alarm');
+    fetch('https://stockbit.com/', { method: 'HEAD', mode: 'no-cors' }).catch(() => {});
+  }
+});
+
 // --- Dedupe + push ---
 async function handleToken(token, source) {
   const cfg = await chrome.storage.local.get(['lastToken', 'secret', 'server']);

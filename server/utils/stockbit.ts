@@ -201,35 +201,32 @@ export function parseBandarDetector(raw: any): BandarDetector | null {
   };
 }
 
-// ---- Per-day disk cache: .data-store/bandar/SYMBOL-YYYY-MM-DD.json ----
-// Once we have today's data for a symbol we serve it from disk and NEVER call
-// Stockbit again that day. Survives restarts. Same atomic-write idiom as store.ts.
-async function readBandarCache(symbol: string, day: string): Promise<BandarDetector | null> {
+async function readLatestAnyCache<T>(dirName: string, keyPrefix: string): Promise<T | null> {
   try {
-    const txt = await fs.readFile(path.join(CACHE_DIR, `${symbol}-${day}.json`), 'utf-8');
-    return JSON.parse(txt) as BandarDetector;
+    const targetDir = dirName === 'bandar' ? CACHE_DIR : path.join(DATA_DIR, dirName);
+    const files = await fs.readdir(targetDir);
+    const matching = files.filter((f) => f.startsWith(`${keyPrefix}-`) && f.endsWith('.json'));
+    if (!matching.length) return null;
+
+    // Sort descending by filename or mtime to get the freshest cache available
+    matching.sort().reverse();
+    const latestFile = matching[0];
+    const txt = await fs.readFile(path.join(targetDir, latestFile), 'utf-8');
+    const data = JSON.parse(txt) as any;
+    if (data && typeof data === 'object') {
+      data.isStale = true;
+    }
+    return data as T;
   } catch {
-    return null; // miss or unreadable → treat as no cache
-  }
-}
-async function writeBandarCache(symbol: string, day: string, data: BandarDetector): Promise<void> {
-  try {
-    await fs.mkdir(CACHE_DIR, { recursive: true });
-    const file = path.join(CACHE_DIR, `${symbol}-${day}.json`);
-    const tmp = `${file}.tmp`;
-    await fs.writeFile(tmp, JSON.stringify(data), 'utf-8');
-    await fs.rename(tmp, file); // atomic swap — readers never see a partial file
-  } catch (err) {
-    console.error('[stockbit] cache write failed:', err); // non-fatal: still return live data
+    return null;
   }
 }
 
 /**
  * Get the bandar detector for one symbol, cached PER TRADING DAY on disk.
  * Flow: today's cache file → hit? return it (no network). Miss → fetch from
- * Stockbit, save to disk immediately, return. Returns null on any failure
- * (no token, network, auth expiry, unexpected shape) so callers can surface a
- * friendly message instead of leaking Stockbit internals.
+ * Stockbit, save to disk immediately, return. If live fetch fails (token expired),
+ * falls back to the most recent cached data available on disk.
  */
 export async function fetchBandarDetector(rawSymbol: string, period: string = '1d', fromStr?: string, toStr?: string): Promise<BandarDetector | null> {
   const symbol = stockbitSymbol(rawSymbol);
@@ -245,8 +242,8 @@ export async function fetchBandarDetector(rawSymbol: string, period: string = '1
   // 2) Cache miss → fetch from Stockbit (needs a valid token).
   const token = await getStockbitToken();
   if (!token) {
-    console.error('[stockbit] no token — cannot fetch bandar detector');
-    return null;
+    console.error('[stockbit] no token — cannot fetch live bandar detector, trying stale cache fallback');
+    return readLatestAnyCache<BandarDetector>('bandar', key);
   }
   let url = `${STOCKBIT_API}/marketdetectors/${encodeURIComponent(symbol)}?transaction_type=TRANSACTION_TYPE_NET&market_board=MARKET_BOARD_REGULER&investor_type=INVESTOR_TYPE_ALL&limit=25`;
   if (range.isCustom && range.from && range.to) {
@@ -262,7 +259,8 @@ export async function fetchBandarDetector(rawSymbol: string, period: string = '1
     return parsed;
   } catch (err: any) {
     console.error(`[stockbit] bandar fetch failed for ${symbol}:`, err?.status || err?.message || err);
-    return null;
+    // Fall back to freshest cached data if live fetch failed
+    return readLatestAnyCache<BandarDetector>('bandar', key);
   }
 }
 
@@ -320,10 +318,15 @@ async function fetchCached<T>(
   const cached = await readDayCache<T>(kind, key, day);
   if (cached) return cached;
   const raw = await stockbitGet(buildPath(symbol, p, range));
-  if (!raw) return null;
+  if (!raw) {
+    return readLatestAnyCache<T>(kind, key);
+  }
   const parsed = parse(raw);
-  if (parsed) await writeDayCache(kind, key, day, parsed);
-  return parsed;
+  if (parsed) {
+    await writeDayCache(kind, key, day, parsed);
+    return parsed;
+  }
+  return readLatestAnyCache<T>(kind, key);
 }
 
 // ---- Panel: intraday Broker Flow (per-broker cumulative net value + price) ----

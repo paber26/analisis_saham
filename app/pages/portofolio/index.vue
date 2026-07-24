@@ -44,7 +44,38 @@ async function removeHolding(symbol: string) {
   } catch { /* ignore */ }
 }
 
+const editingSymbol = ref<string | null>(null);
+const editForm = ref({ lots: 0, avgPrice: 0 });
+
+function startEdit(p: any) {
+  editingSymbol.value = p.symbol;
+  editForm.value = { lots: p.lots, avgPrice: p.avgPrice };
+}
+
+function cancelEdit() {
+  editingSymbol.value = null;
+}
+
+async function saveEdit(symbol: string) {
+  const { lots, avgPrice } = editForm.value;
+  if (!lots || lots <= 0 || !avgPrice || avgPrice <= 0) return;
+  try {
+    await $fetch('/api/portfolio', {
+      method: 'POST',
+      headers: authHeaders.value,
+      body: { symbol, lots, avgPrice }
+    });
+    editingSymbol.value = null;
+    await load();
+  } catch { /* ignore */ }
+}
+
 const fmtRp = (n: number | null | undefined) => (n == null ? '—' : 'Rp ' + Math.round(n).toLocaleString('id-ID'));
+const fmtPnlRp = (n: number | null | undefined) => {
+  if (n == null) return '—';
+  const val = Math.round(Math.abs(n)).toLocaleString('id-ID');
+  return (n >= 0 ? '+Rp ' : '-Rp ') + val;
+};
 const positions = computed<any[]>(() => analysis.value?.positions || []);
 const risk = computed(() => analysis.value?.risk || null);
 const corr = computed(() => analysis.value?.correlation || null);
@@ -111,7 +142,7 @@ onMounted(load);
             </div>
             <div class="glow-card rounded-2xl p-5">
               <p class="text-[11px] text-slate-400 uppercase">Untung / Rugi</p>
-              <p class="text-2xl font-extrabold mt-1" :class="analysis.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ analysis.totalPnl >= 0 ? '+' : '' }}{{ fmtRp(analysis.totalPnl) }}</p>
+              <p class="text-2xl font-extrabold mt-1" :class="analysis.totalPnl >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPnlRp(analysis.totalPnl) }}</p>
               <p class="text-sm font-bold mt-0.5" :class="analysis.totalPnlPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ analysis.totalPnlPct >= 0 ? '+' : '' }}{{ analysis.totalPnlPct }}%</p>
             </div>
             <div class="glow-card rounded-2xl p-5">
@@ -138,7 +169,7 @@ onMounted(load);
                       <th class="px-4 py-3 font-semibold text-right">Avg → Harga</th>
                       <th class="px-4 py-3 font-semibold text-right">Nilai</th>
                       <th class="px-4 py-3 font-semibold text-right">P&L</th>
-                      <th class="px-4 py-3"></th>
+                      <th class="px-4 py-3 font-semibold text-right">Aksi</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -147,11 +178,68 @@ onMounted(load);
                         <NuxtLink :to="`/analisa/${p.code}`" class="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">{{ p.code }}</NuxtLink>
                         <span class="text-[10px] text-slate-500 ml-2">{{ p.weightPct }}%</span>
                       </td>
-                      <td class="px-4 py-3 text-right text-slate-300">{{ p.lots }}</td>
-                      <td class="px-4 py-3 text-right text-slate-300 text-xs">{{ p.avgPrice.toLocaleString('id-ID') }} → {{ p.price.toLocaleString('id-ID') }}</td>
+
+                      <!-- Lot column -->
+                      <td class="px-4 py-3 text-right">
+                        <template v-if="editingSymbol === p.symbol">
+                          <input
+                            v-model.number="editForm.lots"
+                            type="number"
+                            min="1"
+                            class="w-20 bg-slate-950 border border-emerald-500/50 rounded-lg px-2 py-1 text-xs text-slate-100 text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            @keyup.enter="saveEdit(p.symbol)"
+                            @keyup.esc="cancelEdit"
+                          />
+                        </template>
+                        <template v-else>
+                          <span class="text-slate-300 font-medium">{{ p.lots }}</span>
+                        </template>
+                      </td>
+
+                      <!-- Price column -->
+                      <td class="px-4 py-3 text-right text-xs">
+                        <template v-if="editingSymbol === p.symbol">
+                          <div class="flex items-center justify-end gap-1">
+                            <input
+                              v-model.number="editForm.avgPrice"
+                              type="number"
+                              min="1"
+                              class="w-24 bg-slate-950 border border-emerald-500/50 rounded-lg px-2 py-1 text-xs text-slate-100 text-right focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                              @keyup.enter="saveEdit(p.symbol)"
+                              @keyup.esc="cancelEdit"
+                            />
+                            <span class="text-slate-500">→ {{ p.price.toLocaleString('id-ID') }}</span>
+                          </div>
+                        </template>
+                        <template v-else>
+                          <span class="text-slate-300">{{ p.avgPrice.toLocaleString('id-ID') }} → {{ p.price.toLocaleString('id-ID') }}</span>
+                        </template>
+                      </td>
+
                       <td class="px-4 py-3 text-right text-slate-100 font-semibold">{{ fmtRp(p.value) }}</td>
-                      <td class="px-4 py-3 text-right font-semibold" :class="p.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ p.pnl >= 0 ? '+' : '' }}{{ p.pnlPct }}%</td>
-                      <td class="px-4 py-3 text-right"><button type="button" class="text-[11px] text-rose-400 hover:text-rose-300" @click="removeHolding(p.symbol)">✕</button></td>
+                      <td class="px-4 py-3 text-right" :class="p.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                        <div class="font-bold text-xs">{{ fmtPnlRp(p.pnl) }}</div>
+                        <div class="text-[10px] font-semibold opacity-80 mt-0.5">{{ p.pnl >= 0 ? '+' : '' }}{{ p.pnlPct }}%</div>
+                      </td>
+
+                      <!-- Actions column -->
+                      <td class="px-4 py-3 text-right">
+                        <template v-if="editingSymbol === p.symbol">
+                          <div class="flex items-center justify-end gap-1.5">
+                            <button type="button" class="text-xs text-emerald-400 hover:text-emerald-300 font-bold px-2 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/30" @click="saveEdit(p.symbol)">✓ Simpan</button>
+                            <button type="button" class="text-xs text-slate-400 hover:text-slate-200 px-1.5 py-0.5" @click="cancelEdit">✕</button>
+                          </div>
+                        </template>
+                        <template v-else>
+                          <div class="flex items-center justify-end gap-2">
+                            <button type="button" class="text-xs text-sky-400 hover:text-sky-300 font-medium px-2 py-0.5 rounded bg-sky-500/10 border border-cyan-500/20 flex items-center gap-1" @click="startEdit(p)" title="Edit Lot & Harga Rata-rata">
+                              <span>✏️</span>
+                              <span>Edit</span>
+                            </button>
+                            <button type="button" class="text-[11px] text-rose-400 hover:text-rose-300 px-1 py-0.5" @click="removeHolding(p.symbol)" title="Hapus Holding">✕</button>
+                          </div>
+                        </template>
+                      </td>
                     </tr>
                     <tr v-if="!positions.length"><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-500">Belum ada holding. Tambah di atas.</td></tr>
                   </tbody>

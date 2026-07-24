@@ -35,6 +35,7 @@ const activeCode = computed(() => {
 function linkFor(code: string): string {
   const p = route.path;
   if (p.startsWith('/analisa')) return `/analisa/${code}`;
+  if (p.startsWith('/bandar')) return `/bandar/${code}`;
   const base = p.split('?')[0];
   return `${base}?symbol=${code}`;
 }

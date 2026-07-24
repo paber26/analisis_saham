@@ -261,7 +261,7 @@ export async function fetchBandarDetector(rawSymbol: string, period: string = '1
   const key = range.isCustom ? `${symbol}-range_${range.from}_${range.to}` : `${symbol}-${p}`;
 
   // 1) Per-day disk cache — saved on first open, reused for the rest of the day.
-  const cached = await readBandarCache(key, day);
+  const cached = await readDayCache<BandarDetector>('bandar', key, day);
   if (cached) return cached;
 
   // 2) Cache miss → fetch from Stockbit (needs a valid token).
@@ -274,13 +274,13 @@ export async function fetchBandarDetector(rawSymbol: string, period: string = '1
   if (range.isCustom && range.from && range.to) {
     url += `&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
   } else {
-    const enumVal = PERIOD_ENUM[p]?.md || PERIOD_ENUM['1d'].md;
+    const enumVal = PERIOD_ENUM[p]?.md || PERIOD_ENUM['1d']!.md;
     url += `&period=${enumVal}`;
   }
   try {
     const raw = await $fetch<any>(url, { headers: stockbitHeaders(token) });
     const parsed = parseBandarDetector(raw);
-    if (parsed) await writeBandarCache(key, day, parsed); // 3) save to disk immediately
+    if (parsed) await writeDayCache('bandar', key, day, parsed); // 3) save to disk immediately
     return parsed;
   } catch (err: any) {
     console.error(`[stockbit] bandar fetch failed for ${symbol}:`, err?.status || err?.message || err);
@@ -392,7 +392,7 @@ export function fetchBrokerFlow(rawSymbol: string, period: string = '1d', fromSt
       if (range.isCustom && range.from && range.to) {
         return `${base}&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
       }
-      const enumVal = PERIOD_ENUM[p]?.rt || PERIOD_ENUM['1d'].rt;
+      const enumVal = PERIOD_ENUM[p]?.rt || PERIOD_ENUM['1d']!.rt;
       return `${base}&period=${enumVal}`;
     },
     parseBrokerFlow,
@@ -439,7 +439,7 @@ export function fetchBrokerDistribution(rawSymbol: string, period: string = '1d'
       if (range.isCustom && range.from && range.to) {
         return `${base}&from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
       }
-      const enumVal = PERIOD_ENUM[p]?.tb || PERIOD_ENUM['1d'].tb;
+      const enumVal = PERIOD_ENUM[p]?.tb || PERIOD_ENUM['1d']!.tb;
       return `${base}&period=${enumVal}`;
     },
     parseBrokerDistribution,

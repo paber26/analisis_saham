@@ -311,7 +311,7 @@
           </main>
           <aside
             v-if="showRail"
-            class="hidden xl:block w-[340px] shrink-0 sticky top-16 h-[calc(100vh-4rem)] border-l border-slate-900 bg-slate-950/60 overflow-hidden"
+            class="hidden lg:block w-[300px] xl:w-[340px] shrink-0 sticky top-16 h-[calc(100vh-4rem)] border-l border-slate-900 bg-slate-950/60 overflow-hidden"
           >
             <ScreenRail />
           </aside>
@@ -349,7 +349,7 @@ async function onLogout() {
 
 // Emiten-analysis pages get a screening list in the right rail (desktop) so the
 // user can switch stocks without going back to /screening.
-const RAIL_PREFIXES = ['/analisa', '/saham', '/forecast', '/seasonal', '/profil-saham'];
+const RAIL_PREFIXES = ['/analisa', '/saham', '/forecast', '/seasonal', '/profil-saham', '/bandar'];
 const showRail = computed(() => RAIL_PREFIXES.some((p) => route.path.startsWith(p)));
 
 const { last: lastSymbol, hydrate } = useLastSymbol();

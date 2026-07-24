@@ -250,8 +250,10 @@ const sankeyOption = computed(() => {
           <!-- Panel: Broker Summary (meter + net buy/sell tables) -->
           <section v-if="summary" class="glow-card rounded-2xl p-6">
             <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <h3 class="text-sm font-bold text-slate-100">Broker Summary
+              <h3 class="text-sm font-bold text-slate-100 flex items-center gap-2">
+                <span>Broker Summary</span>
                 <span class="text-slate-500 font-normal">· {{ periodLabel }}<template v-if="summary.from"> ({{ summary.from }}<template v-if="summary.to && summary.to !== summary.from"> → {{ summary.to }}</template>)</template></span>
+                <span v-if="!summary.isStale" class="text-[10px] font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded shadow-xs" title="Data di-cache per trading day pada disk server, tidak berulang kali panggil API Stockbit">⚡ Disk Cache</span>
               </h3>
               <span class="text-[11px] font-bold px-2.5 py-1 rounded-lg border"
                 :class="accum ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25' : 'text-rose-300 bg-rose-500/10 border-rose-500/25'">

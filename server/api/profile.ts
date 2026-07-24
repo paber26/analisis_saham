@@ -17,6 +17,19 @@ type StockProfileResponse = {
   marketCap?: number;
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
+  fiftyDayAverage?: number;
+  twoHundredDayAverage?: number;
+  peRatio?: number;
+  forwardPE?: number;
+  priceToBook?: number;
+  roe?: number;
+  roa?: number;
+  profitMargins?: number;
+  operatingMargins?: number;
+  revenueGrowth?: number;
+  dividendYield?: number;
+  beta?: number;
+  sectorsUrl: string;
 };
 
 // Company profile rarely changes: cache for 24 hours.
@@ -26,7 +39,7 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
 
   const auth = await getYahooAuth();
   const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : '';
-  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile,price,summaryDetail${crumbParam}`;
+  const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${encodeURIComponent(symbol)}?modules=assetProfile,price,summaryDetail,financialData,defaultKeyStatistics${crumbParam}`;
 
   const data = await $fetch<any>(url, {
     headers: auth ? { ...YAHOO_HEADERS, cookie: auth.cookie } : YAHOO_HEADERS
@@ -46,8 +59,11 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
   const assetProfile = result.assetProfile || {};
   const price = result.price || {};
   const summaryDetail = result.summaryDetail || {};
+  const financialData = result.financialData || {};
+  const defaultKeyStatistics = result.defaultKeyStatistics || {};
 
   const returnedSymbol = price.symbol || symbol;
+  const cleanCode = returnedSymbol.replace('.JK', '').toUpperCase();
   const name = resolveDisplayName(returnedSymbol, price.longName || price.shortName);
 
   const addressParts = [
@@ -62,8 +78,8 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
   return {
     symbol: returnedSymbol,
     name,
-    exchange: price.exchangeName || price.fullExchangeName || 'N/A',
-    currency: price.currency || 'N/A',
+    exchange: price.exchangeName || price.fullExchangeName || 'IDX',
+    currency: price.currency || 'IDR',
     sector: assetProfile.sector || 'N/A',
     industry: assetProfile.industry || 'N/A',
     website: assetProfile.website || undefined,
@@ -73,7 +89,20 @@ export default defineCachedEventHandler(async (event): Promise<StockProfileRespo
     description: assetProfile.longBusinessSummary || undefined,
     marketCap: summaryDetail.marketCap?.raw,
     fiftyTwoWeekHigh: summaryDetail.fiftyTwoWeekHigh?.raw,
-    fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw
+    fiftyTwoWeekLow: summaryDetail.fiftyTwoWeekLow?.raw,
+    fiftyDayAverage: summaryDetail.fiftyDayAverage?.raw,
+    twoHundredDayAverage: summaryDetail.twoHundredDayAverage?.raw,
+    peRatio: summaryDetail.trailingPE?.raw ?? defaultKeyStatistics.trailingPE?.raw,
+    forwardPE: summaryDetail.forwardPE?.raw ?? defaultKeyStatistics.forwardPE?.raw,
+    priceToBook: defaultKeyStatistics.priceToBook?.raw,
+    roe: financialData.returnOnEquity?.raw,
+    roa: financialData.returnOnAssets?.raw,
+    profitMargins: financialData.profitMargins?.raw,
+    operatingMargins: financialData.operatingMargins?.raw,
+    revenueGrowth: financialData.revenueGrowth?.raw,
+    dividendYield: summaryDetail.dividendYield?.raw ?? summaryDetail.trailingAnnualDividendYield?.raw,
+    beta: summaryDetail.beta?.raw ?? defaultKeyStatistics.beta?.raw,
+    sectorsUrl: `https://sectors.app/idx/${cleanCode}`
   };
 }, {
   maxAge: 60 * 60 * 24, // 24 hours

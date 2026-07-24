@@ -42,6 +42,16 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
   if (num >= 1e6) return (num / 1e6).toFixed(2) + ' M' + suffix;
   return num.toLocaleString('id-ID') + suffix;
 };
+
+const formatPct = (val?: number) => {
+  if (val === undefined || val === null) return '—';
+  return (val * 100).toFixed(2) + '%';
+};
+
+const formatRatio = (val?: number) => {
+  if (val === undefined || val === null) return '—';
+  return val.toFixed(2) + 'x';
+};
 </script>
 
 <template>
@@ -56,12 +66,24 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
             <StockSearch v-model="activeSymbol" />
           </div>
 
-          
-          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
-            <p class="text-xs text-slate-400">Simbol aktif</p>
-            <p class="text-lg font-bold text-slate-50 mt-1">
-              {{ activeSymbol }}
-            </p>
+          <div class="rounded-2xl border border-slate-800 bg-slate-950/60 p-4 flex items-center justify-between">
+            <div>
+              <p class="text-xs text-slate-400">Simbol aktif</p>
+              <p class="text-lg font-bold text-slate-50 mt-0.5">
+                {{ activeSymbol }}
+              </p>
+            </div>
+            <a
+              v-if="profile?.sectorsUrl"
+              :href="profile.sectorsUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 text-xs font-semibold transition-colors"
+              title="Buka analisis visual di Sectors.app"
+            >
+              <span>Sectors.app</span>
+              <span class="text-xs">↗</span>
+            </a>
           </div>
         </div>
       </section>
@@ -83,16 +105,61 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
                   {{ profile?.name || '—' }}
                 </h3>
                 <p class="text-xs text-slate-400 mt-1">
-                  {{ profile?.symbol || activeSymbol }} • {{ profile?.exchange || 'N/A' }} • {{ profile?.currency || 'N/A' }}
+                  {{ profile?.symbol || activeSymbol }} • {{ profile?.exchange || 'IDX' }} • {{ profile?.currency || 'IDR' }}
                 </p>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <span class="text-[11px] font-semibold text-emerald-300 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full">
                   {{ profile?.sector || 'N/A' }}
                 </span>
                 <span class="text-[11px] font-semibold text-slate-300 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-full">
                   {{ profile?.industry || 'N/A' }}
                 </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Key Financial Ratios & Valuation Grid -->
+          <div class="glow-card rounded-2xl p-6">
+            <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Valuasi & Rasio Keuangan Utama</h4>
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">P/E Ratio (PER)</span>
+                <span class="text-base font-bold text-slate-100">{{ formatRatio(profile?.peRatio) }}</span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">P/B Ratio (PBV)</span>
+                <span class="text-base font-bold text-slate-100">{{ formatRatio(profile?.priceToBook) }}</span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Return on Equity</span>
+                <span class="text-base font-bold" :class="(profile?.roe || 0) >= 0.15 ? 'text-emerald-400' : 'text-slate-100'">
+                  {{ formatPct(profile?.roe) }}
+                </span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Dividend Yield</span>
+                <span class="text-base font-bold" :class="(profile?.dividendYield || 0) > 0 ? 'text-emerald-400' : 'text-slate-100'">
+                  {{ formatPct(profile?.dividendYield) }}
+                </span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Profit Margin</span>
+                <span class="text-base font-bold text-slate-100">{{ formatPct(profile?.profitMargins) }}</span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Revenue Growth</span>
+                <span class="text-base font-bold" :class="(profile?.revenueGrowth || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ formatPct(profile?.revenueGrowth) }}
+                </span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Forward P/E</span>
+                <span class="text-base font-bold text-slate-100">{{ formatRatio(profile?.forwardPE) }}</span>
+              </div>
+              <div class="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3.5">
+                <span class="text-xs text-slate-400 block mb-1">Beta (Volatilitas)</span>
+                <span class="text-base font-bold text-slate-100">{{ profile?.beta ? profile.beta.toFixed(2) : '—' }}</span>
               </div>
             </div>
           </div>
@@ -107,23 +174,31 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
 
         <aside class="space-y-6">
           <div class="glow-card rounded-2xl p-6">
-            <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Fakta Singkat</h4>
+            <h4 class="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">Fakta Singkat & Pasar</h4>
             <div class="space-y-3 text-sm">
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">Market Cap</span>
-                <span class="text-slate-200 text-right">{{ formatLargeNumber(profile?.marketCap) }}</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.marketCap) }}</span>
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">52W High</span>
-                <span class="text-slate-200 text-right">{{ formatLargeNumber(profile?.fiftyTwoWeekHigh) }}</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.fiftyTwoWeekHigh) }}</span>
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">52W Low</span>
-                <span class="text-slate-200 text-right">{{ formatLargeNumber(profile?.fiftyTwoWeekLow) }}</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.fiftyTwoWeekLow) }}</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="text-slate-400">MA 50 Hari</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.fiftyDayAverage) }}</span>
+              </div>
+              <div class="flex items-start justify-between gap-4">
+                <span class="text-slate-400">MA 200 Hari</span>
+                <span class="text-slate-200 text-right font-medium">{{ formatLargeNumber(profile?.twoHundredDayAverage) }}</span>
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">Karyawan</span>
-                <span class="text-slate-200 text-right">{{ profile?.employees?.toLocaleString('id-ID') || '—' }}</span>
+                <span class="text-slate-200 text-right font-medium">{{ profile?.employees?.toLocaleString('id-ID') || '—' }}</span>
               </div>
             </div>
           </div>
@@ -133,7 +208,16 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
             <div class="space-y-3 text-sm">
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">Website</span>
-                <span class="text-slate-200 text-right break-all">{{ profile?.website || '—' }}</span>
+                <a
+                  v-if="profile?.website"
+                  :href="profile.website"
+                  target="_blank"
+                  rel="noopener"
+                  class="text-emerald-400 hover:text-emerald-300 text-right break-all underline"
+                >
+                  {{ profile.website }}
+                </a>
+                <span v-else class="text-slate-200 text-right">—</span>
               </div>
               <div class="flex items-start justify-between gap-4">
                 <span class="text-slate-400">Telepon</span>
@@ -148,9 +232,9 @@ const formatLargeNumber = (num: number | undefined, suffix = '') => {
             </div>
           </div>
 
-          <div class="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-5">
-            <p class="text-xs text-amber-200 leading-relaxed">
-              Data profil bersumber dari Yahoo Finance dan dapat berbeda dengan laporan resmi emiten. Ini bukan rekomendasi investasi.
+          <div class="rounded-2xl border border-cyan-500/20 bg-cyan-500/5 p-5">
+            <p class="text-xs text-cyan-200/90 leading-relaxed">
+              💡 Ingin visualisasi sektor & grafik mendalam? Gunakan tombol <strong>Sectors.app ↗</strong> di atas untuk membuka laporan Sectors.app secara langsung.
             </p>
           </div>
         </aside>

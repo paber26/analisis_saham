@@ -2,6 +2,16 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: true },
+  app: {
+    head: {
+      // Force the desktop layout on phones: render at a fixed 1280px width
+      // (matches the max-w-7xl container) and let the browser scale it to fit,
+      // instead of the responsive `width=device-width` mobile layout.
+      meta: [
+        { name: 'viewport', content: 'width=1280' }
+      ]
+    }
+  },
   modules: ['@nuxtjs/tailwindcss', 'nuxt-echarts'],
   css: ['~/assets/css/main.css'],
   future: {

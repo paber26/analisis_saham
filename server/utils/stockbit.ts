@@ -72,7 +72,9 @@ export function isJwtExpired(token: string): boolean {
   try {
     const parts = token.trim().split('.');
     if (parts.length !== 3) return false;
-    const payloadBuf = Buffer.from(parts[1], 'base64');
+    const payloadSeg = parts[1];
+    if (!payloadSeg) return false;
+    const payloadBuf = Buffer.from(payloadSeg, 'base64url');
     const payload = JSON.parse(payloadBuf.toString('utf8'));
     if (payload && typeof payload.exp === 'number') {
       return (payload.exp * 1000) <= (Date.now() + 60000);
@@ -233,10 +235,18 @@ async function readLatestAnyCache<T>(dirName: string, keyPrefix: string): Promis
     const matching = files.filter((f) => f.startsWith(`${keyPrefix}-`) && f.endsWith('.json'));
     if (!matching.length) return null;
 
-    // Sort descending by filename or mtime to get the freshest cache available
-    matching.sort().reverse();
-    const latestFile = matching[0];
-    const txt = await fs.readFile(path.join(targetDir, latestFile), 'utf-8');
+    // Sort descending by mtime (freshest first); fall back to filename order on stat failure.
+    const withMtime = await Promise.all(
+      matching.map(async (f) => {
+        const full = path.join(targetDir, f);
+        let mtimeMs = 0;
+        try { mtimeMs = (await fs.stat(full)).mtimeMs; } catch { /* unreadable → treat as oldest */ }
+        return { name: f, full, mtimeMs };
+      })
+    );
+    withMtime.sort((a, b) => (b.mtimeMs - a.mtimeMs) || b.name.localeCompare(a.name));
+    const latestFile = withMtime[0]!.full;
+    const txt = await fs.readFile(latestFile, 'utf-8');
     const data = JSON.parse(txt) as any;
     if (data && typeof data === 'object') {
       data.isStale = true;

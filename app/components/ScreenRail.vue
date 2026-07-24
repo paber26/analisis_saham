@@ -5,18 +5,23 @@ import { ref, computed } from 'vue';
 // user can switch stocks without going back to /screening. Clicking a row keeps
 // the current view (analisa/saham/forecast/seasonal/profil-saham).
 const route = useRoute();
+const { isWatchlisted, toggleWatchlist, codes: watchlistCodes } = useWatchlist();
 
 const { data } = await useFetch<any>(() => '/api/screen', { key: 'screen' });
 const rows = computed<any[]>(() => data.value?.results || []);
 
 const search = ref('');
-const sortBy = ref<'score' | 'qvm'>('score');
+const sortBy = ref<'score' | 'qvm' | 'watchlist'>('score');
 
 const filtered = computed(() => {
   const q = search.value.trim().toUpperCase();
   let r = rows.value;
+  if (sortBy.value === 'watchlist') {
+    r = r.filter((x) => isWatchlisted(x.code));
+  }
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
   if (sortBy.value === 'qvm') r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
+  else if (sortBy.value === 'score') r = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
   return r.slice(0, 120);
 });
 
@@ -75,6 +80,13 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
           :class="sortBy === 'qvm' ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30' : 'bg-slate-900 text-slate-400 border-slate-800'"
           @click="sortBy = 'qvm'"
         >QVM</button>
+        <button
+          class="flex-1 text-[10px] font-semibold py-1 rounded-md border transition-colors flex items-center justify-center gap-1"
+          :class="sortBy === 'watchlist' ? 'bg-amber-500/15 text-amber-300 border-amber-500/30' : 'bg-slate-900 text-slate-400 border-slate-800'"
+          @click="sortBy = 'watchlist'"
+        >
+          <span>⭐</span> Watchlist <span class="text-[9px] font-mono">({{ watchlistCodes.length }})</span>
+        </button>
       </div>
     </div>
 
@@ -84,20 +96,32 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
         v-for="row in filtered"
         :key="row.symbol"
         :to="linkFor(row.code)"
-        class="block px-3 py-2 border-b border-slate-900/60 transition-colors"
+        class="block px-3 py-2 border-b border-slate-900/60 transition-colors group relative"
         :class="row.code === activeCode ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : 'hover:bg-slate-900/50 border-l-2 border-l-transparent'"
       >
         <div class="flex items-center justify-between gap-2">
-          <span class="text-xs font-bold" :class="row.code === activeCode ? 'text-emerald-300' : 'text-slate-100'">{{ row.code }}</span>
-          <div class="text-right">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <!-- Star toggle button -->
+            <button
+              type="button"
+              @click.prevent.stop="toggleWatchlist(row.code)"
+              class="text-xs transition-transform hover:scale-125 focus:outline-none p-0.5"
+              :title="isWatchlisted(row.code) ? 'Hapus dari Watchlist' : 'Tambah ke Watchlist'"
+            >
+              <span v-if="isWatchlisted(row.code)" class="text-amber-400">★</span>
+              <span v-else class="text-slate-600 hover:text-amber-400">☆</span>
+            </button>
+            <span class="text-xs font-bold truncate" :class="row.code === activeCode ? 'text-emerald-300' : 'text-slate-100'">{{ row.code }}</span>
+          </div>
+          <div class="text-right shrink-0">
             <div class="text-xs font-semibold text-slate-200">{{ fmt(row.price) }}</div>
             <div class="text-[10px] font-medium" :class="row.changePct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
               {{ row.changePct >= 0 ? '+' : '' }}{{ row.changePct }}%
             </div>
           </div>
         </div>
-        <p class="text-[10px] text-slate-500 truncate mt-0.5">{{ row.name }}</p>
-        <div class="flex items-center gap-1.5 mt-1">
+        <p class="text-[10px] text-slate-500 truncate mt-0.5 pl-5">{{ row.name }}</p>
+        <div class="flex items-center gap-1.5 mt-1 pl-5">
           <div class="flex-grow h-1 bg-slate-800 rounded-full overflow-hidden">
             <div class="h-full rounded-full" :class="scoreBarClass(row.score)" :style="{ width: row.score + '%' }"></div>
           </div>
@@ -105,7 +129,9 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
           <span v-if="row.qvm != null" class="text-[9px] font-bold text-sky-300/80 w-9 text-right" title="QVM">Q{{ Math.round(row.qvm) }}</span>
         </div>
       </NuxtLink>
-      <p v-if="!filtered.length" class="px-3 py-6 text-center text-[11px] text-slate-500">Tidak ada hasil.</p>
+      <p v-if="!filtered.length" class="px-3 py-6 text-center text-[11px] text-slate-500">
+        {{ sortBy === 'watchlist' ? 'Belum ada saham di Watchlist.' : 'Tidak ada hasil.' }}
+      </p>
     </div>
   </div>
 </template>

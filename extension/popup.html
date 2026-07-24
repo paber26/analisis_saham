@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<style>
+  body { width: 300px; margin: 0; padding: 14px; font: 13px -apple-system, Segoe UI, Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+  h3 { margin: 0 0 2px; font-size: 14px; }
+  .sub { color: #94a3b8; font-size: 11px; margin-bottom: 12px; }
+  label { display: block; font-size: 11px; color: #94a3b8; margin: 10px 0 3px; text-transform: uppercase; letter-spacing: .3px; }
+  input { width: 100%; box-sizing: border-box; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 7px; padding: 8px 10px; font-size: 12px; }
+  input:focus { outline: none; border-color: #10b981; }
+  button { width: 100%; margin-top: 12px; background: #10b981; color: #04121b; border: none; border-radius: 7px; padding: 9px; font-weight: 700; font-size: 13px; cursor: pointer; }
+  button:hover { background: #34d399; }
+  button.secondary { background: #1e293b; color: #e2e8f0; border: 1px solid #334155; }
+  button.secondary:hover { background: #263449; }
+  .status { margin-top: 12px; padding: 8px 10px; background: #1e293b; border: 1px solid #334155; border-radius: 7px; font-size: 12px; min-height: 16px; }
+  .status .t { color: #64748b; font-size: 10px; }
+  .hint { color: #64748b; font-size: 11px; margin-top: 12px; line-height: 1.5; }
+  .diag { white-space: pre-wrap; word-break: break-word; background: #0b1220; border: 1px solid #1e293b; border-radius: 7px; color: #94a3b8; font: 10.5px ui-monospace, Menlo, monospace; padding: 8px; margin-top: 10px; max-height: 170px; overflow: auto; }
+  .diag:empty { display: none; }
+  .diag b { color: #cbd5e1; }
+</style>
+</head>
+<body>
+  <h3>Sinkron Token Stockbit</h3>
+  <div class="sub">Token dikirim otomatis ke server saat kamu buka Stockbit.</div>
+
+  <label for="server">Server URL</label>
+  <input id="server" type="text" placeholder="https://saham.kuydinas.id" />
+
+  <label for="secret">Push secret</label>
+  <input id="secret" type="password" placeholder="STOCKBIT_PUSH_SECRET" autocomplete="off" />
+
+  <button id="save">Simpan</button>
+
+  <div class="status" id="status">—</div>
+
+  <button id="scan" class="secondary">Scan &amp; kirim sekarang</button>
+
+  <pre class="diag" id="diag"></pre>
+
+  <div class="hint">
+    1. Isi secret &amp; <b>Simpan</b>.<br />
+    2. Buka tab <b>stockbit.com</b> (login), lalu klik <b>Scan &amp; kirim sekarang</b>.<br />
+    3. Kalau tetap gagal: buka <code>chrome://extensions</code> → extension ini →
+    klik <b>service worker</b> → lihat log <code>[TokenSync]</code> di Console.
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

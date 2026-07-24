@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zenith Trading (JadiAI) — Bedah Menu, API & Data</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --ink:#16181d; --muted:#5b6472;
+    --line:#e3e7ec; --brand:#2563eb; --brand2:#0891b2; --ok:#16a34a; --warn:#d97706;
+    --bad:#dc2626; --code-bg:#0f172a; --code-ink:#e2e8f0; --chip:#eef2ff; --chip-ink:#3730a3;
+    --enc:#7c3aed; --enc-bg:#f3e8ff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#0d1017; --panel:#151a22; --panel2:#1b222c; --ink:#e6e9ee; --muted:#9aa4b2;
+      --line:#252d38; --brand:#5b9dff; --brand2:#22d3ee; --ok:#4ade80; --warn:#fbbf24;
+      --bad:#f87171; --code-bg:#0a0e14; --code-ink:#cbd5e1; --chip:#1e2740; --chip-ink:#a5b4fc;
+      --enc:#c084fc; --enc-bg:#2a1e40;
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f7f9; --panel:#ffffff; --panel2:#f0f2f5; --ink:#16181d; --muted:#5b6472;
+    --line:#e3e7ec; --code-bg:#0f172a; --code-ink:#e2e8f0; --chip:#eef2ff; --chip-ink:#3730a3; --enc-bg:#f3e8ff; --enc:#7c3aed;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0d1017; --panel:#151a22; --panel2:#1b222c; --ink:#e6e9ee; --muted:#9aa4b2;
+    --line:#252d38; --code-bg:#0a0e14; --code-ink:#cbd5e1; --chip:#1e2740; --chip-ink:#a5b4fc; --enc-bg:#2a1e40; --enc:#c084fc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--brand);text-decoration:none}
+  a:hover{text-decoration:underline}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+  header.top{position:sticky;top:0;z-index:50;background:var(--panel);border-bottom:1px solid var(--line);
+    display:flex;align-items:center;gap:14px;padding:12px 20px;flex-wrap:wrap}
+  header.top h1{font-size:16px;margin:0;font-weight:700;letter-spacing:.2px}
+  header.top .sub{color:var(--muted);font-size:12.5px}
+  header.top .spacer{flex:1}
+  .btn{background:var(--panel2);border:1px solid var(--line);color:var(--ink);border-radius:8px;
+    padding:6px 11px;font-size:13px;cursor:pointer}
+  .btn:hover{border-color:var(--brand)}
+  .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+  nav.toc{position:sticky;top:57px;z-index:40;background:var(--bg);border-bottom:1px solid var(--line);
+    display:flex;gap:6px;flex-wrap:wrap;padding:10px 20px;font-size:13px}
+  nav.toc a{background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:4px 11px;color:var(--muted)}
+  nav.toc a:hover{color:var(--brand);border-color:var(--brand);text-decoration:none}
+  section{padding:34px 0 8px;border-bottom:1px solid var(--line)}
+  h2{font-size:22px;margin:0 0 4px;display:flex;align-items:center;gap:10px}
+  h2 .n{font-size:13px;color:#fff;background:var(--brand);border-radius:7px;padding:2px 8px;font-weight:700}
+  h3{font-size:16px;margin:22px 0 8px}
+  p{margin:8px 0}
+  .lead{color:var(--muted);font-size:14.5px;max-width:80ch}
+  .grid{display:grid;gap:14px}
+  .cards{grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+  .card h4{margin:0 0 6px;font-size:14.5px}
+  .card p{margin:4px 0;font-size:13.5px;color:var(--muted)}
+  .chip{display:inline-block;background:var(--chip);color:var(--chip-ink);border-radius:999px;
+    padding:2px 9px;font-size:12px;font-weight:600;margin:2px 4px 2px 0}
+  .badge{display:inline-block;border-radius:6px;padding:1px 7px;font-size:11.5px;font-weight:700;white-space:nowrap}
+  .b-get{background:#dbeafe;color:#1e40af}
+  .b-post{background:#dcfce7;color:#166534}
+  .b-enc{background:var(--enc-bg);color:var(--enc)}
+  .b-plain{background:var(--panel2);color:var(--muted)}
+  @media (prefers-color-scheme: dark){.b-get{background:#1e3a8a;color:#bfdbfe}.b-post{background:#14532d;color:#bbf7d0}}
+  :root[data-theme="dark"] .b-get{background:#1e3a8a;color:#bfdbfe}
+  :root[data-theme="dark"] .b-post{background:#14532d;color:#bbf7d0}
+  .callout{border-left:4px solid var(--brand);background:var(--panel);border-radius:0 10px 10px 0;
+    padding:12px 16px;margin:14px 0}
+  .callout.warn{border-color:var(--warn)}
+  .callout.enc{border-color:var(--enc)}
+  .callout.bad{border-color:var(--bad)}
+  .callout h4{margin:0 0 4px;font-size:14.5px}
+  .tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:12px;margin:12px 0}
+  table{border-collapse:collapse;width:100%;font-size:13px;min-width:720px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--panel2);position:sticky;top:0;font-size:12px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  tr:last-child td{border-bottom:none}
+  td.path{white-space:nowrap;font-family:ui-monospace,monospace;font-size:12.5px}
+  .filterbar{display:flex;gap:10px;align-items:center;margin:8px 0 2px;flex-wrap:wrap}
+  .filterbar input{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    border-radius:9px;padding:8px 12px;font-size:14px;min-width:240px;flex:1}
+  pre{background:var(--code-bg);color:var(--code-ink);border-radius:11px;padding:14px 16px;overflow-x:auto;
+    font-size:12.5px;line-height:1.55;margin:10px 0}
+  pre .k{color:#7dd3fc}.pre .s{color:#86efac}
+  .st{font-weight:700;font-size:12px;border-radius:6px;padding:1px 7px}
+  .st-ok{background:rgba(22,163,74,.15);color:var(--ok)}
+  .st-mid{background:rgba(217,119,6,.15);color:var(--warn)}
+  .st-gap{background:rgba(220,38,38,.15);color:var(--bad)}
+  ul.tight{margin:6px 0;padding-left:20px}
+  ul.tight li{margin:3px 0}
+  .kv{display:grid;grid-template-columns:180px 1fr;gap:2px 14px;font-size:13.5px}
+  .kv div:nth-child(odd){color:var(--muted)}
+  footer{padding:30px 0 60px;color:var(--muted);font-size:12.5px}
+  .hl{color:var(--brand);font-weight:600}
+  .muted{color:var(--muted)}
+  mark{background:rgba(245,197,24,.35);color:inherit;border-radius:3px;padding:0 2px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div>
+    <h1>Zenith Trading — Bedah Total</h1>
+    <div class="sub">console.jadiai.com/zenith-trading · direkonstruksi dari HAR (24 Jul 2026)</div>
+  </div>
+  <div class="spacer"></div>
+  <button class="btn" id="themeBtn" title="Ganti tema">◐ Tema</button>
+</header>
+
+<nav class="toc">
+  <a href="#ringkasan">Ringkasan</a>
+  <a href="#arsitektur">Arsitektur</a>
+  <a href="#auth">Auth &amp; Bisnis</a>
+  <a href="#menu">Peta Menu</a>
+  <a href="#api">Katalog API</a>
+  <a href="#kamus">Kamus Data</a>
+  <a href="#contoh">Contoh Request/Response</a>
+  <a href="#adopsi">Rencana Adopsi</a>
+  <a href="#enkripsi">Soal Enkripsi &amp; Etika</a>
+</nav>
+
+<div class="wrap">
+
+<!-- ============ RINGKASAN ============ -->
+<section id="ringkasan">
+  <h2><span class="n">01</span> Ringkasan Eksekutif</h2>
+  <p class="lead">
+    Dokumen ini memetakan <b>arsitektur, menu, dan seluruh endpoint API</b> layanan
+    <b>Zenith Trading</b> (produk analisa saham di dalam platform JadiAI), direkonstruksi dari
+    rekaman lalu lintas jaringan (<span class="mono">console.jadiai.com.har</span>) saat Anda
+    login dan menelusuri menu-menunya. Tujuannya: bahan belajar untuk membangun padanannya di
+    proyek <span class="mono">analisis_saham</span> Anda.
+  </p>
+
+  <div class="grid cards" style="margin-top:14px">
+    <div class="card"><h4>🌐 Arsitektur</h4><p>SPA <span class="mono">console.jadiai.com</span> memanggil REST API di <span class="mono">jadiai.com/api/v1</span>. Backend <b>Laravel / PHP 8.2</b> (Apache, CentOS).</p></div>
+    <div class="card"><h4>🔐 Autentikasi</h4><p>Login → token <b>Laravel Sanctum</b> (format <span class="mono">&lt;id&gt;|&lt;hash&gt;</span>). Billing token/saldo via <b>Midtrans</b>.</p></div>
+    <div class="card"><h4>🧩 30 endpoint</h4><p>Terbagi jadi <b>plumbing akun</b> (login, watchlist, jurnal — plaintext) dan <b>inti analisa</b> (market-data, sinyal, screener).</p></div>
+    <div class="card"><h4>🔒 Temuan kunci</h4><p>Semua endpoint analisa mengembalikan payload <b>AES terenkripsi</b> <span class="mono">{payload, iv}</span> — data proprietary sengaja disembunyikan.</p></div>
+  </div>
+
+  <div class="callout enc" style="margin-top:16px">
+    <h4>⚠️ Batas yang saya pegang</h4>
+    <p style="margin:2px 0">Dokumen ini <b>tidak</b> mendekripsi atau mengekstrak isi data proprietary Zenith. Yang dipetakan
+    adalah <b>permukaannya</b>: fitur, kontrak API, parameter, dan <i>jenis</i> data tiap endpoint — semuanya
+    terlihat sah dari sisi klien Anda sendiri. Untuk membongkar kunci AES demi menyalin nilai/skor aktual mereka
+    tidak saya lakukan (lihat <a href="#enkripsi">bagian 09</a>). Konsep analisanya sendiri (bandarmology, seasonality,
+    valuasi, dsb.) adalah teknik finansial umum yang bebas Anda bangun sendiri.</p>
+  </div>
+</section>
+
+<!-- ============ ARSITEKTUR ============ -->
+<section id="arsitektur">
+  <h2><span class="n">02</span> Arsitektur &amp; Tech Stack</h2>
+  <p class="lead">Dua host terpisah: aplikasi (frontend) dan API (backend). Pola klasik SPA + REST API.</p>
+
+  <pre>
+  Browser (Anda)
+      │
+      ▼
+  ┌─────────────────────────────┐        ┌──────────────────────────────────────┐
+  │  console.jadiai.com  (SPA)  │  HTTPS │   jadiai.com/api/v1  (REST API)        │
+  │  - render UI, chart (JS)    │ ─────▶ │   - Laravel · PHP 8.2 · Apache/CentOS │
+  │  - simpan token Sanctum     │  JSON  │   - Sanctum auth (Bearer token)        │
+  │  - DEKRIPSI payload AES ◀───┼────────┤   - payload analisa DIENKRIPSI (AES)   │
+  └─────────────────────────────┘        │   - billing token/saldo · Midtrans     │
+                                          └──────────────────────────────────────┘
+                                                     │
+                                          Sumber data pasar (IDX): harga, broker,
+                                          kepemilikan, laporan keuangan, dividen…
+  </pre>
+
+  <div class="kv" style="margin-top:12px">
+    <div>Frontend</div><div>SPA di <span class="mono">console.jadiai.com</span> — hanya mengirim shell <span class="mono">&lt;div&gt;JadiAI&lt;/div&gt;</span>, seluruh UI dibangun JavaScript setelah login (tidak ada SSR).</div>
+    <div>Backend / API</div><div><span class="mono">https://jadiai.com/api/v1/</span> — <span class="hl">Laravel</span> (bukti: token Sanctum <span class="mono">936|…</span>, envelope pagination <span class="mono">first_page_url / links / &amp;laquo; Previous</span>). Header respons: <span class="mono">Server: Apache/2.4.62 (CentOS)</span>, <span class="mono">X-Powered-By: PHP/8.2.28</span>.</div>
+    <div>CORS</div><div><span class="mono">Origin: console.jadiai.com</span> → API <span class="mono">jadiai.com</span> (cross-origin, <span class="mono">Accept: application/json</span>).</div>
+    <div>Proteksi data</div><div>Response endpoint analisa = <span class="mono">{"payload":"&lt;base64&gt;","iv":"&lt;hex 16-byte&gt;"}</span> → <span class="hl">AES-CBC</span>, didekripsi klien dengan kunci di bundle JS (pola khas CryptoJS).</div>
+    <div>Billing</div><div>Prabayar <b>token/saldo</b> + langganan. Gateway <b>Midtrans</b>. PPN 11%, markup member 15%, biaya tambahan modul <span class="mono">zenith: 75</span>.</div>
+  </div>
+</section>
+
+<!-- ============ AUTH & BISNIS ============ -->
+<section id="auth">
+  <h2><span class="n">03</span> Autentikasi &amp; Model Bisnis</h2>
+
+  <h3>Alur autentikasi</h3>
+  <ul class="tight">
+    <li><span class="badge b-post">POST</span> <span class="mono">/member/login</span> dengan <span class="mono">{email, password}</span> → mengembalikan objek <span class="mono">member</span> + <span class="mono">token</span> Sanctum (<span class="mono">"936|8VCz…"</span>).</li>
+    <li>Token disimpan klien, dikirim di request berikutnya (skema <b>Bearer / Sanctum</b>). <span class="muted">Catatan: header Authorization tidak ikut terekam di HAR ini, tapi skema token jelas dari respons login.</span></li>
+    <li><span class="badge b-get">GET</span> <span class="mono">/member/me</span> → profil + kapabilitas + daftar harga + kontak.</li>
+    <li><span class="badge b-post">POST</span> <span class="mono">/member/logout</span> → <span class="mono">{"message":"Berhasil logout"}</span>.</li>
+  </ul>
+
+  <h3>Model bisnis (dari <span class="mono">/member/me</span> &amp; <span class="mono">/payment/deposit-data</span>)</h3>
+  <div class="grid cards">
+    <div class="card"><h4>Platform induk</h4><p>JadiAI = platform AI (teks/gambar/video, 166 baris <span class="mono">pricing_list</span> model seperti <span class="mono">gemini-2.5-pro</span>, <span class="mono">sora-2</span>). <b>Zenith Trading</b> = modul premium di dalamnya.</p></div>
+    <div class="card"><h4>Langganan</h4><p>Plan <b>"Zenith Trading Monthly"</b> (<span class="mono">plan_id 7</span>) — <b>Rp 49.900</b>/bln via Midtrans. Invoice <span class="mono">ZEN-185-…</span>.</p></div>
+    <div class="card"><h4>Token / saldo</h4><p>Beli plan memberi <b>bonus deposit</b> (mis. Rp 7.500 kredit). Pemakaian diukur token; endpoint <span class="mono">token-stats</span> &amp; <span class="mono">token-history</span> melacak saldo.</p></div>
+    <div class="card"><h4>Biaya &amp; pajak</h4><p><span class="mono">ppn_percent: 11</span>, <span class="mono">member_markup_percent: 15</span>, <span class="mono">additional_fee.zenith: 75</span>, <span class="mono">fee_basic_topup: 3500</span>.</p></div>
+  </div>
+</section>
+
+<!-- ============ PETA MENU ============ -->
+<section id="menu">
+  <h2><span class="n">04</span> Peta Menu / Fitur</h2>
+  <p class="lead">Direkonstruksi dari pola pemanggilan endpoint saat menelusuri aplikasi. Delapan area fungsional:</p>
+
+  <div class="grid cards">
+    <div class="card">
+      <h4>① Market Scanner</h4>
+      <p>Daftar saham diperingkat oleh <b>skor komposit</b> (<span class="mono">sort_by=score</span>). Layar utama; juga dipakai sebagai lookup 1 simbol.</p>
+      <p class="mono" style="font-size:12px">/zenith/market-scanner</p>
+    </div>
+    <div class="card">
+      <h4>② Analisa Emiten (detail)</h4>
+      <p>Buka 1 saham → memuat <b>11 modul data</b>: harga historis, aksi, money-flow, keystats, seasonality, broker-summary, komposisi, financials, corporate-actions, major-holders.</p>
+      <p class="mono" style="font-size:12px">/zenith/market-data/*</p>
+    </div>
+    <div class="card">
+      <h4>③ Sinyal Trading</h4>
+      <p>Tiga strategi bernama: <b>rebound</b>, <b>pucuk</b>, <b>bpjs</b>. Daftar saham yang memicu sinyal (paginated, bisa difilter simbol).</p>
+      <p class="mono" style="font-size:12px">/market-data/signals/{rebound|pucuk|bpjs}</p>
+    </div>
+    <div class="card">
+      <h4>④ Evaluasi / Backtest</h4>
+      <p><b>Harian</b> (hasil sinyal per tanggal) &amp; <b>Akumulasi</b> (di-sort <span class="mono">win_rate_overall</span> → evaluasi performa historis).</p>
+      <p class="mono" style="font-size:12px">/market-data/evaluasi/{harian|akumulasi}</p>
+    </div>
+    <div class="card">
+      <h4>⑤ Screener</h4>
+      <p><b>Tematik</b> (sektor/tema), <b>Valuasi</b> (murah/mahal), <b>Dividen</b> (yield). Daftar saring lintas emiten.</p>
+      <p class="mono" style="font-size:12px">/market-data/{screener/thematic|valuation|dividen}</p>
+    </div>
+    <div class="card">
+      <h4>⑥ Watchlist</h4>
+      <p>Daftar pantau pribadi. GET daftar, POST tambah simbol (mis. <span class="mono">{"symbol":"EMTK"}</span>).</p>
+      <p class="mono" style="font-size:12px">/zenith/watchlist</p>
+    </div>
+    <div class="card">
+      <h4>⑦ Jurnal Trading</h4>
+      <p>Catat transaksi BUY/SELL (price, lot, subtotal, broker). Simpan batch. Pondasi analisa P&amp;L pribadi.</p>
+      <p class="mono" style="font-size:12px">/zenith/history · /zenith/history/batch</p>
+    </div>
+    <div class="card">
+      <h4>⑧ Akun &amp; Token</h4>
+      <p>Profil, saldo, riwayat token, deposit/langganan, pengumuman.</p>
+      <p class="mono" style="font-size:12px">/member/* · /payment/* · /announcements</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ KATALOG API ============ -->
+<section id="api">
+  <h2><span class="n">05</span> Katalog API Lengkap</h2>
+  <p class="lead">Base URL: <span class="mono">https://jadiai.com/api/v1</span>. Badge <span class="badge b-enc">ENC</span> = response terenkripsi (AES <span class="mono">{payload,iv}</span>); <span class="badge b-plain">PLAIN</span> = JSON biasa. Ketik untuk memfilter.</p>
+
+  <div class="filterbar">
+    <input id="apiFilter" type="text" placeholder="Filter endpoint… (mis. 'broker', 'signal', 'seasonality')">
+    <span class="muted" id="apiCount"></span>
+  </div>
+
+  <div class="tablewrap">
+  <table id="apiTable">
+    <thead><tr><th>Method</th><th>Endpoint</th><th>Fungsi</th><th>Parameter utama</th><th>Resp</th></tr></thead>
+    <tbody>
+      <tr><td><span class="badge b-post">POST</span></td><td class="path">/member/login</td><td>Login → token Sanctum</td><td class="mono">email, password</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-post">POST</span></td><td class="path">/member/logout</td><td>Logout</td><td class="mono">—</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/member/me</td><td>Profil, kapabilitas, harga, kontak</td><td class="mono">—</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/member/token-stats</td><td>Ringkasan pemakaian token/saldo</td><td class="mono">query_mode=saldo</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/member/token-history</td><td>Riwayat mutasi token (paginated)</td><td class="mono">page, query_mode</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/payment/deposit-data</td><td>Bank tujuan, riwayat deposit, langganan</td><td class="mono">payments_page, adjustments_page, subscriptions_page</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/announcements</td><td>Pengumuman</td><td class="mono">—</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-scanner</td><td><b>Scanner utama</b> — saham diperingkat skor</td><td class="mono">page, limit, search, sort_by=score, sort_dir</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/watchlist</td><td>Ambil watchlist</td><td class="mono">—</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-post">POST</span></td><td class="path">/zenith/watchlist</td><td>Tambah simbol ke watchlist</td><td class="mono">{symbol}</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/history</td><td>Ambil jurnal trading</td><td class="mono">—</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+      <tr><td><span class="badge b-post">POST</span></td><td class="path">/zenith/history/batch</td><td>Simpan transaksi jurnal (batch)</td><td class="mono">{transactions[], broker_name}</td><td><span class="badge b-plain">PLAIN</span></td></tr>
+
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/historis</td><td>Harga harian OHLCV (~1500 hari)</td><td class="mono">symbol, limit=1500, sort_by=tanggal</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/stock-actions</td><td>Aksi harga / penyesuaian saham</td><td class="mono">symbol, limit=1000</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/money-flow-history</td><td><b>Aliran dana</b> (bandarmology)</td><td class="mono">symbol, limit=500</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/keystats</td><td>Statistik kunci (valuasi, mcap, dll)</td><td class="mono">symbol, limit=1, sort_by=updated_at</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/broker-summary</td><td><b>Ringkasan broker</b> net buy/sell (bandarmology)</td><td class="mono">symbol, start_date, end_date, limit=2000</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/composition</td><td><b>Komposisi kepemilikan</b> (asing/lokal) time-series</td><td class="mono">symbol, range=1Y, sort_by=periode</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/financials</td><td>Laporan keuangan tahunan</td><td class="mono">symbol, limit=200, sort_by=tahun</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/corporate-actions</td><td>Aksi korporasi (dividen, RUPS, split)</td><td class="mono">symbol, limit=300</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/major-holders</td><td>Pemegang saham utama (time-series)</td><td class="mono">symbol, limit=100, sort_by=tanggal</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/seasonality/chart</td><td>Data musiman per bulan (1 saham)</td><td class="mono">symbol, limit=20</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/seasonality/highlights</td><td>Highlight musiman lintas saham</td><td class="mono">limit=20</td><td><span class="badge b-enc">ENC</span></td></tr>
+
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/signals/rebound</td><td>Sinyal <b>rebound</b></td><td class="mono">limit, page, symbol</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/signals/pucuk</td><td>Sinyal <b>pucuk</b> (awal tren naik)</td><td class="mono">limit, page, symbol</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/signals/bpjs</td><td>Sinyal <b>bpjs</b> (strategi internal)</td><td class="mono">limit, page, symbol</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/evaluasi/harian</td><td>Evaluasi sinyal per tanggal</td><td class="mono">page, limit, date</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/evaluasi/akumulasi</td><td>Evaluasi akumulasi + <b>win rate</b></td><td class="mono">page, limit, sort_by=win_rate_overall</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/screener/thematic</td><td>Screener tematik (sektor/tema)</td><td class="mono">—</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/valuation</td><td>Screener valuasi</td><td class="mono">limit, page, symbol</td><td><span class="badge b-enc">ENC</span></td></tr>
+      <tr><td><span class="badge b-get">GET</span></td><td class="path">/zenith/market-data/dividen</td><td>Screener dividen</td><td class="mono">limit, page, symbol</td><td><span class="badge b-enc">ENC</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============ KAMUS DATA ============ -->
+<section id="kamus">
+  <h2><span class="n">06</span> Kamus Data — Konsep Tiap Modul</h2>
+  <p class="lead">Apa arti tiap modul analisa dan gunanya untuk keputusan trading/investasi. Ini <b>konsep umum</b> yang bisa Anda bangun sendiri.</p>
+
+  <h3>Kelompok Harga &amp; Teknikal</h3>
+  <div class="grid cards">
+    <div class="card"><h4>historis</h4><p>OHLCV harian hingga ~1500 hari (≈6 th). Pondasi semua indikator teknikal, return, volatilitas, seasonality, backtest.</p></div>
+    <div class="card"><h4>stock-actions</h4><p>Penyesuaian harga akibat aksi (split, bonus, right). Penting agar seri harga "adjusted" akurat.</p></div>
+    <div class="card"><h4>seasonality</h4><p>Pola return per bulan/periode secara historis — bulan mana cenderung hijau/merah. <span class="mono">chart</span> untuk 1 saham, <span class="mono">highlights</span> lintas saham.</p></div>
+    <div class="card"><h4>keystats</h4><p>Statistik ringkas: kapitalisasi, PER, PBV, dsb. — kartu ikhtisar di halaman emiten.</p></div>
+  </div>
+
+  <h3>Kelompok Bandarmology (kekhasan Zenith) <span class="st st-gap">butuh data IDX khusus</span></h3>
+  <div class="grid cards">
+    <div class="card"><h4>broker-summary</h4><p>Net buy/sell per broker (rentang tanggal). Melacak akumulasi/distribusi "bandar". Butuh data transaksi broker IDX (Stockbit/IDX).</p></div>
+    <div class="card"><h4>money-flow-history</h4><p>Aliran dana masuk/keluar (sering: asing vs ritel) dari waktu ke waktu — indikator tekanan beli/jual.</p></div>
+    <div class="card"><h4>composition</h4><p>Komposisi kepemilikan (asing/lokal, institusi/ritel) time-series. Sumber tipikal: <b>KSEI</b>.</p></div>
+    <div class="card"><h4>major-holders</h4><p>Pergerakan pemegang saham utama dari waktu ke waktu.</p></div>
+  </div>
+
+  <h3>Kelompok Fundamental</h3>
+  <div class="grid cards">
+    <div class="card"><h4>financials</h4><p>Laporan keuangan tahunan (pendapatan, laba, ekuitas, dll.). Bahan valuasi &amp; kualitas.</p></div>
+    <div class="card"><h4>valuation (screener)</h4><p>Saring saham murah/mahal berbasis rasio valuasi.</p></div>
+    <div class="card"><h4>dividen (screener)</h4><p>Saring berdasarkan dividend yield / kebijakan dividen.</p></div>
+    <div class="card"><h4>corporate-actions</h4><p>Kalender aksi korporasi (dividen, RUPS, split, right) — dasar <b>event study</b>.</p></div>
+  </div>
+
+  <h3>Kelompok Sinyal &amp; Evaluasi</h3>
+  <div class="grid cards">
+    <div class="card"><h4>market-scanner (score)</h4><p><b>Skor komposit</b> multi-faktor untuk memeringkat seluruh universe — inti "rekomendasi" Zenith.</p></div>
+    <div class="card"><h4>signals: rebound / pucuk / bpjs</h4><p>Tiga strategi entry bernama. "pucuk" ≈ deteksi awal tren naik; "bpjs" ≈ strategi internal; "rebound" ≈ pantulan dari oversold.</p></div>
+    <div class="card"><h4>evaluasi/akumulasi (win_rate)</h4><p>Backtest performa sinyal: <span class="mono">win_rate_overall</span> = % sinyal yang profit. Kredibilitas strategi.</p></div>
+    <div class="card"><h4>evaluasi/harian</h4><p>Rekap sinyal yang muncul & hasilnya per tanggal — jejak akuntabilitas harian.</p></div>
+  </div>
+</section>
+
+<!-- ============ CONTOH ============ -->
+<section id="contoh">
+  <h2><span class="n">07</span> Contoh Request &amp; Response <span class="muted" style="font-size:13px;font-weight:400">(kredensial di-redact)</span></h2>
+
+  <h3>Login</h3>
+<pre>POST /api/v1/member/login
+{ "email": "bernaldo.n70@gmail.com", "password": "***REDACTED***" }
+
+→ 200
+{
+  "member": { "id": 185, "name": "Bernaldo", "email": "…", "phone": "0823****4904", … (46 keys) },
+  "token": "936|***REDACTED_SANCTUM_TOKEN***"
+}</pre>
+
+  <h3>Profil (<span class="mono">/member/me</span>) — dipangkas</h3>
+<pre>{
+  "member": { "id":185, "name":"Bernaldo", … (58 keys) },
+  "capabilities": { "models": ["gemini-2.5-pro", …] },
+  "pricing_list": [ { "model_slug":"sora-2", "unit_type":"per_second", "price_idr":379 }, … (166 item) ],
+  "settings": { "ppn_percent":11, "member_markup_percent":15 },
+  "additional_fee": { "image_templates":25, "video_templates":50, "zenith":75 },
+  "contact": { "telegram_group_url":"…", "youtube_url":"…", "whatsapp":"…" }
+}</pre>
+
+  <h3>Tambah watchlist &amp; simpan jurnal</h3>
+<pre>POST /api/v1/zenith/watchlist        { "symbol": "EMTK" }
+→ { "code":200, "message":"EMTK berhasil ditambahkan ke Watchlist.", "data":["EMTK"] }
+
+POST /api/v1/zenith/history/batch
+{ "transactions":[ {"symbol":"BBCA","type":"BUY","price":3000,"lot":1,"subtotal":300000,"date":"2026-07-24"} ],
+  "broker_name":"Stockbit" }
+→ { "code":200, "message":"Jurnal trading berhasil disimpan.", "data":[ {"symbol":"BBCA", … ,"broker":"Stockbit"} ] }</pre>
+
+  <h3>Endpoint analisa — <b>terenkripsi</b> (contoh: broker-summary)</h3>
+<pre>GET /api/v1/zenith/market-data/broker-summary?symbol=GGRM&start_date=2026-06-24&end_date=2026-07-24
+
+→ 200
+{
+  "payload": "F4UqHpxEb7d06G8q9cs9FHKrfoug0Bape6e/KIgIvsKoB+ehlJSVr5NIuUNYDIa1RqJB292N… (base64, panjang)",
+  "iv": "530412c06fdecadd37c38c85056f154e"     // 16-byte hex → AES-CBC
+}
+// Isi asli hanya bisa dibaca setelah didekripsi oleh JS aplikasi dengan kunci di bundle.</pre>
+</section>
+
+<!-- ============ ADOPSI ============ -->
+<section id="adopsi">
+  <h2><span class="n">08</span> Rencana Adopsi — Padanan di Proyek Anda</h2>
+  <p class="lead">
+    Proyek <span class="mono">analisis_saham</span> (Nuxt 4 + Yahoo Finance) ternyata sudah menutupi
+    sebagian besar fitur Zenith. Status: <span class="st st-ok">Sudah ada</span>
+    <span class="st st-mid">Sebagian</span> <span class="st st-gap">Gap</span>.
+  </p>
+
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Fitur Zenith</th><th>Status</th><th>Modul/file di proyek Anda</th><th>Catatan &amp; sumber data</th></tr></thead>
+    <tbody>
+      <tr><td>Market Scanner (skor komposit)</td><td><span class="st st-ok">Sudah ada</span></td><td class="mono">server/api/screen.ts · server/utils/factor.ts</td><td>QVM multi-factor ranking Anda = padanan langsung "score".</td></tr>
+      <tr><td>Harga historis (OHLCV)</td><td><span class="st st-ok">Sudah ada</span></td><td class="mono">server/utils/yahoo.ts · /api/history · /api/detail</td><td>Yahoo menyediakan OHLCV harian ter-adjust.</td></tr>
+      <tr><td>Seasonality</td><td><span class="st st-ok">Sudah ada</span></td><td class="mono">/seasonal · app/utils/seasonalCalculator.ts · components/seasonal/*</td><td>Sudah kuat — heatmap, tabel, insight bulanan.</td></tr>
+      <tr><td>Watchlist</td><td><span class="st st-ok">Sudah ada</span></td><td class="mono">/watchlist · server/api/watchlist.ts · store.ts</td><td>Tinggal samakan UX.</td></tr>
+      <tr><td>Jurnal / Portofolio</td><td><span class="st st-ok">Sudah ada</span></td><td class="mono">/portofolio · server/utils/portfolio.ts · history.ts</td><td>Padanan <span class="mono">history/batch</span>. Tambah field broker bila perlu.</td></tr>
+      <tr><td>Evaluasi / Backtest (win rate)</td><td><span class="st st-mid">Sebagian</span></td><td class="mono">/backtest · server/utils/backtest.ts</td><td>Punya engine; perlu format <span class="mono">win_rate_overall</span> per strategi + evaluasi harian (cron).</td></tr>
+      <tr><td>Keystats &amp; Financials</td><td><span class="st st-mid">Sebagian</span></td><td class="mono">server/utils/fundamentals.ts · /api/fundamentals</td><td>Yahoo sediakan sebagian fundamental; laporan tahunan detail IDX terbatas.</td></tr>
+      <tr><td>Screener valuasi &amp; dividen</td><td><span class="st st-mid">Sebagian</span></td><td class="mono">factor.ts (V) · fundamentals.ts</td><td>Faktor Value ada; tambah filter dividend-yield khusus.</td></tr>
+      <tr><td>Corporate / stock actions</td><td><span class="st st-mid">Sebagian</span></td><td class="mono">server/utils/eventStudy.ts · /api/eventstudy</td><td>Event study Anda = fondasi; perlu feed kalender aksi korporasi.</td></tr>
+      <tr><td>Sinyal (rebound/pucuk/bpjs)</td><td><span class="st st-mid">Sebagian</span></td><td class="mono">server/utils/technical.ts · levels.ts</td><td>Indikator ada; perlu <b>signal engine</b> yang mendefinisikan &amp; men-scan pola.</td></tr>
+      <tr><td><b>Broker summary</b> (bandarmology)</td><td><span class="st st-gap">Gap</span></td><td class="mono">—</td><td><b>Yahoo tidak punya.</b> Butuh data broker IDX (Stockbit/IDX/pihak ketiga).</td></tr>
+      <tr><td><b>Money flow</b> (asing/ritel)</td><td><span class="st st-gap">Gap</span></td><td class="mono">—</td><td>Butuh data foreign/broker flow IDX.</td></tr>
+      <tr><td><b>Komposisi kepemilikan</b></td><td><span class="st st-gap">Gap</span></td><td class="mono">—</td><td>Sumber tipikal <b>KSEI</b>; tidak ada di Yahoo.</td></tr>
+      <tr><td><b>Major holders</b> (historis)</td><td><span class="st st-gap">Gap</span></td><td class="mono">—</td><td>Butuh data kepemilikan IDX historis.</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout" style="margin-top:16px">
+    <h4>💡 Kesimpulan strategis</h4>
+    <p style="margin:2px 0">Yang <b>sudah Anda kuasai</b>: scanner/scoring, harga, seasonality, watchlist, portofolio, backtest.
+    Yang perlu <b>dibangun di atas infra yang ada</b>: signal engine (rebound/pucuk), evaluasi harian, screener dividen.
+    Yang jadi <b>pembeda utama Zenith &amp; tidak bisa direplikasi dari Yahoo</b>: <mark>seluruh suite bandarmology</mark>
+    (broker summary, money flow, komposisi, major holders) — ini butuh <b>sumber data IDX khusus</b>
+    (Stockbit, IDX, atau KSEI). Keputusan terbesar Anda: apakah mau berlangganan/mengintegrasikan sumber data broker IDX,
+    atau fokus memperkuat lapisan teknikal-fundamental yang sudah kuat.</p>
+  </div>
+</section>
+
+<!-- ============ ENKRIPSI & ETIKA ============ -->
+<section id="enkripsi">
+  <h2><span class="n">09</span> Soal Enkripsi &amp; Batas Etis</h2>
+
+  <div class="callout enc">
+    <h4>Kenapa dokumen ini tidak mendekripsi payload</h4>
+    <p style="margin:2px 0">Zenith <b>sengaja mengenkripsi</b> response analisanya (AES <span class="mono">{payload,iv}</span>) supaya isinya
+    tidak terbaca dari Network tab. Membongkar kunci AES dari bundle JS mereka untuk mengekstrak &amp; menyalin nilai/skor
+    proprietary secara massal adalah tindakan yang (a) hampir pasti melanggar <b>Ketentuan Layanan</b> mereka, dan
+    (b) berpindah dari "belajar" ke "mengkloning produk". Karena itu <b>tidak saya lakukan</b>.</p>
+  </div>
+
+  <div class="callout">
+    <h4>Yang sah &amp; produktif untuk tujuan Anda</h4>
+    <ul class="tight" style="margin-top:4px">
+      <li><b>Pelajari konsepnya, bukan datanya.</b> Bandarmology, seasonality, valuasi, win-rate backtest — semua teknik finansial umum. Bangun versi Anda dari sumber data Anda sendiri.</li>
+      <li><b>Pakai sebagai referensi fitur/UX.</b> Peta menu &amp; katalog API di atas cukup untuk merancang fitur setara tanpa menyentuh data mereka.</li>
+      <li><b>Untuk memahami satu output</b>, baca langsung di UI Zenith (Anda pelanggan sah) — bukan men-scrape massal.</li>
+    </ul>
+  </div>
+
+  <div class="callout bad">
+    <h4>🔑 Keamanan file HAR</h4>
+    <p style="margin:2px 0">File <span class="mono">console.jadiai.com.har</span> di root proyek <b>berisi token login Anda</b> (dan
+    kredensial). <b>Jangan commit ke git</b> dan jangan sebar. Sarannya: hapus setelah selesai dipelajari, atau tambahkan
+    <span class="mono">console.jadiai.com.har</span> dan <span class="mono">zenith-trading-analysis.html</span> ke
+    <span class="mono">.gitignore</span>. (Saya tidak mengubah <span class="mono">.gitignore</span> tanpa izin Anda.)</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap" style="padding:0">
+    Direkonstruksi dari <span class="mono">console.jadiai.com.har</span> (72 request, 30 endpoint unik) · 24 Juli 2026.
+    Dokumen analisa read-only — tidak mengubah kode aplikasi. Nilai data proprietary Zenith tidak diekstrak.
+  </div>
+</footer>
+
+</div>
+
+<script>
+(function(){
+  // Theme toggle (progressive enhancement; default mengikuti sistem)
+  var btn=document.getElementById('themeBtn');
+  btn&&btn.addEventListener('click',function(){
+    var cur=document.documentElement.getAttribute('data-theme');
+    var next = cur==='dark' ? 'light' : (cur==='light' ? 'dark' :
+      (window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches ? 'light':'dark'));
+    document.documentElement.setAttribute('data-theme',next);
+  });
+  // Filter tabel API
+  var inp=document.getElementById('apiFilter');
+  var tbl=document.getElementById('apiTable');
+  var cnt=document.getElementById('apiCount');
+  function upd(){
+    if(!tbl)return;
+    var q=(inp.value||'').toLowerCase();
+    var rows=tbl.tBodies[0].rows, shown=0;
+    for(var i=0;i<rows.length;i++){
+      var t=rows[i].textContent.toLowerCase();
+      var ok=t.indexOf(q)>-1; rows[i].style.display=ok?'':'none'; if(ok)shown++;
+    }
+    if(cnt)cnt.textContent=shown+' / '+rows.length+' endpoint';
+  }
+  inp&&inp.addEventListener('input',upd); upd();
+})();
+</script>
+</body>
+</html>

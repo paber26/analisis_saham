@@ -48,7 +48,12 @@ echo "==> [3/3] Clearing day-cache + (re)starting PM2 app '${PM2_NAME}' on port 
 # (between deploys the cache persists and refreshes once per day).
 SYNC_TOKEN="${SYNC_TOKEN:-saham-sync}"
 APP_TOKEN="${APP_TOKEN:-saham-app}"
-ENVP="SYNC_TOKEN='${SYNC_TOKEN}' APP_TOKEN='${APP_TOKEN}' PORT=${DEPLOY_PORT} HOST=127.0.0.1"
+STOCKBIT_TOKEN="${STOCKBIT_TOKEN:-}"          # from .deploy.env; owner's Stockbit JWT (~24h TTL)
+APP_USERNAME="${APP_USERNAME:-}"              # login username (from .deploy.env)
+APP_PASSWORD="${APP_PASSWORD:-}"              # login password (from .deploy.env; avoid the ' char)
+APP_SESSION_SECRET="${APP_SESSION_SECRET:-}"  # cookie signing secret, 32+ chars (from .deploy.env)
+STOCKBIT_PUSH_SECRET="${STOCKBIT_PUSH_SECRET:-}"  # extension→server token-push secret (from .deploy.env)
+ENVP="SYNC_TOKEN='${SYNC_TOKEN}' APP_TOKEN='${APP_TOKEN}' STOCKBIT_TOKEN='${STOCKBIT_TOKEN}' APP_USERNAME='${APP_USERNAME}' APP_PASSWORD='${APP_PASSWORD}' APP_SESSION_SECRET='${APP_SESSION_SECRET}' STOCKBIT_PUSH_SECRET='${STOCKBIT_PUSH_SECRET}' PORT=${DEPLOY_PORT} HOST=127.0.0.1"
 "${SSH_BIN[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
   "cd ${DEPLOY_PATH} && rm -rf .cache && (${ENVP} pm2 restart ${PM2_NAME} --update-env || ${ENVP} pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
 

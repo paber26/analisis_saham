@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Zenith Bandar — Sinkron Token Stockbit",
+  "version": "1.1.0",
+  "description": "Menangkap token Stockbit (header/cookie/localStorage) saat kamu browsing Stockbit dan mengirimkannya ke saham.kuydinas.id agar data bandar selalu segar.",
+  "permissions": ["webRequest", "storage", "cookies"],
+  "host_permissions": [
+    "*://*.stockbit.com/*",
+    "https://saham.kuydinas.id/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://stockbit.com/*", "*://*.stockbit.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sinkron Token Stockbit"
+  }
+}

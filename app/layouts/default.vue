@@ -136,6 +136,17 @@
                 <span class="text-sm shrink-0">🏢</span>
                 <span v-if="!isCollapsed" class="truncate">Profil Emiten</span>
               </NuxtLink>
+
+              <NuxtLink
+                :to="`/bandar/${lastSymbol}`"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/bandar') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Bandarmology' : ''"
+              >
+                <span class="text-sm shrink-0">🏦</span>
+                <span v-if="!isCollapsed" class="truncate">Bandarmology (Broker)</span>
+              </NuxtLink>
             </div>
 
             <!-- Group 3: Portofolio & Tooling -->
@@ -277,6 +288,19 @@
             >
               <span>⚡</span> {{ lastSymbol }}
             </NuxtLink>
+
+            <!-- Auth: login link, or logged-in user + logout -->
+            <div v-if="loggedIn" class="flex items-center gap-2">
+              <span class="hidden sm:inline text-[11px] text-slate-400">👤 {{ user }}</span>
+              <button
+                type="button" @click="onLogout"
+                class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition-all"
+              >Keluar</button>
+            </div>
+            <NuxtLink
+              v-else to="/login"
+              class="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 text-xs font-bold transition-all"
+            >Masuk</NuxtLink>
           </div>
         </header>
 
@@ -312,8 +336,16 @@
 import { ref, computed, onMounted } from 'vue';
 
 const route = useRoute();
+const router = useRouter();
 const isCollapsed = ref(false);
 const isMobileOpen = ref(false);
+
+// Auth (single owner). Logged in via session cookie → all gated features unlock.
+const { user, loggedIn, logout } = useAuth();
+async function onLogout() {
+  await logout();
+  router.push('/login');
+}
 
 // Emiten-analysis pages get a screening list in the right rail (desktop) so the
 // user can switch stocks without going back to /screening.
@@ -333,6 +365,7 @@ const currentPageTitle = computed(() => {
   if (p.startsWith('/seasonal')) return 'Pola Musiman';
   if (p.startsWith('/saham')) return 'Chart & Keuangan';
   if (p.startsWith('/profil-saham')) return 'Profil Emiten';
+  if (p.startsWith('/bandar')) return 'Bandarmology (Broker Analysis)';
   if (p.startsWith('/watchlist')) return 'Watchlist';
   if (p.startsWith('/portofolio')) return 'Portofolio';
   if (p.startsWith('/edukasi')) return 'Perpustakaan & Catatan';

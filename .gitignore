@@ -28,3 +28,6 @@ logs
 
 # Deployment secrets (host/user/password) — NEVER commit
 .deploy.env
+
+# Captured HAR (berisi token login) — JANGAN commit
+*.har

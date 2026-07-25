@@ -168,18 +168,41 @@ onBeforeUnmount(pause);
 
 // ---------------- Decision gate ----------------
 const decisionOpen = ref(false);
-interface DecRow { code: string; name: string; price: number; plPct: number; lots: number; rating: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' }
+interface DecRow { code: string; name: string; price: number; avgPrice: number; plPct: number; lots: number; rating: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; avgDownLots: number }
 const decisionRows = ref<DecRow[]>([]);
+
+function getRecommendedAvgDownLots(code: string, currentPrice: number) {
+  const b = basket.value.find((x) => x.code === code);
+  const weightPct = b?.weightPct ?? (100 / (basket.value.length || 1));
+  const budget = initialCapital.value * (weightPct / 100);
+  const lotPrice = currentPrice * 100;
+  const targetAdd = Math.max(1, Math.floor(budget / lotPrice));
+  const maxAffordable = Math.floor(cash.value / lotPrice);
+  return Math.min(targetAdd, maxAffordable);
+}
+
 function openDecision() {
   decisionRows.value = basket.value
     .filter((b) => (positions[b.code]?.lots ?? 0) > 0)
     .map((b) => {
       const p = positions[b.code]!;
       const price = priceAt(b.code, cursor.value);
-      return { code: b.code, name: b.name, price, plPct: (price / p.avgPrice - 1) * 100, lots: p.lots, rating: b.rating, action: 'HOLD' as const };
+      const rec = getRecommendedAvgDownLots(b.code, price);
+      return {
+        code: b.code,
+        name: b.name,
+        price,
+        avgPrice: p.avgPrice,
+        plPct: (price / p.avgPrice - 1) * 100,
+        lots: p.lots,
+        rating: b.rating,
+        action: 'HOLD' as const,
+        avgDownLots: rec
+      };
     });
   decisionOpen.value = true;
 }
+
 function applyDecisions() {
   const date = timeline.value[cursor.value]!;
   for (const d of decisionRows.value) {
@@ -189,14 +212,15 @@ function applyDecisions() {
       decisions.value.push({ date, code: d.code, action: 'SELL', lots: pos.lots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
       pos.lots = 0;
     } else if (d.action === 'AVERAGE_DOWN') {
-      const b = basket.value.find((x) => x.code === d.code)!;
-      const budget = initialCapital.value * (b.weightPct / 100);
-      const addLots = Math.min(Math.floor(budget / (d.price * 100)), Math.floor(cash.value / (d.price * 100)));
+      const requestedLots = Math.max(1, Number(d.avgDownLots) || 1);
+      const maxAffordable = Math.floor(cash.value / (d.price * 100));
+      const addLots = Math.min(requestedLots, maxAffordable);
       if (addLots > 0) {
         const cost = addLots * 100 * d.price;
         const newLots = pos.lots + addLots;
         pos.avgPrice = (pos.avgPrice * pos.lots + d.price * addLots) / newLots;
-        pos.lots = newLots; cash.value -= cost;
+        pos.lots = newLots;
+        cash.value -= cost;
         decisions.value.push({ date, code: d.code, action: 'AVERAGE_DOWN', lots: addLots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
       }
     } else {
@@ -501,29 +525,97 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
     </section>
 
     <!-- DECISION MODAL -->
-    <div v-if="decisionOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-      <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
-        <div>
-          <h3 class="text-lg font-bold text-slate-100">🤔 Titik Keputusan · {{ timeline[cursor] }}</h3>
-          <p class="text-xs text-slate-400">Kamu belum tahu masa depan. Untuk tiap posisi: tahan, jual, atau average down?</p>
+    <div v-if="decisionOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+      <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-start justify-between gap-4 pb-2 border-b border-slate-800">
+          <div>
+            <h3 class="text-lg font-bold text-slate-100 flex items-center gap-2">
+              <span>🤔 Titik Keputusan</span>
+              <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">{{ timeline[cursor] }}</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-1">Pilih tindakan untuk masing-masing saham di portofolio kamu.</p>
+          </div>
+          <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shrink-0">
+            <div class="text-[10px] text-slate-500 font-bold uppercase">Kas Tersedia</div>
+            <div class="text-sm font-extrabold text-emerald-400">{{ fmtIDR(cash) }}</div>
+          </div>
         </div>
-        <div class="space-y-2">
-          <div v-for="d in decisionRows" :key="d.code" class="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
-            <div class="flex items-center justify-between mb-2">
-              <div><span class="font-bold text-slate-100">{{ d.code }}</span>
+
+        <div class="space-y-3">
+          <div v-for="d in decisionRows" :key="d.code" class="rounded-xl bg-slate-950/60 border border-slate-800 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="font-extrabold text-slate-100 text-base">{{ d.code }}</span>
                 <span class="ml-2 px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(d.rating)">{{ d.rating }}</span>
+                <span class="ml-2 text-xs text-slate-400">(Holding: <strong class="text-slate-200">{{ d.lots }} lot</strong> @ {{ fmtIDR(d.avgPrice) }})</span>
               </div>
-              <div class="text-right text-xs tabular-nums"><span class="text-slate-300">{{ fmtIDR(d.price) }}</span>
-                <span class="ml-2 font-bold" :class="d.plPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.plPct) }}</span></div>
+              <div class="text-right text-xs tabular-nums">
+                <span class="text-slate-300">{{ fmtIDR(d.price) }}</span>
+                <span class="ml-2 font-bold" :class="d.plPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.plPct) }}</span>
+              </div>
             </div>
+
             <div class="grid grid-cols-3 gap-2">
-              <button @click="d.action = 'HOLD'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'HOLD' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Tahan</button>
-              <button @click="d.action = 'SELL'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'SELL' ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Jual</button>
-              <button @click="d.action = 'AVERAGE_DOWN'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'AVERAGE_DOWN' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Avg Down</button>
+              <button @click="d.action = 'HOLD'" class="px-2 py-2 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'HOLD' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'">Tahan</button>
+              <button @click="d.action = 'SELL'" class="px-2 py-2 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'SELL' ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'">Jual</button>
+              <button @click="d.action = 'AVERAGE_DOWN'" class="px-2 py-2 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'AVERAGE_DOWN' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'">Avg Down</button>
+            </div>
+
+            <!-- Detail Average Down Panel -->
+            <div v-if="d.action === 'AVERAGE_DOWN'" class="p-3.5 rounded-xl bg-amber-500/[0.08] border border-amber-500/30 text-xs space-y-2.5">
+              <div class="flex items-center justify-between flex-wrap gap-2">
+                <span class="font-bold text-amber-300 flex items-center gap-1.5">
+                  <span>📥</span> Jumlah Lot Average Down:
+                </span>
+                <div class="flex items-center gap-2">
+                  <input
+                    v-model.number="d.avgDownLots"
+                    type="number"
+                    min="1"
+                    :max="Math.max(1, Math.floor(cash / (d.price * 100)))"
+                    class="w-20 bg-slate-950 border border-amber-500/50 rounded-lg px-2.5 py-1 text-right font-bold text-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  <span class="font-bold text-amber-200">lot</span>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/20">
+                <div>
+                  <div class="text-slate-500">Biaya Pembelian</div>
+                  <div class="font-bold text-slate-100 mt-0.5">{{ fmtIDR((d.avgDownLots || 0) * 100 * d.price) }}</div>
+                </div>
+                <div>
+                  <div class="text-slate-500">Total Posisi Baru</div>
+                  <div class="font-bold text-slate-100 mt-0.5">{{ d.lots + (d.avgDownLots || 0) }} lot</div>
+                </div>
+                <div>
+                  <div class="text-slate-500">Avg Price Baru</div>
+                  <div class="font-bold text-emerald-400 mt-0.5">Rp {{ Math.round((d.avgPrice * d.lots + d.price * (d.avgDownLots || 0)) / (d.lots + (d.avgDownLots || 0))).toLocaleString('id-ID') }}</div>
+                </div>
+                <div>
+                  <div class="text-slate-500">Sisa Kas</div>
+                  <div class="font-bold mt-0.5" :class="cash >= (d.avgDownLots || 0) * 100 * d.price ? 'text-slate-100' : 'text-rose-400'">{{ fmtIDR(cash - (d.avgDownLots || 0) * 100 * d.price) }}</div>
+                </div>
+              </div>
+
+              <p v-if="cash < (d.avgDownLots || 0) * 100 * d.price" class="text-[11px] text-rose-400 font-semibold">
+                ⚠️ Kas tidak mencukupi untuk membeli {{ d.avgDownLots }} lot (Maksimal yang dapat dibeli: {{ Math.floor(cash / (d.price * 100)) }} lot).
+              </p>
+            </div>
+
+            <!-- Detail Jual Panel -->
+            <div v-else-if="d.action === 'SELL'" class="p-3 rounded-xl bg-rose-500/[0.08] border border-rose-500/30 text-xs">
+              <div class="flex items-center justify-between text-[11px] text-slate-300">
+                <span>Jual seluruh posisi: <strong class="text-rose-300">{{ d.lots }} lot</strong> @ {{ fmtIDR(d.price) }}</span>
+                <span>Hasil Penjualan: <strong class="text-emerald-400">+{{ fmtIDR(d.lots * 100 * d.price) }}</strong></span>
+              </div>
             </div>
           </div>
         </div>
-        <button @click="applyDecisions" class="w-full px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm">Terapkan &amp; lanjutkan ▶</button>
+
+        <button @click="applyDecisions" class="w-full px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition-colors shadow-lg shadow-emerald-500/20">
+          Terapkan Keputusan &amp; Lanjutkan ▶
+        </button>
       </div>
     </div>
 

@@ -123,8 +123,41 @@ function filterRow(r: AsOfRow): boolean {
   return true;
 }
 
-const filteredScreenRows = computed(() => screenRows.value.filter(filterRow));
-const filteredMidScreenRows = computed(() => midScreenRows.value.filter(filterRow));
+// ---------------- Sorting State ----------------
+type SortKey = 'code' | 'price' | 'rating' | 'score' | 'rs3m' | 'rsi' | 'pctFromHigh';
+type SortOrder = 'asc' | 'desc';
+
+const sortKey = ref<SortKey>('score');
+const sortOrder = ref<SortOrder>('desc');
+
+function sortBy(key: SortKey) {
+  if (sortKey.value === key) {
+    sortOrder.value = sortOrder.value === 'desc' ? 'asc' : 'desc';
+  } else {
+    sortKey.value = key;
+    sortOrder.value = 'desc';
+  }
+}
+
+function sortRows<T extends { code: string; price: number; rating: string; score?: number | null; rs3m?: number | null; rsi?: number | null; pctFromHigh?: number | null }>(rows: T[]): T[] {
+  const mult = sortOrder.value === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    let valA: any = a[sortKey.value];
+    let valB: any = b[sortKey.value];
+
+    if (valA == null) valA = sortOrder.value === 'desc' ? -999999 : 999999;
+    if (valB == null) valB = sortOrder.value === 'desc' ? -999999 : 999999;
+
+    if (typeof valA === 'string') {
+      return valA.localeCompare(valB) * mult;
+    }
+    return (valA - valB) * mult;
+  });
+}
+
+const filteredScreenRows = computed(() => sortRows(screenRows.value.filter(filterRow)));
+const filteredMidScreenRows = computed(() => sortRows(midScreenRows.value.filter(filterRow)));
+const sortedDecisionRows = computed(() => sortRows(decisionRows.value));
 
 function toggle(code: string) { selected.has(code) ? selected.delete(code) : selected.add(code); }
 const ratingCounts = computed(() => {
@@ -915,11 +948,30 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
       </div>
       <div class="rounded-xl border border-slate-800 overflow-x-auto">
         <table class="w-full text-xs">
-          <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider">
+          <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider select-none">
             <tr>
-              <th class="px-3 py-3 text-left">Pilih</th><th class="px-3 py-3 text-left">Kode</th><th class="px-3 py-3 text-right">Harga</th>
-              <th class="px-3 py-3 text-center">Rating</th><th class="px-3 py-3 text-right">Skor</th><th class="px-3 py-3 text-right">RS 3B</th>
-              <th class="px-3 py-3 text-right">RSI</th><th class="px-3 py-3 text-right">Dari High</th>
+              <th class="px-3 py-3 text-left">Pilih</th>
+              <th @click="sortBy('code')" class="px-3 py-3 text-left cursor-pointer hover:text-emerald-400 transition-colors">
+                Kode <span v-if="sortKey === 'code'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('price')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                Harga <span v-if="sortKey === 'price'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('rating')" class="px-3 py-3 text-center cursor-pointer hover:text-emerald-400 transition-colors">
+                Rating <span v-if="sortKey === 'rating'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('score')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                Skor <span v-if="sortKey === 'score'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('rs3m')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                RS 3B <span v-if="sortKey === 'rs3m'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('rsi')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                RSI <span v-if="sortKey === 'rsi'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
+              <th @click="sortBy('pctFromHigh')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                Dari High <span v-if="sortKey === 'pctFromHigh'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+              </th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/70 text-slate-300">
@@ -1277,21 +1329,35 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           <!-- TABLE VIEW MODE -->
           <div v-else-if="decisionViewMode === 'table'" class="rounded-xl border border-slate-800 overflow-x-auto">
             <table class="w-full text-xs">
-              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider">
+              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider select-none">
                 <tr>
-                  <th class="px-3 py-3 text-left">Kode</th>
-                  <th class="px-3 py-3 text-right">Harga (P&amp;L)</th>
-                  <th class="px-3 py-3 text-center">Rating</th>
-                  <th class="px-3 py-3 text-right">Skor</th>
-                  <th class="px-3 py-3 text-right">RS 3B</th>
-                  <th class="px-3 py-3 text-right">RSI</th>
-                  <th class="px-3 py-3 text-right">Dari High</th>
+                  <th @click="sortBy('code')" class="px-3 py-3 text-left cursor-pointer hover:text-emerald-400 transition-colors">
+                    Kode <span v-if="sortKey === 'code'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('price')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Harga (P&amp;L) <span v-if="sortKey === 'price'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rating')" class="px-3 py-3 text-center cursor-pointer hover:text-emerald-400 transition-colors">
+                    Rating <span v-if="sortKey === 'rating'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('score')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Skor <span v-if="sortKey === 'score'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rs3m')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    RS 3B <span v-if="sortKey === 'rs3m'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rsi')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    RSI <span v-if="sortKey === 'rsi'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('pctFromHigh')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Dari High <span v-if="sortKey === 'pctFromHigh'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
                   <th class="px-3 py-3 text-left">Holding</th>
                   <th class="px-3 py-3 text-center w-64">Tindakan</th>
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/80 text-slate-300">
-                <tr v-for="d in decisionRows" :key="d.code" class="hover:bg-slate-950/40">
+                <tr v-for="d in sortedDecisionRows" :key="d.code" class="hover:bg-slate-950/40">
                   <td class="px-3 py-3 font-bold text-slate-100">{{ d.code }}</td>
                   <td class="px-3 py-3 text-right tabular-nums">
                     <div class="text-slate-200 font-bold">{{ fmtIDR(d.price) }}</div>
@@ -1341,15 +1407,29 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
 
           <div v-else-if="midScreenRows.length" class="rounded-xl border border-slate-800 overflow-x-auto">
             <table class="w-full text-xs">
-              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider">
+              <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider select-none">
                 <tr>
-                  <th class="px-3 py-3 text-left">Kode</th>
-                  <th class="px-3 py-3 text-right">Harga</th>
-                  <th class="px-3 py-3 text-center">Rating</th>
-                  <th class="px-3 py-3 text-right">Skor</th>
-                  <th class="px-3 py-3 text-right">RS 3B</th>
-                  <th class="px-3 py-3 text-right">RSI</th>
-                  <th class="px-3 py-3 text-right">Dari High</th>
+                  <th @click="sortBy('code')" class="px-3 py-3 text-left cursor-pointer hover:text-emerald-400 transition-colors">
+                    Kode <span v-if="sortKey === 'code'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('price')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Harga <span v-if="sortKey === 'price'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rating')" class="px-3 py-3 text-center cursor-pointer hover:text-emerald-400 transition-colors">
+                    Rating <span v-if="sortKey === 'rating'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('score')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Skor <span v-if="sortKey === 'score'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rs3m')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    RS 3B <span v-if="sortKey === 'rs3m'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('rsi')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    RSI <span v-if="sortKey === 'rsi'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
+                  <th @click="sortBy('pctFromHigh')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
+                    Dari High <span v-if="sortKey === 'pctFromHigh'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
+                  </th>
                   <th class="px-3 py-3 text-center w-32">Beli (Lot)</th>
                   <th class="px-3 py-3 text-center">Aksi</th>
                 </tr>

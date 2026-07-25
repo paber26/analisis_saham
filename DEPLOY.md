@@ -33,6 +33,32 @@ Rahasia (host/user/password) dibaca dari **`.deploy.env` yang di-gitignore**.
 > disarankan **ganti password server** (sudah pernah tampil di chat) dan beralih
 > ke **SSH key** lalu kosongkan `DEPLOY_PASSWORD` (script otomatis pakai key).
 
+## Notifikasi email harian (rekomendasi)
+
+Infrastruktur SMTP + endpoint. Isi kredensial di `.deploy.env`:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=465
+SMTP_USER=akun.gmail@gmail.com
+SMTP_PASS=<Gmail App Password>   # Google Account → Security → 2FA → App passwords
+MAIL_TO=bernaldo.stis@gmail.com
+NOTIFY_TOKEN=<random>            # kosong = pakai SYNC_TOKEN
+```
+
+Lalu `./deploy.sh` (env ikut ter-inject ke PM2). Endpoint:
+
+- `GET /api/notify/daily?token=<NOTIFY_TOKEN>` → susun digest dari snapshot screener & kirim email.
+- `?dry=1` → pratinjau (JSON + HTML) tanpa mengirim. `?to=addr` override penerima. `?limit=N` jumlah pilihan.
+
+Jadwalkan via **crontab server** (jalankan SETELAH `/api/sync` menghasilkan snapshot harian). Contoh (WIB, server UTC → +7):
+
+```cron
+# sync screener 17:30 WIB (10:30 UTC), lalu email 17:45 WIB (10:45 UTC), hari kerja
+30 10 * * 1-5 curl -s "http://127.0.0.1:3200/api/sync?token=SYNC_TOKEN" >/dev/null
+45 10 * * 1-5 curl -s "http://127.0.0.1:3200/api/notify/daily?token=NOTIFY_TOKEN" >/dev/null
+```
+
 ## Setup awal server (sudah dilakukan — untuk referensi/recovery)
 
 ```bash

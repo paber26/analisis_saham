@@ -75,6 +75,57 @@ async function loadScreening() {
     loadingScreen.value = false;
   }
 }
+// ---------------- Filter State for Step 2 Screening & Mid-Simulation Screening ----------------
+const filterQuery = ref('');
+const filterRating = ref<'ALL' | 'Kuat' | 'Menarik' | 'Netral' | 'Lemah'>('ALL');
+const filterRS3M = ref<'ALL' | 'POS' | 'HIGH'>('ALL');
+const filterRSI = ref<'ALL' | 'HEALTHY' | 'SAFE' | 'OVERSOLD'>('ALL');
+const filterDariHigh = ref<'ALL' | 'NEAR10' | 'NEAR20'>('ALL');
+
+function applyPreset(preset: 'super_momentum' | 'near_high' | 'reset') {
+  if (preset === 'super_momentum') {
+    filterQuery.value = '';
+    filterRating.value = 'ALL';
+    filterRS3M.value = 'POS';
+    filterRSI.value = 'SAFE';
+    filterDariHigh.value = 'ALL';
+  } else if (preset === 'near_high') {
+    filterQuery.value = '';
+    filterRating.value = 'ALL';
+    filterRS3M.value = 'ALL';
+    filterRSI.value = 'ALL';
+    filterDariHigh.value = 'NEAR10';
+  } else if (preset === 'reset') {
+    filterQuery.value = '';
+    filterRating.value = 'ALL';
+    filterRS3M.value = 'ALL';
+    filterRSI.value = 'ALL';
+    filterDariHigh.value = 'ALL';
+  }
+}
+
+function filterRow(r: AsOfRow): boolean {
+  if (filterQuery.value) {
+    const q = filterQuery.value.toUpperCase();
+    if (!r.code.toUpperCase().includes(q) && !r.name.toUpperCase().includes(q)) return false;
+  }
+  if (filterRating.value !== 'ALL' && r.rating !== filterRating.value) return false;
+  const rs = r.rs3m ?? 0;
+  if (filterRS3M.value === 'POS' && rs <= 0) return false;
+  if (filterRS3M.value === 'HIGH' && rs <= 10) return false;
+  const rsi = r.rsi ?? 50;
+  if (filterRSI.value === 'HEALTHY' && (rsi < 40 || rsi > 70)) return false;
+  if (filterRSI.value === 'SAFE' && rsi > 75) return false;
+  if (filterRSI.value === 'OVERSOLD' && rsi >= 40) return false;
+  const fh = r.pctFromHigh ?? -100;
+  if (filterDariHigh.value === 'NEAR10' && fh < -10) return false;
+  if (filterDariHigh.value === 'NEAR20' && fh < -20) return false;
+  return true;
+}
+
+const filteredScreenRows = computed(() => screenRows.value.filter(filterRow));
+const filteredMidScreenRows = computed(() => midScreenRows.value.filter(filterRow));
+
 function toggle(code: string) { selected.has(code) ? selected.delete(code) : selected.add(code); }
 const ratingCounts = computed(() => {
   const c: Record<string, number> = { Kuat: 0, Menarik: 0, Netral: 0, Lemah: 0 };
@@ -780,6 +831,76 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           <button @click="buildBasket" :disabled="selected.size === 0" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold">Lanjut racik →</button>
         </div>
       </div>
+
+      <!-- FILTER CONTROLS BAR -->
+      <div class="rounded-xl bg-slate-900/80 border border-slate-800 p-4 space-y-3">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div class="flex items-center gap-2 font-bold text-xs text-slate-200">
+            <span>🔍 Filter Hasil Screening</span>
+            <span class="text-[10px] text-slate-500 font-normal">({{ filteredScreenRows.length }} dari {{ screenRows.length }} saham cocok)</span>
+          </div>
+
+          <!-- Quick Presets -->
+          <div class="flex items-center gap-2 text-[11px]">
+            <span class="text-slate-500 font-bold uppercase">Preset:</span>
+            <button @click="applyPreset('super_momentum')" class="px-2.5 py-1 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold transition-colors">🔥 Super Momentum</button>
+            <button @click="applyPreset('near_high')" class="px-2.5 py-1 rounded-lg bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/20 font-bold transition-colors">🚀 Dekat High (&gt; -10%)</button>
+            <button @click="applyPreset('reset')" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px]">↺ Reset</button>
+          </div>
+        </div>
+
+        <div class="grid sm:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+          <!-- Search Query -->
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Cari Kode / Nama</span>
+            <input v-model="filterQuery" type="text" placeholder="Misal: SSIA, BBCA..." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-emerald-500" />
+          </div>
+
+          <!-- Rating Filter -->
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Rating</span>
+            <select v-model="filterRating" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200">
+              <option value="ALL">Semua Rating</option>
+              <option value="Kuat">Kuat</option>
+              <option value="Menarik">Menarik</option>
+              <option value="Netral">Netral</option>
+              <option value="Lemah">Lemah</option>
+            </select>
+          </div>
+
+          <!-- RS 3B Filter -->
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block mb-1">RS 3B (vs IHSG)</span>
+            <select v-model="filterRS3M" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200">
+              <option value="ALL">Semua RS 3B</option>
+              <option value="POS">📈 RS 3B Positif (&gt; 0% vs IHSG)</option>
+              <option value="HIGH">🚀 RS 3B Sangat Kuat (&gt; +10%)</option>
+            </select>
+          </div>
+
+          <!-- RSI Filter -->
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block mb-1">RSI (14)</span>
+            <select v-model="filterRSI" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200">
+              <option value="ALL">Semua RSI</option>
+              <option value="SAFE">✅ Belum Overbought (RSI &lt; 75)</option>
+              <option value="HEALTHY">✨ Momentum Sehat (RSI 40 - 70)</option>
+              <option value="OVERSOLD">🎯 Oversold (RSI &lt; 40)</option>
+            </select>
+          </div>
+
+          <!-- Dari High Filter -->
+          <div>
+            <span class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Dari High 52W</span>
+            <select v-model="filterDariHigh" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-slate-200">
+              <option value="ALL">Semua Jarak High</option>
+              <option value="NEAR10">🔥 Dekat Puncak (&gt; -10%)</option>
+              <option value="NEAR20">📈 Cukup Dekat (&gt; -20%)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
       <div class="flex items-center gap-2 flex-wrap text-[11px]">
         <span class="text-slate-500 font-bold uppercase mr-1">Distribusi:</span>
         <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Kuat')">Kuat {{ ratingCounts.Kuat }}</span>
@@ -802,7 +923,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/70 text-slate-300">
-            <tr v-for="r in screenRows" :key="r.code" class="hover:bg-slate-900/40 cursor-pointer" :class="{ 'bg-emerald-500/5': selected.has(r.code) }" @click="toggle(r.code)">
+            <tr v-for="r in filteredScreenRows" :key="r.code" class="hover:bg-slate-900/40 cursor-pointer" :class="{ 'bg-emerald-500/5': selected.has(r.code) }" @click="toggle(r.code)">
               <td class="px-3 py-2.5"><input type="checkbox" :checked="selected.has(r.code)" class="accent-emerald-500 pointer-events-none" /></td>
               <td class="px-3 py-2.5"><span class="font-bold text-slate-100">{{ r.code }}</span><div class="text-[10px] text-slate-500 truncate max-w-[160px]">{{ r.name }}</div></td>
               <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtIDR(r.price) }}</td>
@@ -811,6 +932,12 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
               <td class="px-3 py-2.5 text-right tabular-nums" :class="(r.rs3m ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(r.rs3m) }}</td>
               <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtNum(r.rsi, 0) }}</td>
               <td class="px-3 py-2.5 text-right tabular-nums text-slate-400">{{ fmtPct(r.pctFromHigh) }}</td>
+            </tr>
+            <tr v-if="!filteredScreenRows.length">
+              <td colspan="8" class="py-8 text-center text-slate-500">
+                Tidak ada saham yang sesuai dengan filter saat ini.
+                <button @click="applyPreset('reset')" class="ml-2 text-emerald-400 font-bold hover:underline">Reset filter</button>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -1228,7 +1355,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
                 </tr>
               </thead>
               <tbody class="divide-y divide-slate-800/80 text-slate-300">
-                <tr v-for="r in midScreenRows" :key="r.code" class="hover:bg-slate-950/40">
+                <tr v-for="r in filteredMidScreenRows" :key="r.code" class="hover:bg-slate-950/40">
                   <td class="px-3 py-2.5">
                     <span class="font-bold text-slate-100">{{ r.code }}</span>
                     <div class="text-[10px] text-slate-500 truncate max-w-[140px]">{{ r.name }}</div>
@@ -1258,6 +1385,12 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
                     >
                       + Beli
                     </button>
+                  </td>
+                </tr>
+                <tr v-if="!filteredMidScreenRows.length">
+                  <td colspan="9" class="py-8 text-center text-slate-500">
+                    Tidak ada saham yang sesuai dengan filter saat ini.
+                    <button @click="applyPreset('reset')" class="ml-2 text-emerald-400 font-bold hover:underline">Reset filter</button>
                   </td>
                 </tr>
               </tbody>

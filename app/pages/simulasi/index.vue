@@ -65,6 +65,11 @@ async function loadScreening() {
   }
 }
 function toggle(code: string) { selected.has(code) ? selected.delete(code) : selected.add(code); }
+const ratingCounts = computed(() => {
+  const c: Record<string, number> = { Kuat: 0, Menarik: 0, Netral: 0, Lemah: 0 };
+  for (const r of screenRows.value) c[r.rating] = (c[r.rating] || 0) + 1;
+  return c;
+});
 
 // ---------------- Step 2 → 3: compose basket ----------------
 const basket = ref<BasketItem[]>([]);
@@ -82,6 +87,14 @@ function recomputeLots() {
   }
 }
 const totalWeight = computed(() => basket.value.reduce((s, b) => s + b.weightPct, 0));
+function equalizeWeights() {
+  const n = basket.value.length; if (!n) return;
+  const w = Math.round((100 / n) * 10) / 10;
+  basket.value.forEach((b) => (b.weightPct = w));
+  const last = basket.value[n - 1]!;
+  last.weightPct = Math.round((last.weightPct + (100 - basket.value.reduce((s, b) => s + b.weightPct, 0))) * 10) / 10;
+  recomputeLots();
+}
 
 // ---------------- Step 3 → 4: fetch prices + start playback ----------------
 const closesByCode = reactive<Record<string, number[]>>({}); // aligned to timeline
@@ -110,7 +123,7 @@ function ihsgReturnPctAt(idx: number): number {
   if (!ihsgCloses.value.length || idx < 0 || idx >= ihsgCloses.value.length) return 0;
   const c0 = ihsgCloses.value[0];
   const cIdx = ihsgCloses.value[idx];
-  if (!c0 || c0 <= 0) return 0;
+  if (!c0 || c0 <= 0 || cIdx == null) return 0;
   return ((cIdx / c0) - 1) * 100;
 }
 
@@ -330,8 +343,17 @@ const reviewData = ref<any>(null);
 const actionLabel = (a: string) => (({ HOLD: 'Tahan', SELL: 'Jual', AVERAGE_DOWN: 'Avg Down', BUY: 'Beli' } as any)[a] || a);
 async function openReview(id: string) {
   errorMsg.value = '';
-  try { reviewData.value = await $fetch(`/api/sim/session/${id}`); step.value = 'review'; if (process.client) window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  try { reviewData.value = await $fetch(`/api/sim/session/${id}`); step.value = 'review'; if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' }); }
   catch { errorMsg.value = 'Gagal memuat sesi tersimpan'; }
+}
+async function deleteSavedSession(id: string) {
+  if (import.meta.client && !window.confirm('Hapus sesi simulasi ini? Tindakan ini tidak bisa dibatalkan.')) return;
+  try {
+    await $fetch(`/api/sim/session/${id}`, { method: 'DELETE' });
+    savedSessions.value = savedSessions.value.filter((s) => s.id !== id);
+    if (reviewData.value?.id === id) reset();
+    loadInsights();
+  } catch { errorMsg.value = 'Gagal menghapus sesi'; }
 }
 
 onMounted(() => { loadSavedSessions(); loadInsights(); });
@@ -448,15 +470,17 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
       </div>
       <p v-if="!savedSessions.length" class="text-xs text-slate-500">Belum ada. Jalankan simulasi lalu tekan <span class="text-emerald-400 font-semibold">Simpan analisa</span> di akhir — sesi akan muncul di sini untuk kamu pelajari kembali.</p>
       <div v-else class="grid sm:grid-cols-2 gap-2">
-        <button v-for="s in savedSessions" :key="s.id" @click="openReview(s.id)"
-          class="text-left rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 p-3.5 transition-colors">
-          <div class="flex items-center justify-between">
+        <div v-for="s in savedSessions" :key="s.id" @click="openReview(s.id)" role="button" tabindex="0"
+          class="group text-left rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 p-3.5 transition-colors cursor-pointer">
+          <div class="flex items-center justify-between gap-2">
             <span class="font-bold text-slate-100 text-sm">📅 {{ s.startDate }}</span>
             <div class="flex items-center gap-2">
               <span v-if="s.totalReturnPct != null" class="text-sm font-bold tabular-nums" :class="s.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.totalReturnPct) }}</span>
               <span v-if="s.alphaPct != null" class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="s.alphaPct >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'">
                 {{ s.alphaPct >= 0 ? '🚀 +' : '🔻 ' }}{{ fmtNum(s.alphaPct, 1) }}% vs IHSG
               </span>
+              <button type="button" @click.stop="deleteSavedSession(s.id)" title="Hapus sesi"
+                class="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-60 group-hover:opacity-100">🗑</button>
             </div>
           </div>
           <div class="text-[11px] text-slate-400 mt-1.5 truncate">{{ s.picks.join(' · ') }}</div>
@@ -464,7 +488,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
             <span>horizon {{ s.horizonDays }} hari bursa · {{ s.status }}</span>
             <span class="text-emerald-400 font-semibold">tinjau →</span>
           </div>
-        </button>
+        </div>
       </div>
     </section>
 
@@ -476,6 +500,14 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           <button @click="step = 'setup'" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Ubah tanggal</button>
           <button @click="buildBasket" :disabled="selected.size === 0" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold">Lanjut racik →</button>
         </div>
+      </div>
+      <div class="flex items-center gap-2 flex-wrap text-[11px]">
+        <span class="text-slate-500 font-bold uppercase mr-1">Distribusi:</span>
+        <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Kuat')">Kuat {{ ratingCounts.Kuat }}</span>
+        <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Menarik')">Menarik {{ ratingCounts.Menarik }}</span>
+        <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Netral')">Netral {{ ratingCounts.Netral }}</span>
+        <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Lemah')">Lemah {{ ratingCounts.Lemah }}</span>
+        <span class="text-slate-600 ml-1">dari {{ screenRows.length }} saham teratas</span>
       </div>
       <div class="rounded-xl border border-slate-800 overflow-x-auto">
         <table class="w-full text-xs">
@@ -508,6 +540,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         <h2 class="text-lg font-bold text-slate-100">3 · Racik Keranjang (Reksa Dana)</h2>
         <div class="flex gap-2">
           <button @click="step = 'screen'" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Pilih saham</button>
+          <button @click="equalizeWeights" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300" title="Ratakan bobot ke 100%">⚖ Bagi rata</button>
           <button @click="startSimulation" :disabled="loadingPrices || Math.abs(totalWeight - 100) > 0.5" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold">{{ loadingPrices ? 'Memuat harga…' : 'Mulai simulasi ▶' }}</button>
         </div>
       </div>
@@ -801,7 +834,10 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
     <section v-if="step === 'review' && reviewData" class="space-y-5">
       <div class="flex items-center justify-between flex-wrap gap-3">
         <h2 class="text-lg font-bold text-slate-100">📖 Tinjau Sesi · {{ reviewData.startDate }} <span class="text-sm text-slate-500 font-normal">(horizon {{ reviewData.horizonDays }} hari)</span></h2>
-        <button @click="reset" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Kembali ke daftar</button>
+        <div class="flex items-center gap-2">
+          <button @click="deleteSavedSession(reviewData.id)" class="px-3 py-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 text-xs font-semibold">🗑 Hapus</button>
+          <button @click="reset" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Kembali ke daftar</button>
+        </div>
       </div>
 
       <div v-if="reviewData.result" class="space-y-4">

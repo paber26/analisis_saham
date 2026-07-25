@@ -283,7 +283,10 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           <h1 class="text-2xl font-extrabold text-slate-50 tracking-tight">🕰️ Simulasi Mesin Waktu</h1>
           <p class="text-sm text-slate-400 mt-1">Racik reksa dana di masa lampau · putar waktunya · belajar dari keputusanmu.</p>
         </div>
-        <NuxtLink to="/simulasi" class="text-[11px] text-slate-500 hover:text-emerald-400" @click.prevent="reset">↺ Mulai ulang</NuxtLink>
+        <div class="flex items-center gap-3">
+          <NuxtLink to="/simulasi/panduan" class="text-[11px] font-semibold text-slate-400 hover:text-emerald-400 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800">📘 Panduan cara kerja</NuxtLink>
+          <button type="button" class="text-[11px] text-slate-500 hover:text-emerald-400" @click="reset">↺ Mulai ulang</button>
+        </div>
       </div>
       <!-- Stepper -->
       <div class="relative z-10 flex items-center gap-2 mt-5 text-[11px] font-bold flex-wrap">

@@ -1,407 +1,535 @@
 <script setup lang="ts">
-useHead({
-  title: 'Arsitektur — Simulasi Mesin Waktu Reksa Dana | Saham IDX',
-  meta: [{ name: 'description', content: 'Cetak biru arsitektur fitur simulasi reksa dana masa lampau: screening point-in-time, playback harga, keputusan hold/jual/average-down, regresi linear berganda, dan pembelajaran meta dari kinerja masa lampau.' }]
+import { ref, computed, reactive, onBeforeUnmount } from 'vue';
+
+useHead({ title: 'Simulasi Mesin Waktu — Reksa Dana Masa Lampau | Saham IDX' });
+
+// ---------------- Types (mirror server contracts) ----------------
+interface AsOfRow {
+  code: string; name: string; asOfDate: string; price: number; score: number;
+  rating: 'Kuat' | 'Menarik' | 'Netral' | 'Lemah';
+  rsi: number | null; rs3m: number | null; atrPct: number | null; volRatio: number | null;
+  pctFromHigh: number; changePct: number;
+}
+interface PriceBar { date: string; open: number; high: number; low: number; close: number; volume: number }
+interface BasketItem { code: string; name: string; entryPrice: number; rating: string; weightPct: number; lots: number }
+interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; lots: number; price: number; unrealizedPct: number; rating: string }
+
+// ---------------- Wizard state ----------------
+type Step = 'setup' | 'screen' | 'basket' | 'play' | 'result';
+const step = ref<Step>('setup');
+
+const yearsAgoDate = (y: number) => { const d = new Date(); d.setFullYear(d.getFullYear() - y); return d.toISOString().split('T')[0]!; };
+const monthsAgoDate = (m: number) => { const d = new Date(); d.setMonth(d.getMonth() - m); return d.toISOString().split('T')[0]!; };
+
+const startDate = ref(yearsAgoDate(1));
+const horizonDays = ref(30);
+const decisionEveryDays = ref(5);
+const initialCapital = ref(100_000_000);
+
+// ---------------- Formatters ----------------
+const fmtIDR = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID');
+const fmtNum = (n: number | null, d = 1) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtPct = (n: number | null, d = 1) => n == null || !Number.isFinite(n) ? '—' : (n >= 0 ? '+' : '') + fmtNum(n, d) + '%';
+const ratingClass = (r: string) => r === 'Kuat' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
+  : r === 'Menarik' ? 'text-sky-400 bg-sky-500/10 border-sky-500/30'
+  : r === 'Lemah' ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'
+  : 'text-slate-400 bg-slate-500/10 border-slate-600/30';
+
+// ---------------- Step 1 → 2: load as-of screening ----------------
+const screenRows = ref<AsOfRow[]>([]);
+const selected = reactive(new Set<string>());
+const loadingScreen = ref(false);
+const errorMsg = ref('');
+
+async function loadScreening() {
+  errorMsg.value = '';
+  loadingScreen.value = true;
+  try {
+    const res = await $fetch<{ results: AsOfRow[] }>('/api/sim/screen', { params: { date: startDate.value, limit: 60 } });
+    screenRows.value = res.results;
+    selected.clear();
+    step.value = 'screen';
+  } catch (e: any) {
+    errorMsg.value = e?.data?.statusMessage || e?.message || 'Gagal memuat screening';
+  } finally {
+    loadingScreen.value = false;
+  }
+}
+function toggle(code: string) { selected.has(code) ? selected.delete(code) : selected.add(code); }
+
+// ---------------- Step 2 → 3: compose basket ----------------
+const basket = ref<BasketItem[]>([]);
+function buildBasket() {
+  const picks = screenRows.value.filter((r) => selected.has(r.code));
+  const w = picks.length ? 100 / picks.length : 0;
+  basket.value = picks.map((r) => ({ code: r.code, name: r.name, entryPrice: r.price, rating: r.rating, weightPct: Math.round(w * 10) / 10, lots: 0 }));
+  recomputeLots();
+  step.value = 'basket';
+}
+function recomputeLots() {
+  for (const b of basket.value) {
+    const alloc = initialCapital.value * (b.weightPct / 100);
+    b.lots = Math.max(0, Math.floor(alloc / (b.entryPrice * 100)));
+  }
+}
+const totalWeight = computed(() => basket.value.reduce((s, b) => s + b.weightPct, 0));
+
+// ---------------- Step 3 → 4: fetch prices + start playback ----------------
+const closesByCode = reactive<Record<string, number[]>>({}); // aligned to timeline
+const timeline = ref<string[]>([]);
+const cursor = ref(0);
+const playing = ref(false);
+const speed = ref(4);
+let timer: ReturnType<typeof setInterval> | null = null;
+
+const positions = reactive<Record<string, { lots: number; avgPrice: number }>>({});
+const cash = ref(0);
+const decisions = ref<Decision[]>([]);
+const equityCurve = ref<{ date: string; value: number }[]>([]);
+const loadingPrices = ref(false);
+
+function alignForwardFill(bars: PriceBar[], dates: string[]): number[] {
+  const map = new Map(bars.map((b) => [b.date, b.close]));
+  const out: number[] = [];
+  let last = bars[0]?.close ?? 0;
+  for (const d of dates) { if (map.has(d)) last = map.get(d)!; out.push(last); }
+  return out;
+}
+
+async function startSimulation() {
+  errorMsg.value = '';
+  loadingPrices.value = true;
+  try {
+    const from = startDate.value;
+    const end = new Date(startDate.value);
+    end.setDate(end.getDate() + Math.ceil(horizonDays.value * 1.8) + 10); // enough calendar days for H trading days
+    const to = end.toISOString().split('T')[0]!;
+    const codes = basket.value.map((b) => b.code).join(',');
+    const res = await $fetch<{ series: { code: string; bars: PriceBar[] }[] }>('/api/sim/prices', { params: { codes, from, to } });
+
+    // Union of trading dates >= start, then take first (horizon+1) as the window.
+    const dateSet = new Set<string>();
+    for (const s of res.series) for (const b of s.bars) if (b.date >= from) dateSet.add(b.date);
+    const allDates = Array.from(dateSet).sort();
+    timeline.value = allDates.slice(0, horizonDays.value + 1);
+    if (timeline.value.length < 2) { errorMsg.value = 'Data harga tidak cukup untuk periode ini.'; return; }
+
+    for (const s of res.series) closesByCode[s.code] = alignForwardFill(s.bars, timeline.value);
+
+    // Set entry prices to the actual first-bar close on the timeline, recompute lots.
+    for (const b of basket.value) { const c0 = closesByCode[b.code]?.[0]; if (c0) b.entryPrice = c0; }
+    recomputeLots();
+
+    // Open positions, leftover → cash.
+    let spent = 0;
+    for (const k of Object.keys(positions)) delete positions[k];
+    for (const b of basket.value) { positions[b.code] = { lots: b.lots, avgPrice: b.entryPrice }; spent += b.lots * 100 * b.entryPrice; }
+    cash.value = initialCapital.value - spent;
+    decisions.value = [];
+    cursor.value = 0;
+    equityCurve.value = [{ date: timeline.value[0]!, value: valueAt(0) }];
+    step.value = 'play';
+  } catch (e: any) {
+    errorMsg.value = e?.data?.statusMessage || e?.message || 'Gagal memuat harga';
+  } finally {
+    loadingPrices.value = false;
+  }
+}
+
+function priceAt(code: string, idx: number): number { return closesByCode[code]?.[idx] ?? 0; }
+function valueAt(idx: number): number {
+  let v = cash.value;
+  for (const b of basket.value) { const p = positions[b.code]; if (p && p.lots > 0) v += p.lots * 100 * priceAt(b.code, idx); }
+  return v;
+}
+
+// ---------------- Playback controls ----------------
+function play() { if (playing.value || step.value !== 'play') return; playing.value = true; timer = setInterval(tick, Math.max(120, 1000 / speed.value)); }
+function pause() { playing.value = false; if (timer) { clearInterval(timer); timer = null; } }
+function tick() {
+  if (cursor.value >= timeline.value.length - 1) { pause(); finish(); return; }
+  cursor.value++;
+  equityCurve.value.push({ date: timeline.value[cursor.value]!, value: valueAt(cursor.value) });
+  const atEnd = cursor.value >= timeline.value.length - 1;
+  if (!atEnd && cursor.value % decisionEveryDays.value === 0) { pause(); openDecision(); return; }
+  if (atEnd) { pause(); finish(); }
+}
+function stepOnce() { if (step.value !== 'play') return; pause(); tick(); }
+onBeforeUnmount(pause);
+
+// ---------------- Decision gate ----------------
+const decisionOpen = ref(false);
+interface DecRow { code: string; name: string; price: number; plPct: number; lots: number; rating: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' }
+const decisionRows = ref<DecRow[]>([]);
+function openDecision() {
+  decisionRows.value = basket.value
+    .filter((b) => (positions[b.code]?.lots ?? 0) > 0)
+    .map((b) => {
+      const p = positions[b.code]!;
+      const price = priceAt(b.code, cursor.value);
+      return { code: b.code, name: b.name, price, plPct: (price / p.avgPrice - 1) * 100, lots: p.lots, rating: b.rating, action: 'HOLD' as const };
+    });
+  decisionOpen.value = true;
+}
+function applyDecisions() {
+  const date = timeline.value[cursor.value]!;
+  for (const d of decisionRows.value) {
+    const pos = positions[d.code]; if (!pos) continue;
+    if (d.action === 'SELL' && pos.lots > 0) {
+      cash.value += pos.lots * 100 * d.price;
+      decisions.value.push({ date, code: d.code, action: 'SELL', lots: pos.lots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
+      pos.lots = 0;
+    } else if (d.action === 'AVERAGE_DOWN') {
+      const b = basket.value.find((x) => x.code === d.code)!;
+      const budget = initialCapital.value * (b.weightPct / 100);
+      const addLots = Math.min(Math.floor(budget / (d.price * 100)), Math.floor(cash.value / (d.price * 100)));
+      if (addLots > 0) {
+        const cost = addLots * 100 * d.price;
+        const newLots = pos.lots + addLots;
+        pos.avgPrice = (pos.avgPrice * pos.lots + d.price * addLots) / newLots;
+        pos.lots = newLots; cash.value -= cost;
+        decisions.value.push({ date, code: d.code, action: 'AVERAGE_DOWN', lots: addLots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
+      }
+    } else {
+      decisions.value.push({ date, code: d.code, action: 'HOLD', lots: 0, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
+    }
+  }
+  // Recompute equity at current cursor after trades.
+  equityCurve.value[equityCurve.value.length - 1] = { date, value: valueAt(cursor.value) };
+  decisionOpen.value = false;
+  play(); // auto-resume
+}
+
+// ---------------- Finish → results + regression ----------------
+const result = ref<null | { finalValue: number; totalReturnPct: number; maxDrawdownPct: number; winRate: number; realizedPnl: number; perStock: { code: string; returnPct: number; contributionPct: number }[] }>(null);
+const regression = ref<any>(null);
+const loadingReg = ref(false);
+const savedId = ref('');
+
+async function finish() {
+  const lastIdx = timeline.value.length - 1;
+  const finalValue = valueAt(lastIdx);
+  const totalReturnPct = (finalValue / initialCapital.value - 1) * 100;
+  let peak = -Infinity, maxDd = 0;
+  for (const e of equityCurve.value) { peak = Math.max(peak, e.value); maxDd = Math.min(maxDd, (e.value / peak - 1) * 100); }
+  const perStock = basket.value.map((b) => {
+    const finalPrice = priceAt(b.code, lastIdx);
+    const returnPct = (finalPrice / b.entryPrice - 1) * 100;
+    const contributionPct = (b.weightPct / 100) * returnPct;
+    return { code: b.code, returnPct, contributionPct };
+  });
+  const winRate = perStock.length ? perStock.filter((s) => s.returnPct > 0).length / perStock.length * 100 : 0;
+  result.value = { finalValue, totalReturnPct, maxDrawdownPct: maxDd, winRate, realizedPnl: finalValue - initialCapital.value, perStock };
+  step.value = 'result';
+  loadRegression();
+}
+
+async function loadRegression() {
+  loadingReg.value = true;
+  try {
+    regression.value = await $fetch('/api/sim/regression', { params: { date: startDate.value, horizon: horizonDays.value } });
+  } catch { regression.value = null; } finally { loadingReg.value = false; }
+}
+
+async function saveSession() {
+  if (!result.value) return;
+  const body = {
+    startDate: startDate.value, horizonDays: horizonDays.value, decisionEveryDays: decisionEveryDays.value,
+    initialCapital: initialCapital.value,
+    picks: basket.value.map((b) => ({ code: b.code, entryDate: timeline.value[0], entryPrice: b.entryPrice, lots: b.lots, weightPct: b.weightPct })),
+    decisions: decisions.value,
+    result: { endDate: timeline.value.at(-1), ...result.value, regression: regression.value?.regression ?? null },
+    status: 'settled'
+  };
+  const res = await $fetch<{ id: string }>('/api/sim/session', { method: 'POST', body });
+  savedId.value = res.id;
+  loadInsights();
+}
+
+// ---------------- Insights + saved sessions ----------------
+const insights = ref<any>(null);
+async function loadInsights() { try { insights.value = await $fetch('/api/sim/insights'); } catch { insights.value = null; } }
+
+function reset() { pause(); step.value = 'setup'; screenRows.value = []; selected.clear(); basket.value = []; result.value = null; regression.value = null; savedId.value = ''; }
+
+// ---------------- Equity chart option ----------------
+const equityOption = computed(() => {
+  const data = equityCurve.value.map((e) => [e.date, Math.round(e.value)]);
+  const base = initialCapital.value;
+  return {
+    grid: { left: 8, right: 12, top: 16, bottom: 24, containLabel: true },
+    tooltip: { trigger: 'axis', valueFormatter: (v: number) => fmtIDR(v) },
+    xAxis: { type: 'category', data: equityCurve.value.map((e) => e.date), axisLabel: { color: '#64748b', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'value', scale: true, axisLabel: { color: '#64748b', fontSize: 10, formatter: (v: number) => (v / 1e6).toFixed(0) + 'jt' }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    series: [
+      { type: 'line', data, showSymbol: false, smooth: true, lineStyle: { width: 2, color: '#34d399' }, areaStyle: { color: 'rgba(52,211,153,0.12)' } },
+      { type: 'line', data: equityCurve.value.map((e) => [e.date, base]), showSymbol: false, lineStyle: { width: 1, type: 'dashed', color: '#475569' } }
+    ]
+  };
 });
 
-// Daftar isi untuk navigasi cepat di satu halaman.
-const toc = [
-  { id: 'konsep', label: '1. Konsep & Tujuan' },
-  { id: 'alur', label: '2. Alur Pengguna' },
-  { id: 'sistem', label: '3. Arsitektur Sistem' },
-  { id: 'data', label: '4. Model Data' },
-  { id: 'api', label: '5. API Endpoints' },
-  { id: 'asof', label: '6. Screening Point-in-Time' },
-  { id: 'playback', label: '7. Mesin Playback & Keputusan' },
-  { id: 'mlr', label: '8. Regresi Linear Berganda' },
-  { id: 'belajar', label: '9. Pembelajaran Meta' },
-  { id: 'caveat', label: '10. Isu Metodologis' },
-  { id: 'roadmap', label: '11. Roadmap Implementasi' },
-  { id: 'files', label: '12. Berkas yang Dibuat' }
-];
+const currentValue = computed(() => equityCurve.value.at(-1)?.value ?? initialCapital.value);
+const currentReturnPct = computed(() => (currentValue.value / initialCapital.value - 1) * 100);
+const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (timeline.value.length - 1)) * 100 : 0);
 </script>
 
 <template>
-  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
+  <div class="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-6">
     <!-- Header -->
-    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 p-6 sm:p-8 border border-slate-800 shadow-xl">
+    <div class="relative overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 p-6 border border-slate-800 shadow-xl">
       <div class="absolute -right-10 -bottom-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-      <div class="relative z-10">
-        <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold mb-3">
-          <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
-          CETAK BIRU — BELUM DIIMPLEMENTASI (v0 Arsitektur)
+      <div class="relative z-10 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 class="text-2xl font-extrabold text-slate-50 tracking-tight">🕰️ Simulasi Mesin Waktu</h1>
+          <p class="text-sm text-slate-400 mt-1">Racik reksa dana di masa lampau · putar waktunya · belajar dari keputusanmu.</p>
         </div>
-        <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-50 tracking-tight">
-          🕰️ Simulasi Mesin Waktu — Reksa Dana Masa Lampau
-        </h1>
-        <p class="text-sm text-slate-400 mt-3 max-w-3xl leading-relaxed">
-          Kembali ke tanggal di masa lalu, lihat <span class="text-emerald-400 font-semibold">screening saham apa adanya saat itu</span> (tanpa tahu masa depan),
-          susun keranjang saham layaknya seorang manajer reksa dana, lalu <span class="text-emerald-400 font-semibold">putar pergerakan harganya hari demi hari</span>.
-          Di tiap titik keputusan kamu memilih <span class="text-slate-200 font-semibold">HOLD · JUAL · AVERAGE DOWN</span>. Di akhir, sistem menjalankan
-          <span class="text-emerald-400 font-semibold">regresi linear berganda</span> untuk menjelaskan apa yang mendorong naik/turun, menyimpan analisanya,
-          dan lama-kelamaan memberi rekomendasi <span class="text-slate-200 font-semibold">apa yang sebaiknya dilakukan & dihindari</span> untuk menekan risiko.
-        </p>
+        <NuxtLink to="/simulasi" class="text-[11px] text-slate-500 hover:text-emerald-400" @click.prevent="reset">↺ Mulai ulang</NuxtLink>
+      </div>
+      <!-- Stepper -->
+      <div class="relative z-10 flex items-center gap-2 mt-5 text-[11px] font-bold flex-wrap">
+        <span v-for="(s, i) in ['setup','screen','basket','play','result']" :key="s"
+          class="px-2.5 py-1 rounded-full border"
+          :class="step === s ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-900 text-slate-500 border-slate-800'">
+          {{ i + 1 }}. {{ ({setup:'Setup',screen:'Screening',basket:'Racik',play:'Playback',result:'Hasil'} as any)[s] }}
+        </span>
       </div>
     </div>
 
-    <!-- Daftar isi -->
-    <nav class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
-      <div class="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-3 px-1">Daftar Isi</div>
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5">
-        <a v-for="t in toc" :key="t.id" :href="`#${t.id}`"
-          class="text-xs font-semibold text-slate-400 hover:text-emerald-400 px-3 py-2 rounded-lg hover:bg-slate-800/60 transition-colors">
-          {{ t.label }}
-        </a>
-      </div>
-    </nav>
+    <div v-if="errorMsg" class="rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm px-4 py-3">{{ errorMsg }}</div>
 
-    <!-- 1. KONSEP -->
-    <section id="konsep" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">1.</span> Konsep &amp; Tujuan</h2>
-      <div class="grid md:grid-cols-3 gap-4">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="text-2xl mb-2">🎯</div>
-          <div class="font-bold text-slate-100 text-sm mb-1">Belajar dari Masa Lampau</div>
-          <p class="text-xs text-slate-400 leading-relaxed">Latihan pengambilan keputusan pada data nyata yang sudah terjadi — bukan tebak-tebakan masa depan, tapi menguji naluri &amp; disiplin pada sejarah yang objektif.</p>
-        </div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="text-2xl mb-2">🧺</div>
-          <div class="font-bold text-slate-100 text-sm mb-1">Racik Reksa Dana</div>
-          <p class="text-xs text-slate-400 leading-relaxed">Pilih beberapa saham + bobot alokasi &amp; modal awal, seolah menjadi manajer investasi yang menyusun portofolio, lalu ukur kinerjanya secara jujur.</p>
-        </div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="text-2xl mb-2">📉</div>
-          <div class="font-bold text-slate-100 text-sm mb-1">Regresi = Penjelas</div>
-          <p class="text-xs text-slate-400 leading-relaxed">Regresi linear berganda mengurai faktor (skor, RS, valuasi, momentum) yang berkorelasi dengan return ke depan — memisahkan keputusan bagus dari keberuntungan.</p>
-        </div>
+    <!-- STEP 1: SETUP -->
+    <section v-if="step === 'setup'" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 space-y-5">
+      <h2 class="text-lg font-bold text-slate-100">1 · Pilih Titik Waktu &amp; Parameter</h2>
+      <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <label class="block">
+          <span class="text-[11px] font-bold text-slate-500 uppercase">Tanggal Masuk (masa lalu)</span>
+          <input v-model="startDate" type="date" :max="yearsAgoDate(0)" class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100" />
+        </label>
+        <label class="block">
+          <span class="text-[11px] font-bold text-slate-500 uppercase">Horizon (hari bursa)</span>
+          <input v-model.number="horizonDays" type="number" min="5" max="250" class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100" />
+        </label>
+        <label class="block">
+          <span class="text-[11px] font-bold text-slate-500 uppercase">Keputusan tiap (hari)</span>
+          <input v-model.number="decisionEveryDays" type="number" min="1" max="60" class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100" />
+        </label>
+        <label class="block">
+          <span class="text-[11px] font-bold text-slate-500 uppercase">Modal awal (Rp)</span>
+          <input v-model.number="initialCapital" type="number" step="1000000" class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100" />
+        </label>
       </div>
-      <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4 text-xs text-emerald-200/80 leading-relaxed">
-        <span class="font-bold text-emerald-300">Prinsip kunci — tanpa lookahead:</span> layar dan sinyal yang kamu lihat pada tanggal T <span class="font-semibold">hanya boleh</span> memakai data ≤ T.
-        Masa depan dikunci sampai kamu tekan "maju". Inilah yang membuat latihan ini valid sebagai pembelajaran.
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="text-[11px] text-slate-500 font-bold uppercase mr-1">Cepat:</span>
+        <button v-for="p in [{l:'6 bln lalu',d:monthsAgoDate(6)},{l:'1 thn lalu',d:yearsAgoDate(1)},{l:'2 thn lalu',d:yearsAgoDate(2)},{l:'3 thn lalu',d:yearsAgoDate(3)}]" :key="p.l"
+          @click="startDate = p.d" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300 border border-slate-700">{{ p.l }}</button>
       </div>
+      <button @click="loadScreening" :disabled="loadingScreen" class="px-5 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-bold text-sm rounded-xl transition-colors">
+        {{ loadingScreen ? 'Memuat screening…' : 'Lihat Screening pada tanggal ini →' }}
+      </button>
+      <p class="text-[11px] text-slate-500">Screening dihitung ulang dari harga ≤ tanggal itu (tanpa lookahead). Untuk universe penuh, load pertama bisa ~10–30 detik lalu di-cache.</p>
     </section>
 
-    <!-- 2. ALUR PENGGUNA -->
-    <section id="alur" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">2.</span> Alur Pengguna (User Journey)</h2>
-      <div class="grid gap-3">
-        <div v-for="(step, i) in [
-          { t: 'Pilih Titik Waktu', d: 'Pilih tanggal atau periode di masa lalu (mis. 2 Jan 2024). Sistem menyiapkan “kapsul waktu” — semua data dibatasi sampai tanggal itu.' },
-          { t: 'Pelajari Screening As-Of', d: 'Tabel screening apa adanya pada tanggal tersebut (skor teknikal, RS, valuasi) — dihitung ulang dari bar harga ≤ T. Kamu belum tahu apa yang terjadi setelahnya.' },
-          { t: 'Susun Keranjang (Beli)', d: 'Pilih beberapa saham, tentukan bobot/lot & modal awal. Ini menetapkan harga masuk (entry) pada tanggal T.' },
-          { t: 'Putar Waktu (Playback)', d: 'Animasi harga bergerak maju hari-demi-hari. Kurva ekuitas portofolio terbentuk real-time; kamu melihat cuan/rugi berkembang.' },
-          { t: 'Titik Keputusan', d: 'Secara berkala playback berhenti & bertanya: HOLD, JUAL (sebagian/penuh), atau AVERAGE DOWN. Setiap keputusan dicatat beserta konteksnya.' },
-          { t: 'Setelmen & Analisa', d: 'Di akhir horizon: metrik kinerja (return, drawdown, win-rate) + regresi linear berganda yang menjelaskan pendorong naik/turun.' },
-          { t: 'Simpan & Belajar', d: 'Sesi disimpan. Seiring banyak sesi, mesin insight merangkum pola “lakukan ini / hindari itu” untuk menekan risiko.' }
-        ]" :key="i" class="flex gap-4 items-start rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="shrink-0 w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-bold text-sm flex items-center justify-center">{{ i + 1 }}</div>
-          <div>
-            <div class="font-bold text-slate-100 text-sm">{{ step.t }}</div>
-            <p class="text-xs text-slate-400 mt-0.5 leading-relaxed">{{ step.d }}</p>
-          </div>
+    <!-- STEP 2: SCREENING -->
+    <section v-if="step === 'screen'" class="space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="text-lg font-bold text-slate-100">2 · Screening per {{ startDate }} <span class="text-sm text-slate-500 font-normal">— pilih beberapa saham ({{ selected.size }} terpilih)</span></h2>
+        <div class="flex gap-2">
+          <button @click="step = 'setup'" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Ubah tanggal</button>
+          <button @click="buildBasket" :disabled="selected.size === 0" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold">Lanjut racik →</button>
         </div>
       </div>
-    </section>
-
-    <!-- 3. ARSITEKTUR SISTEM -->
-    <section id="sistem" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">3.</span> Arsitektur Sistem</h2>
-      <p class="text-xs text-slate-400 leading-relaxed">Menempel pada pipeline yang sudah ada: <code class="text-emerald-300">yahoo.ts</code> (bar harga), <code class="text-emerald-300">technical.ts</code> (skor, murni atas bar), <code class="text-emerald-300">history.ts</code> (riwayat harian), dan store berbasis file. Tiga lapisan baru: <span class="text-slate-200">As-Of Engine</span>, <span class="text-slate-200">Playback Engine</span> (klien), dan <span class="text-slate-200">Regression + Insights</span>.</p>
-      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 overflow-x-auto">
-        <pre v-pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre">
-┌──────────────────────────── KLIEN (Halaman /simulasi) ─────────────────────────────┐
-│  Wizard 1-layar:  [Pilih Tanggal] → [Screening As-Of] → [Racik Keranjang]           │
-│                   → [Playback + Keputusan] → [Hasil + Regresi] → [Simpan]           │
-│                                                                                     │
-│  Playback Engine (klien): timer/rAF, kontrol play·pause·step·kecepatan,             │
-│  ECharts (candlestick + kurva ekuitas), prompt keputusan HOLD/JUAL/AVG-DOWN         │
-└───────────────┬─────────────────────────────────────────────────────┬───────────────┘
-                │  fetch                                                │  fetch
-                ▼                                                       ▼
-┌──────────── SERVER API (server/api/sim/*) ────────────┐   ┌──────── SERVER API ────────┐
-│  GET  /sim/screen?date=…    → screening point-in-time │   │  POST /sim/session  simpan │
-│  GET  /sim/prices?codes=…   → deret harga utk animasi │   │  GET  /sim/session/:id     │
-│  POST /sim/regression       → OLS + prediksi          │   │  GET  /sim/insights meta   │
-└───────┬───────────────────────────┬───────────────────┘   └──────────┬─────────────────┘
-        ▼                           ▼                                   ▼
-┌─ As-Of Engine ─────────┐  ┌─ Regression Engine ───┐        ┌─ Sim Store (file) ────────┐
-│ technical.ts atas bar  │  │ regression.ts: OLS via │        │ .data-store/simulations/  │
-│ di-slice ≤ T (no look- │  │ (XᵀX)⁻¹Xᵀy, R², t-stat │        │   &lt;id&gt;.json  + index.json │
-│ ahead). history.ts bila│  │ (murni TS, tanpa dep)  │        │ Insights engine baca semua│
-│ tersedia; else re-hitung│  └───────────────────────┘        │ sesi → pola lakukan/hindari│
-└──────────┬─────────────┘                                    └───────────────────────────┘
-           ▼
-   yahoo.ts (bar 1y+ berakhir di T)   ·   idxTickers.ts (universe)
-        </pre>
-      </div>
-    </section>
-
-    <!-- 4. MODEL DATA -->
-    <section id="data" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">4.</span> Model Data</h2>
-      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 overflow-x-auto">
-        <pre v-pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre">
-// Satu sesi simulasi (disimpan sebagai .data-store/simulations/&lt;id&gt;.json)
-interface SimSession {
-  id: string;               // uuid/nanoid
-  createdAt: string;        // ISO
-  startDate: string;        // T0 — tanggal masuk (YYYY-MM-DD)
-  horizonDays: number;      // panjang simulasi (mis. 20/60/120 hari bursa)
-  decisionEveryDays: number;// jeda titik keputusan (mis. tiap 5 hari bursa)
-  initialCapital: number;   // modal awal (IDR)
-  picks: SimPick[];         // saham terpilih + entry
-  decisions: SimDecision[]; // jejak keputusan sepanjang playback
-  result: SimResult | null; // diisi saat setelmen
-  status: 'draft' | 'running' | 'settled';
-}
-
-interface SimPick {
-  code: string;             // 'BBCA'
-  entryDate: string;        // = startDate (atau saat average-down berikutnya)
-  entryPrice: number;       // harga close pada entryDate
-  lots: number;             // 1 lot = 100 lembar
-  weightPct: number;        // bobot alokasi awal
-}
-
-interface SimDecision {
-  date: string;             // tanggal bursa saat keputusan
-  code: string;
-  action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' | 'BUY';
-  lots: number;             // 0 utk HOLD; jumlah lot utk SELL/AVG-DOWN
-  price: number;            // harga eksekusi (close hari itu)
-  unrealizedPct: number;    // %P/L posisi saat keputusan (konteks belajar)
-  note?: string;
-}
-
-interface SimResult {
-  endDate: string;
-  finalValue: number; totalReturnPct: number;
-  maxDrawdownPct: number; winRate: number; realizedPnl: number;
-  perStock: { code: string; returnPct: number; contributionPct: number }[];
-  regression: RegressionResult | null;   // lihat §8
-}
-        </pre>
-      </div>
-    </section>
-
-    <!-- 5. API -->
-    <section id="api" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">5.</span> API Endpoints (<code class="text-emerald-300 text-base">server/api/sim/*</code>)</h2>
       <div class="rounded-xl border border-slate-800 overflow-x-auto">
         <table class="w-full text-xs">
           <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider">
             <tr>
-              <th class="text-left px-4 py-3 font-bold">Method &amp; Route</th>
-              <th class="text-left px-4 py-3 font-bold">Fungsi</th>
-              <th class="text-left px-4 py-3 font-bold">Sumber / Catatan</th>
+              <th class="px-3 py-3 text-left">Pilih</th><th class="px-3 py-3 text-left">Kode</th><th class="px-3 py-3 text-right">Harga</th>
+              <th class="px-3 py-3 text-center">Rating</th><th class="px-3 py-3 text-right">Skor</th><th class="px-3 py-3 text-right">RS 3B</th>
+              <th class="px-3 py-3 text-right">RSI</th><th class="px-3 py-3 text-right">Dari High</th>
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-800/70 text-slate-300">
-            <tr v-for="(r, i) in [
-              { m: 'GET', e: '/api/sim/screen?date=&period=', f: 'Screening point-in-time pada tanggal T (skor, RS, valuasi).', s: 'As-Of Engine · history.ts / recompute' },
-              { m: 'GET', e: '/api/sim/prices?codes=&from=&to=', f: 'Deret harga OHLC untuk animasi playback.', s: 'yahoo.ts (bar disesuaikan)' },
-              { m: 'POST', e: '/api/sim/session', f: 'Buat/simpan sesi (picks, modal, horizon).', s: 'simStore.ts' },
-              { m: 'GET', e: '/api/sim/session/:id', f: 'Muat sesi tersimpan (lanjut/tinjau).', s: 'simStore.ts' },
-              { m: 'POST', e: '/api/sim/session/:id/settle', f: 'Setelmen: hitung metrik + jalankan regresi.', s: 'regression.ts' },
-              { m: 'POST', e: '/api/sim/regression', f: 'OLS ad-hoc: return ~ fitur, plus prediksi.', s: 'regression.ts' },
-              { m: 'GET', e: '/api/sim/insights', f: 'Rangkuman meta lintas sesi: lakukan/hindari.', s: 'Insights engine' }
-            ]" :key="i">
-              <td class="px-4 py-3 font-mono whitespace-nowrap">
-                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold mr-1.5" :class="r.m === 'GET' ? 'bg-sky-500/15 text-sky-300' : 'bg-emerald-500/15 text-emerald-300'">{{ r.m }}</span>
-                <span class="text-slate-200">{{ r.e }}</span>
-              </td>
-              <td class="px-4 py-3 text-slate-400">{{ r.f }}</td>
-              <td class="px-4 py-3 text-slate-500">{{ r.s }}</td>
+            <tr v-for="r in screenRows" :key="r.code" class="hover:bg-slate-900/40 cursor-pointer" :class="{ 'bg-emerald-500/5': selected.has(r.code) }" @click="toggle(r.code)">
+              <td class="px-3 py-2.5"><input type="checkbox" :checked="selected.has(r.code)" class="accent-emerald-500 pointer-events-none" /></td>
+              <td class="px-3 py-2.5"><span class="font-bold text-slate-100">{{ r.code }}</span><div class="text-[10px] text-slate-500 truncate max-w-[160px]">{{ r.name }}</div></td>
+              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtIDR(r.price) }}</td>
+              <td class="px-3 py-2.5 text-center"><span class="px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(r.rating)">{{ r.rating }}</span></td>
+              <td class="px-3 py-2.5 text-right font-bold tabular-nums">{{ fmtNum(r.score, 0) }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums" :class="(r.rs3m ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(r.rs3m) }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums">{{ fmtNum(r.rsi, 0) }}</td>
+              <td class="px-3 py-2.5 text-right tabular-nums text-slate-400">{{ fmtPct(r.pctFromHigh) }}</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <p class="text-[11px] text-slate-500">Semua endpoint di-gate oleh sesi login yang sudah ada. Endpoint berat (screening as-of universe penuh) memakai cache harian per-tanggal seperti pola <code>store.ts</code>.</p>
     </section>
 
-    <!-- 6. AS-OF -->
-    <section id="asof" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">6.</span> Screening Point-in-Time (inti anti-lookahead)</h2>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-slate-100 text-sm">✅ Teknikal — akurat historis</div>
-          <p class="text-xs text-slate-400 leading-relaxed"><code class="text-emerald-300">analyzeTechnical()</code> murni atas array bar. Untuk tanggal T cukup potong bar sampai indeks T lalu hitung ulang skor/RS. Hasilnya identik dengan apa yang akan terlihat di masa itu — <span class="text-emerald-300">nol lookahead</span>.</p>
-        </div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-amber-300 text-sm">⚠️ Fundamental — keterbatasan</div>
-          <p class="text-xs text-slate-400 leading-relaxed">Yahoo hanya memberi snapshot fundamental <span class="italic">terkini</span>, bukan point-in-time. Maka mode historis <span class="text-slate-200">default menonaktifkan</span> kolom fundamental (PER/PBV/ROE) atau menandainya “perkiraan”. Skor teknikal tetap menjadi tulang punggung screening as-of.</p>
+    <!-- STEP 3: BASKET -->
+    <section v-if="step === 'basket'" class="space-y-4">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="text-lg font-bold text-slate-100">3 · Racik Keranjang (Reksa Dana)</h2>
+        <div class="flex gap-2">
+          <button @click="step = 'screen'" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Pilih saham</button>
+          <button @click="startSimulation" :disabled="loadingPrices || Math.abs(totalWeight - 100) > 0.5" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold">{{ loadingPrices ? 'Memuat harga…' : 'Mulai simulasi ▶' }}</button>
         </div>
       </div>
-      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 overflow-x-auto">
-        <pre v-pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre">
-// Inti As-Of Engine (server/utils/asof.ts)
-async function screenAsOf(dateT: string, codes: string[]) {
-  const rows = [];
-  for (const code of codes) {
-    const bars = await fetchDailyBars(code, '2y');       // ambil histori panjang
-    const upto = bars.filter(b =&gt; b.date &lt;= dateT);       // KUNCI: potong ≤ T
-    if (upto.length &lt; 60) continue;                       // butuh histori cukup
-    const tech = analyzeTechnical(upto);                  // skor as-of (murni)
-    rows.push({ code, price: upto.at(-1).close, ...tech });
-  }
-  return rows.sort((a, b) =&gt; b.score - a.score);
-}
-        </pre>
+      <div class="rounded-xl border border-slate-800 overflow-x-auto">
+        <table class="w-full text-xs">
+          <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] tracking-wider">
+            <tr><th class="px-4 py-3 text-left">Saham</th><th class="px-4 py-3 text-center">Rating</th><th class="px-4 py-3 text-right">Harga masuk</th><th class="px-4 py-3 text-right w-40">Bobot %</th><th class="px-4 py-3 text-right">Lot</th><th class="px-4 py-3 text-right">Alokasi</th></tr>
+          </thead>
+          <tbody class="divide-y divide-slate-800/70 text-slate-300">
+            <tr v-for="b in basket" :key="b.code">
+              <td class="px-4 py-3"><span class="font-bold text-slate-100">{{ b.code }}</span><div class="text-[10px] text-slate-500 truncate max-w-[160px]">{{ b.name }}</div></td>
+              <td class="px-4 py-3 text-center"><span class="px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(b.rating)">{{ b.rating }}</span></td>
+              <td class="px-4 py-3 text-right tabular-nums">{{ fmtIDR(b.entryPrice) }}</td>
+              <td class="px-4 py-3 text-right"><input v-model.number="b.weightPct" @input="recomputeLots" type="number" min="0" max="100" class="w-24 bg-slate-950 border border-slate-800 rounded px-2 py-1 text-right text-slate-100" /></td>
+              <td class="px-4 py-3 text-right font-bold tabular-nums">{{ b.lots }}</td>
+              <td class="px-4 py-3 text-right tabular-nums text-slate-400">{{ fmtIDR(b.lots * 100 * b.entryPrice) }}</td>
+            </tr>
+          </tbody>
+          <tfoot>
+            <tr class="border-t border-slate-700 text-slate-400 font-bold"><td class="px-4 py-3">Total</td><td></td><td></td>
+              <td class="px-4 py-3 text-right" :class="Math.abs(totalWeight - 100) > 0.5 ? 'text-rose-400' : 'text-emerald-400'">{{ fmtNum(totalWeight, 1) }}%</td><td></td>
+              <td class="px-4 py-3 text-right">{{ fmtIDR(basket.reduce((s,b)=>s+b.lots*100*b.entryPrice,0)) }}</td></tr>
+          </tfoot>
+        </table>
       </div>
+      <p v-if="Math.abs(totalWeight - 100) > 0.5" class="text-[11px] text-rose-400">Total bobot harus ≈ 100% (saat ini {{ fmtNum(totalWeight,1) }}%).</p>
     </section>
 
-    <!-- 7. PLAYBACK -->
-    <section id="playback" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">7.</span> Mesin Playback &amp; Titik Keputusan</h2>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-slate-100 text-sm">Animasi (klien)</div>
-          <ul class="text-xs text-slate-400 leading-relaxed space-y-1 list-disc pl-4">
-            <li>Ambil bar harga keranjang dari <code class="text-emerald-300">entryDate → endDate</code> di awal (satu kali).</li>
-            <li>Kursor waktu maju via <code>setInterval</code>/rAF; kontrol play · pause · step · kecepatan (1×–10×).</li>
-            <li>ECharts: candlestick per saham + kurva ekuitas portofolio yang tumbuh live.</li>
-            <li>Masa depan “disembunyikan” sampai kursor melewatinya — menjaga ketidaktahuan.</li>
-          </ul>
-        </div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-slate-100 text-sm">Titik Keputusan</div>
-          <ul class="text-xs text-slate-400 leading-relaxed space-y-1 list-disc pl-4">
-            <li>Setiap <code>decisionEveryDays</code>, playback pause &amp; memunculkan prompt.</li>
-            <li>Aksi: <span class="text-emerald-300 font-semibold">HOLD</span> · <span class="text-rose-300 font-semibold">JUAL</span> (sebagian/penuh) · <span class="text-amber-300 font-semibold">AVERAGE DOWN</span> (tambah saat turun).</li>
-            <li>Konteks ditampilkan: %P/L berjalan, skor teknikal terbaru as-of, drawdown.</li>
-            <li>Tiap keputusan → <code>SimDecision</code> dengan harga eksekusi &amp; alasan.</li>
-          </ul>
-        </div>
-      </div>
-    </section>
-
-    <!-- 8. MLR -->
-    <section id="mlr" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">8.</span> Regresi Linear Berganda (OLS)</h2>
-      <p class="text-xs text-slate-400 leading-relaxed">Tujuan: menjelaskan &amp; (opsional) memprediksi return ke depan dari faktor-faktor saat masuk. Diimplementasi murni TypeScript (tanpa dependensi) via persamaan normal <code class="text-emerald-300">β = (XᵀX)⁻¹Xᵀy</code>, dengan invers matriks Gauss-Jordan.</p>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-slate-100 text-sm">Variabel</div>
-          <p class="text-xs text-slate-400 leading-relaxed"><span class="text-slate-200 font-semibold">y (dependen):</span> return ke depan horizon H per saham (realisasi).</p>
-          <p class="text-xs text-slate-400 leading-relaxed"><span class="text-slate-200 font-semibold">X (independen):</span> skor teknikal, RS 3-bulan, momentum 1m/3m, volatilitas, PER, PBV, ROE, tren volume, dummy sektor.</p>
-        </div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4 space-y-2">
-          <div class="font-bold text-slate-100 text-sm">Keluaran</div>
-          <ul class="text-xs text-slate-400 leading-relaxed space-y-1 list-disc pl-4">
-            <li>Koefisien β tiap faktor + arah pengaruh.</li>
-            <li>Std error, t-stat, p-value (aprox), signifikansi.</li>
-            <li>R² &amp; adjusted R² (seberapa banyak return terjelaskan).</li>
-            <li>Prediksi return utk kandidat (asisten opsional).</li>
-          </ul>
-        </div>
-      </div>
-      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 overflow-x-auto">
-        <pre v-pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre">
-interface RegressionResult {
-  n: number;                       // jumlah observasi (saham)
-  r2: number; adjR2: number;
-  terms: {
-    name: string;                  // 'intercept' | 'score' | 'rs3m' | ...
-    coef: number; stdErr: number;
-    tStat: number; pValue: number; // signifikansi
-  }[];
-  predict: (x: number[]) =&gt; number;
-}
-        </pre>
-      </div>
-      <div class="rounded-xl bg-amber-500/5 border border-amber-500/20 p-4 text-xs text-amber-200/80 leading-relaxed">
-        <span class="font-bold text-amber-300">Catatan statistik:</span> dengan hanya beberapa saham per sesi, model mudah overfit. Regresi paling bermakna dijalankan pada <span class="font-semibold">seluruh universe as-of</span> (puluhan–ratusan saham), bukan hanya keranjang kecil. Keranjang kecil dipakai untuk atribusi kontribusi, bukan inferensi kausal.
-      </div>
-    </section>
-
-    <!-- 9. BELAJAR -->
-    <section id="belajar" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">9.</span> Pembelajaran Meta (Simpan &amp; Rekomendasi)</h2>
-      <p class="text-xs text-slate-400 leading-relaxed">Tiap sesi + keputusan + hasilnya disimpan. Mesin insight membaca <span class="text-slate-200">semua sesi</span> dan mengagregasi pola menjadi rekomendasi konkret “lakukan / hindari”.</p>
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
-          <div class="font-bold text-emerald-300 text-sm mb-2">✅ Contoh “Lakukan”</div>
-          <ul class="text-xs text-emerald-200/80 leading-relaxed space-y-1 list-disc pl-4">
-            <li>Hold pemenang berating Kuat → rata-rata kontribusi positif.</li>
-            <li>Potong rugi &gt; -8% pada rating Lemah → drawdown lebih kecil.</li>
-            <li>Diversifikasi 4–6 saham lintas sektor → volatilitas turun.</li>
-          </ul>
-        </div>
-        <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
-          <div class="font-bold text-rose-300 text-sm mb-2">⛔ Contoh “Hindari”</div>
-          <ul class="text-xs text-rose-200/80 leading-relaxed space-y-1 list-disc pl-4">
-            <li>Average down pada saham berating Lemah/downtrend → memperbesar rugi.</li>
-            <li>Konsentrasi 1–2 saham → drawdown ekstrem.</li>
-            <li>Jual panik saat koreksi wajar pada tren naik yang utuh.</li>
-          </ul>
-        </div>
-      </div>
-      <p class="text-[11px] text-slate-500">Awalnya berbasis heuristik atas statistik keputusan; seiring data bertambah dapat ditingkatkan menjadi regresi keputusan→hasil untuk kuantifikasi.</p>
-    </section>
-
-    <!-- 10. CAVEAT -->
-    <section id="caveat" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">10.</span> Isu Metodologis (wajib jujur)</h2>
-      <div class="grid sm:grid-cols-2 gap-3">
-        <div v-for="(c, i) in [
-          { t: 'Lookahead bias', d: 'Diatasi dengan memotong bar ≤ T. Fundamental point-in-time tak tersedia → dinonaktifkan/ditandai di mode historis.' },
-          { t: 'Survivorship bias', d: 'Saham delisting hilang dari universe kini. Idealnya pakai daftar konstituen historis; tahap awal diberi disclaimer.' },
-          { t: 'Corporate action', d: 'Stock split/dividen. Pakai harga adjusted konsisten agar return tak bias.' },
-          { t: 'Biaya transaksi', d: 'Fee beli/jual & slippage. Sediakan parameter biaya agar hasil realistis.' },
-          { t: 'Overfitting regresi', d: 'Sampel kecil → banyak faktor menyesatkan. Batasi jumlah faktor, laporkan adj-R² & p-value.' },
-          { t: 'Likuiditas', d: 'Saham tipis sulit dieksekusi pada harga close. Beri flag likuiditas pada screening as-of.' }
-        ]" :key="i" class="rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="font-bold text-slate-100 text-sm mb-1">⚠️ {{ c.t }}</div>
-          <p class="text-xs text-slate-400 leading-relaxed">{{ c.d }}</p>
-        </div>
-      </div>
-    </section>
-
-    <!-- 11. ROADMAP -->
-    <section id="roadmap" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">11.</span> Roadmap Implementasi</h2>
-      <div class="space-y-3">
-        <div v-for="(f, i) in [
-          { p: 'Fase 0', t: 'Arsitektur (halaman ini)', s: 'selesai', d: 'Cetak biru, model data, kontrak API, isu metodologis.' },
-          { p: 'Fase 1', t: 'As-Of Engine + Screening historis', s: 'berikutnya', d: 'asof.ts + /api/sim/screen + UI pilih tanggal & tabel screening as-of.' },
-          { p: 'Fase 2', t: 'Racik keranjang + Playback + Keputusan', s: 'rencana', d: 'Pilih saham/bobot, animasi harga, prompt HOLD/JUAL/AVG-DOWN, kurva ekuitas.' },
-          { p: 'Fase 3', t: 'Regresi Linear Berganda', s: 'rencana', d: 'regression.ts (OLS murni TS) + setelmen + panel koefisien/R².' },
-          { p: 'Fase 4', t: 'Persistence + Insights meta', s: 'rencana', d: 'simStore.ts + /api/sim/insights + rekomendasi lakukan/hindari.' }
-        ]" :key="i" class="flex items-center gap-4 rounded-xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="shrink-0 font-mono text-xs font-bold text-slate-400 w-16">{{ f.p }}</div>
-          <div class="flex-1 min-w-0">
-            <div class="font-bold text-slate-100 text-sm">{{ f.t }}</div>
-            <p class="text-xs text-slate-400 mt-0.5">{{ f.d }}</p>
+    <!-- STEP 4: PLAYBACK -->
+    <section v-if="step === 'play'" class="space-y-4">
+      <div class="grid lg:grid-cols-3 gap-4">
+        <div class="lg:col-span-2 rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="flex items-center justify-between mb-2">
+            <div>
+              <div class="text-[11px] text-slate-500 uppercase font-bold">Nilai Portofolio · {{ timeline[cursor] }}</div>
+              <div class="text-2xl font-extrabold" :class="currentReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtIDR(currentValue) }} <span class="text-sm">({{ fmtPct(currentReturnPct) }})</span></div>
+            </div>
+            <div class="text-right text-[11px] text-slate-500">Hari {{ cursor }} / {{ timeline.length - 1 }}</div>
           </div>
-          <span class="shrink-0 text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wide"
-            :class="f.s === 'selesai' ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-              : f.s === 'berikutnya' ? 'bg-sky-500/15 text-sky-300 border border-sky-500/30'
-              : 'bg-slate-800 text-slate-400 border border-slate-700'">{{ f.s }}</span>
+          <div class="h-64"><VChart :option="equityOption" class="w-full h-full" autoresize /></div>
+          <!-- Progress + controls -->
+          <div class="mt-3 h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full bg-emerald-500 transition-all" :style="{ width: progressPct + '%' }"></div></div>
+          <div class="flex items-center gap-2 mt-3">
+            <button v-if="!playing" @click="play" class="px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-sm font-bold">▶ Putar</button>
+            <button v-else @click="pause" class="px-4 py-2 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-100 text-sm font-bold">⏸ Jeda</button>
+            <button @click="stepOnce" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-semibold">⏭ 1 hari</button>
+            <div class="flex items-center gap-1 ml-auto text-[11px] text-slate-500">Kecepatan
+              <select v-model.number="speed" class="bg-slate-950 border border-slate-800 rounded px-2 py-1 text-slate-200"><option :value="2">2×</option><option :value="4">4×</option><option :value="8">8×</option></select>
+            </div>
+          </div>
+        </div>
+        <!-- Holdings -->
+        <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="text-[11px] text-slate-500 uppercase font-bold mb-2">Posisi</div>
+          <div class="space-y-2">
+            <div v-for="b in basket" :key="b.code" class="flex items-center justify-between text-xs bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800">
+              <div><span class="font-bold text-slate-100">{{ b.code }}</span><div class="text-[10px] text-slate-500">{{ (positions[b.code]?.lots ?? 0) }} lot @ {{ fmtIDR(positions[b.code]?.avgPrice ?? b.entryPrice) }}</div></div>
+              <div class="text-right tabular-nums">
+                <div :class="(priceAt(b.code, cursor) / (positions[b.code]?.avgPrice || b.entryPrice) - 1) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtIDR(priceAt(b.code, cursor)) }}</div>
+                <div class="text-[10px]" :class="(priceAt(b.code, cursor) / (positions[b.code]?.avgPrice || b.entryPrice) - 1) >= 0 ? 'text-emerald-500' : 'text-rose-500'">{{ fmtPct((priceAt(b.code, cursor) / (positions[b.code]?.avgPrice || b.entryPrice) - 1) * 100) }}</div>
+              </div>
+            </div>
+            <div class="flex items-center justify-between text-xs px-3 pt-1 text-slate-500"><span>Kas</span><span class="tabular-nums">{{ fmtIDR(cash) }}</span></div>
+          </div>
         </div>
       </div>
     </section>
 
-    <!-- 12. FILES -->
-    <section id="files" class="scroll-mt-20 space-y-4">
-      <h2 class="text-lg font-bold text-slate-100 flex items-center gap-2"><span class="text-emerald-400">12.</span> Berkas yang Akan Dibuat</h2>
-      <div class="rounded-xl bg-slate-950 border border-slate-800 p-4 overflow-x-auto">
-        <pre v-pre class="text-[11px] leading-relaxed text-slate-300 font-mono whitespace-pre">
-server/utils/asof.ts          # screening point-in-time (potong bar ≤ T)
-server/utils/regression.ts    # OLS murni TS: (XᵀX)⁻¹Xᵀy, R², t-stat, invers Gauss-Jordan
-server/utils/simStore.ts      # simpan/baca sesi simulasi (.data-store/simulations/)
-server/utils/simInsights.ts   # agregasi lintas sesi → rekomendasi lakukan/hindari
-server/api/sim/screen.ts      # GET screening as-of
-server/api/sim/prices.ts      # GET deret harga utk playback
-server/api/sim/session.*.ts   # POST/GET sesi + settle
-server/api/sim/regression.ts  # POST OLS ad-hoc
-server/api/sim/insights.ts    # GET insight meta
-app/pages/simulasi/index.vue  # halaman ini → berevolusi jadi UI wizard penuh
-app/components/sim/*           # PlaybackChart, DecisionPrompt, RegressionPanel, dst.
-        </pre>
+    <!-- DECISION MODAL -->
+    <div v-if="decisionOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+      <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+        <div>
+          <h3 class="text-lg font-bold text-slate-100">🤔 Titik Keputusan · {{ timeline[cursor] }}</h3>
+          <p class="text-xs text-slate-400">Kamu belum tahu masa depan. Untuk tiap posisi: tahan, jual, atau average down?</p>
+        </div>
+        <div class="space-y-2">
+          <div v-for="d in decisionRows" :key="d.code" class="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
+            <div class="flex items-center justify-between mb-2">
+              <div><span class="font-bold text-slate-100">{{ d.code }}</span>
+                <span class="ml-2 px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(d.rating)">{{ d.rating }}</span>
+              </div>
+              <div class="text-right text-xs tabular-nums"><span class="text-slate-300">{{ fmtIDR(d.price) }}</span>
+                <span class="ml-2 font-bold" :class="d.plPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.plPct) }}</span></div>
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <button @click="d.action = 'HOLD'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'HOLD' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Tahan</button>
+              <button @click="d.action = 'SELL'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'SELL' ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Jual</button>
+              <button @click="d.action = 'AVERAGE_DOWN'" class="px-2 py-1.5 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'AVERAGE_DOWN' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Avg Down</button>
+            </div>
+          </div>
+        </div>
+        <button @click="applyDecisions" class="w-full px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm">Terapkan &amp; lanjutkan ▶</button>
       </div>
-      <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-5 text-center">
-        <p class="text-sm text-slate-300 font-semibold">Ini baru cetak biru. Setelah kamu tinjau &amp; setujui, saya lanjut implementasi <span class="text-emerald-400">Fase 1</span>.</p>
-        <p class="text-xs text-slate-500 mt-1">Beri masukan bagian mana yang ingin diubah/diprioritaskan.</p>
+    </div>
+
+    <!-- STEP 5: RESULT -->
+    <section v-if="step === 'result' && result" class="space-y-5">
+      <h2 class="text-lg font-bold text-slate-100">5 · Hasil &amp; Pembelajaran</h2>
+      <!-- Metrics -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Total</div><div class="text-xl font-extrabold" :class="result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(result.totalReturnPct) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Nilai Akhir</div><div class="text-xl font-extrabold text-slate-100">{{ fmtIDR(result.finalValue) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(result.maxDrawdownPct) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(result.winRate, 0) }}%</div></div>
+      </div>
+
+      <div class="h-56 rounded-2xl bg-slate-900/60 border border-slate-800 p-4"><VChart :option="equityOption" class="w-full h-full" autoresize /></div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <!-- Per stock -->
+        <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="text-sm font-bold text-slate-100 mb-3">Kontribusi per Saham</div>
+          <div class="space-y-2">
+            <div v-for="s in result.perStock" :key="s.code" class="flex items-center justify-between text-xs">
+              <span class="font-bold text-slate-200">{{ s.code }}</span>
+              <div class="flex items-center gap-3 tabular-nums"><span :class="s.returnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.returnPct) }}</span><span class="text-slate-500 w-16 text-right">kontrib {{ fmtPct(s.contributionPct) }}</span></div>
+            </div>
+          </div>
+        </div>
+        <!-- Regression -->
+        <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="text-sm font-bold text-slate-100 mb-1">📉 Regresi: apa yang mendorong return {{ horizonDays }} hari?</div>
+          <div v-if="loadingReg" class="text-xs text-slate-500 py-4">Menghitung regresi universe…</div>
+          <div v-else-if="regression?.regression" class="space-y-3">
+            <div class="text-[11px] text-slate-400">n = {{ regression.n }} saham · R² = {{ fmtNum(regression.regression.r2 * 100, 1) }}% · adj-R² = {{ fmtNum(regression.regression.adjR2 * 100, 1) }}%</div>
+            <table class="w-full text-[11px]">
+              <thead class="text-slate-500 uppercase text-[10px]"><tr><th class="text-left py-1">Faktor</th><th class="text-right">Koef</th><th class="text-right">t</th><th class="text-right">p</th></tr></thead>
+              <tbody class="text-slate-300">
+                <tr v-for="t in regression.regression.terms" :key="t.name" class="border-t border-slate-800/60">
+                  <td class="py-1.5 font-semibold">{{ t.name }}</td>
+                  <td class="text-right tabular-nums" :class="t.coef >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtNum(t.coef, 3) }}</td>
+                  <td class="text-right tabular-nums text-slate-400">{{ fmtNum(t.tStat, 2) }}</td>
+                  <td class="text-right tabular-nums" :class="t.pValue < 0.05 ? 'text-emerald-400 font-bold' : 'text-slate-500'">{{ fmtNum(t.pValue, 3) }}</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <span v-for="g in regression.byRating" :key="g.rating" class="text-[10px] px-2 py-1 rounded-lg border" :class="ratingClass(g.rating)">{{ g.rating }}: {{ fmtPct(g.avgReturnPct) }} (n={{ g.n }})</span>
+            </div>
+          </div>
+          <div v-else class="text-xs text-slate-500 py-4">Regresi tidak tersedia untuk periode ini.</div>
+        </div>
+      </div>
+
+      <!-- Save + insights -->
+      <div class="flex items-center gap-3 flex-wrap">
+        <button v-if="!savedId" @click="saveSession" class="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm">💾 Simpan analisa sesi ini</button>
+        <span v-else class="text-emerald-400 text-sm font-semibold">✓ Tersimpan ({{ savedId }})</span>
+        <button @click="reset" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm">↺ Simulasi baru</button>
+      </div>
+
+      <!-- Meta insights -->
+      <div v-if="insights" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-5 space-y-3">
+        <div class="text-sm font-bold text-slate-100">🧠 Pembelajaran lintas sesi ({{ insights.settledSessions }} sesi · {{ insights.totalDecisions }} keputusan)</div>
+        <div v-if="insights.rules?.length" class="grid sm:grid-cols-2 gap-2">
+          <div v-for="(r, i) in insights.rules" :key="i" class="rounded-xl border p-3" :class="r.kind === 'do' ? 'bg-emerald-500/5 border-emerald-500/20' : r.kind === 'avoid' ? 'bg-rose-500/5 border-rose-500/20' : 'bg-slate-800/40 border-slate-700'">
+            <div class="text-xs font-bold" :class="r.kind === 'do' ? 'text-emerald-300' : r.kind === 'avoid' ? 'text-rose-300' : 'text-slate-300'">{{ r.kind === 'do' ? '✅' : r.kind === 'avoid' ? '⛔' : '•' }} {{ r.title }}</div>
+            <div class="text-[11px] text-slate-400 mt-1">{{ r.detail }} <span class="text-slate-600">(n={{ r.samples }})</span></div>
+          </div>
+        </div>
+        <p v-else class="text-xs text-slate-500">Belum cukup data. Jalankan &amp; simpan beberapa sesi lagi untuk memunculkan pola lakukan/hindari.</p>
       </div>
     </section>
   </div>

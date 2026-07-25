@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, reactive, onBeforeUnmount } from 'vue';
+import { ref, computed, reactive, onBeforeUnmount, onMounted } from 'vue';
 
 useHead({ title: 'Simulasi Mesin Waktu — Reksa Dana Masa Lampau | Saham IDX' });
 
@@ -15,7 +15,7 @@ interface BasketItem { code: string; name: string; entryPrice: number; rating: s
 interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; lots: number; price: number; unrealizedPct: number; rating: string }
 
 // ---------------- Wizard state ----------------
-type Step = 'setup' | 'screen' | 'basket' | 'play' | 'result';
+type Step = 'setup' | 'screen' | 'basket' | 'play' | 'result' | 'review';
 const step = ref<Step>('setup');
 
 const yearsAgoDate = (y: number) => { const d = new Date(); d.setFullYear(d.getFullYear() - y); return d.toISOString().split('T')[0]!; };
@@ -244,13 +244,27 @@ async function saveSession() {
   const res = await $fetch<{ id: string }>('/api/sim/session', { method: 'POST', body });
   savedId.value = res.id;
   loadInsights();
+  loadSavedSessions();
 }
 
 // ---------------- Insights + saved sessions ----------------
 const insights = ref<any>(null);
 async function loadInsights() { try { insights.value = await $fetch('/api/sim/insights'); } catch { insights.value = null; } }
 
-function reset() { pause(); step.value = 'setup'; screenRows.value = []; selected.clear(); basket.value = []; result.value = null; regression.value = null; savedId.value = ''; }
+// ---------------- Saved-session history + review ----------------
+const savedSessions = ref<any[]>([]);
+async function loadSavedSessions() { try { savedSessions.value = (await $fetch<{ sessions: any[] }>('/api/sim/sessions')).sessions; } catch { savedSessions.value = []; } }
+const reviewData = ref<any>(null);
+const actionLabel = (a: string) => (({ HOLD: 'Tahan', SELL: 'Jual', AVERAGE_DOWN: 'Avg Down', BUY: 'Beli' } as any)[a] || a);
+async function openReview(id: string) {
+  errorMsg.value = '';
+  try { reviewData.value = await $fetch(`/api/sim/session/${id}`); step.value = 'review'; if (process.client) window.scrollTo({ top: 0, behavior: 'smooth' }); }
+  catch { errorMsg.value = 'Gagal memuat sesi tersimpan'; }
+}
+
+onMounted(() => { loadSavedSessions(); loadInsights(); });
+
+function reset() { pause(); step.value = 'setup'; screenRows.value = []; selected.clear(); basket.value = []; result.value = null; regression.value = null; savedId.value = ''; reviewData.value = null; }
 
 // ---------------- Equity chart option ----------------
 const equityOption = computed(() => {
@@ -330,6 +344,26 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         {{ loadingScreen ? 'Memuat screening…' : 'Lihat Screening pada tanggal ini →' }}
       </button>
       <p class="text-[11px] text-slate-500">Screening dihitung ulang dari harga ≤ tanggal itu (tanpa lookahead). Untuk universe penuh, load pertama bisa ~10–30 detik lalu di-cache.</p>
+    </section>
+
+    <!-- SAVED HISTORY (setup landing) -->
+    <section v-if="step === 'setup'" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 space-y-3">
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold text-slate-100">📚 Riwayat Simulasi Tersimpan</h2>
+        <span class="text-[11px] text-slate-500">{{ savedSessions.length }} sesi</span>
+      </div>
+      <p v-if="!savedSessions.length" class="text-xs text-slate-500">Belum ada. Jalankan simulasi lalu tekan <span class="text-emerald-400 font-semibold">Simpan analisa</span> di akhir — sesi akan muncul di sini untuk kamu pelajari kembali.</p>
+      <div v-else class="grid sm:grid-cols-2 gap-2">
+        <button v-for="s in savedSessions" :key="s.id" @click="openReview(s.id)"
+          class="text-left rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 p-3 transition-colors">
+          <div class="flex items-center justify-between">
+            <span class="font-bold text-slate-100 text-sm">📅 {{ s.startDate }}</span>
+            <span v-if="s.totalReturnPct != null" class="text-sm font-bold tabular-nums" :class="s.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.totalReturnPct) }}</span>
+          </div>
+          <div class="text-[11px] text-slate-400 mt-1 truncate">{{ s.picks.join(' · ') }}</div>
+          <div class="text-[10px] text-slate-600 mt-1">horizon {{ s.horizonDays }} hari bursa · {{ s.status }} · tinjau →</div>
+        </button>
+      </div>
     </section>
 
     <!-- STEP 2: SCREENING -->
@@ -534,6 +568,78 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         </div>
         <p v-else class="text-xs text-slate-500">Belum cukup data. Jalankan &amp; simpan beberapa sesi lagi untuk memunculkan pola lakukan/hindari.</p>
       </div>
+    </section>
+
+    <!-- REVIEW: tinjau sesi tersimpan -->
+    <section v-if="step === 'review' && reviewData" class="space-y-5">
+      <div class="flex items-center justify-between flex-wrap gap-3">
+        <h2 class="text-lg font-bold text-slate-100">📖 Tinjau Sesi · {{ reviewData.startDate }} <span class="text-sm text-slate-500 font-normal">(horizon {{ reviewData.horizonDays }} hari)</span></h2>
+        <button @click="reset" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Kembali ke daftar</button>
+      </div>
+
+      <div v-if="reviewData.result" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Total</div><div class="text-xl font-extrabold" :class="reviewData.result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(reviewData.result.totalReturnPct) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Nilai Akhir</div><div class="text-xl font-extrabold text-slate-100">{{ fmtIDR(reviewData.result.finalValue) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(reviewData.result.maxDrawdownPct) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(reviewData.result.winRate, 0) }}%</div></div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <!-- Keranjang + kontribusi -->
+        <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="text-sm font-bold text-slate-100 mb-3">Keranjang &amp; Kontribusi</div>
+          <div class="space-y-2">
+            <div v-for="p in reviewData.picks" :key="p.code" class="flex items-center justify-between text-xs">
+              <div><span class="font-bold text-slate-200">{{ p.code }}</span><span class="text-slate-500 ml-2">{{ p.lots }} lot @ {{ fmtIDR(p.entryPrice) }}</span></div>
+              <div class="tabular-nums text-slate-500">bobot {{ fmtNum(p.weightPct, 0) }}%</div>
+            </div>
+            <div v-if="reviewData.result?.perStock" class="pt-2 mt-1 border-t border-slate-800 space-y-1.5">
+              <div v-for="s in reviewData.result.perStock" :key="s.code" class="flex items-center justify-between text-xs">
+                <span class="font-semibold text-slate-300">{{ s.code }}</span>
+                <div class="flex items-center gap-3 tabular-nums"><span :class="s.returnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.returnPct) }}</span><span class="text-slate-500 w-20 text-right">kontrib {{ fmtPct(s.contributionPct) }}</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Jejak keputusan -->
+        <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+          <div class="text-sm font-bold text-slate-100 mb-3">Jejak Keputusan</div>
+          <div v-if="reviewData.decisions?.length" class="space-y-1.5 max-h-72 overflow-y-auto pr-1">
+            <div v-for="(d, i) in reviewData.decisions" :key="i" class="flex items-center justify-between text-xs bg-slate-950/60 rounded-lg px-3 py-2 border border-slate-800">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="text-slate-500 tabular-nums shrink-0">{{ d.date }}</span>
+                <span class="font-bold text-slate-200 shrink-0">{{ d.code }}</span>
+                <span class="px-1.5 py-0.5 rounded-full border text-[10px] font-bold shrink-0" :class="ratingClass(d.rating)">{{ d.rating }}</span>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="d.action === 'SELL' ? 'bg-rose-500/15 text-rose-300' : d.action === 'AVERAGE_DOWN' ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-700 text-slate-300'">{{ actionLabel(d.action) }}</span>
+                <span class="tabular-nums" :class="d.unrealizedPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.unrealizedPct) }}</span>
+              </div>
+            </div>
+          </div>
+          <p v-else class="text-xs text-slate-500">Tidak ada keputusan tercatat (semua ditahan otomatis).</p>
+        </div>
+      </div>
+
+      <!-- Regresi tersimpan -->
+      <div v-if="reviewData.result?.regression" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
+        <div class="text-sm font-bold text-slate-100 mb-1">📉 Regresi faktor (tersimpan)</div>
+        <div class="text-[11px] text-slate-400 mb-2">n = {{ reviewData.result.regression.n }} · R² = {{ fmtNum(reviewData.result.regression.r2 * 100, 1) }}% · adj-R² = {{ fmtNum(reviewData.result.regression.adjR2 * 100, 1) }}%</div>
+        <table class="w-full text-[11px]">
+          <thead class="text-slate-500 uppercase text-[10px]"><tr><th class="text-left py-1">Faktor</th><th class="text-right">Koef</th><th class="text-right">t</th><th class="text-right">p</th></tr></thead>
+          <tbody class="text-slate-300">
+            <tr v-for="t in reviewData.result.regression.terms" :key="t.name" class="border-t border-slate-800/60">
+              <td class="py-1.5 font-semibold">{{ t.name }}</td>
+              <td class="text-right tabular-nums" :class="t.coef >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtNum(t.coef, 3) }}</td>
+              <td class="text-right tabular-nums text-slate-400">{{ fmtNum(t.tStat, 2) }}</td>
+              <td class="text-right tabular-nums" :class="t.pValue < 0.05 ? 'text-emerald-400 font-bold' : 'text-slate-500'">{{ fmtNum(t.pValue, 3) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <button @click="reset" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm">← Kembali ke daftar</button>
     </section>
   </div>
 </template>

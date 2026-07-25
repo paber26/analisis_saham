@@ -309,6 +309,64 @@ async function finish() {
   loadRegression();
 }
 
+// ---------------- Custom Modal Popup & Notification System ----------------
+const confirmModal = reactive({
+  open: false,
+  title: '',
+  message: '',
+  confirmText: 'Ya, Lanjutkan',
+  cancelText: 'Batal',
+  type: 'danger' as 'danger' | 'warning' | 'info',
+  onConfirm: () => {}
+});
+
+const notificationModal = reactive({
+  open: false,
+  title: '',
+  message: '',
+  type: 'info' as 'success' | 'error' | 'info'
+});
+
+let notifTimer: ReturnType<typeof setTimeout> | null = null;
+
+function notify(message: string, type: 'success' | 'error' | 'info' = 'info', title?: string) {
+  notificationModal.message = message;
+  notificationModal.type = type;
+  notificationModal.title = title || (type === 'error' ? '⚠️ PERINGATAN' : type === 'success' ? '✨ SUKSES' : 'ℹ️ INFORMASI');
+  notificationModal.open = true;
+
+  if (notifTimer) clearTimeout(notifTimer);
+  notifTimer = setTimeout(() => {
+    notificationModal.open = false;
+  }, 4500);
+}
+
+function showConfirm(options: {
+  title: string;
+  message: string;
+  confirmText?: string;
+  cancelText?: string;
+  type?: 'danger' | 'warning' | 'info';
+  onConfirm: () => void;
+}) {
+  confirmModal.title = options.title;
+  confirmModal.message = options.message;
+  confirmModal.confirmText = options.confirmText || 'Ya, Lanjutkan';
+  confirmModal.cancelText = options.cancelText || 'Batal';
+  confirmModal.type = options.type || 'danger';
+  confirmModal.onConfirm = options.onConfirm;
+  confirmModal.open = true;
+}
+
+function handleConfirmModal() {
+  confirmModal.open = false;
+  confirmModal.onConfirm();
+}
+
+function handleCancelModal() {
+  confirmModal.open = false;
+}
+
 async function loadRegression() {
   loadingReg.value = true;
   try {
@@ -318,18 +376,25 @@ async function loadRegression() {
 
 async function saveSession() {
   if (!result.value) return;
-  const body = {
-    startDate: startDate.value, horizonDays: horizonDays.value, decisionEveryDays: decisionEveryDays.value,
-    initialCapital: initialCapital.value,
-    picks: basket.value.map((b) => ({ code: b.code, entryDate: timeline.value[0], entryPrice: b.entryPrice, lots: b.lots, weightPct: b.weightPct })),
-    decisions: decisions.value,
-    result: { endDate: timeline.value.at(-1), ...result.value, regression: regression.value?.regression ?? null },
-    status: 'settled'
-  };
-  const res = await $fetch<{ id: string }>('/api/sim/session', { method: 'POST', body });
-  savedId.value = res.id;
-  loadInsights();
-  loadSavedSessions();
+  try {
+    const body = {
+      startDate: startDate.value, horizonDays: horizonDays.value, decisionEveryDays: decisionEveryDays.value,
+      initialCapital: initialCapital.value,
+      picks: basket.value.map((b) => ({ code: b.code, entryDate: timeline.value[0], entryPrice: b.entryPrice, lots: b.lots, weightPct: b.weightPct })),
+      decisions: decisions.value,
+      result: { endDate: timeline.value.at(-1), ...result.value, regression: regression.value?.regression ?? null },
+      status: 'settled'
+    };
+    const res = await $fetch<{ id: string }>('/api/sim/session', { method: 'POST', body });
+    savedId.value = res.id;
+    loadInsights();
+    loadSavedSessions();
+    notify('Analisa sesi simulasi berhasil disimpan!', 'success');
+  } catch (e: any) {
+    const msg = e?.data?.statusMessage || e?.message || 'Gagal menyimpan sesi simulasi';
+    errorMsg.value = msg;
+    notify(msg, 'error');
+  }
 }
 
 // ---------------- Insights + saved sessions ----------------
@@ -343,17 +408,40 @@ const reviewData = ref<any>(null);
 const actionLabel = (a: string) => (({ HOLD: 'Tahan', SELL: 'Jual', AVERAGE_DOWN: 'Avg Down', BUY: 'Beli' } as any)[a] || a);
 async function openReview(id: string) {
   errorMsg.value = '';
-  try { reviewData.value = await $fetch(`/api/sim/session/${id}`); step.value = 'review'; if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' }); }
-  catch { errorMsg.value = 'Gagal memuat sesi tersimpan'; }
+  try {
+    reviewData.value = await $fetch(`/api/sim/session/${id}`);
+    step.value = 'review';
+    if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch {
+    const msg = 'Gagal memuat sesi tersimpan';
+    errorMsg.value = msg;
+    notify(msg, 'error');
+  }
 }
+
+function promptDeleteSession(id: string, dateStr?: string) {
+  showConfirm({
+    title: '🗑️ Hapus Sesi Simulasi',
+    message: `Apakah kamu yakin ingin menghapus sesi simulasi ${dateStr ? 'tanggal ' + dateStr : ''}? Sesi yang dihapus tidak dapat dikembalikan.`,
+    confirmText: 'Ya, Hapus Sesi',
+    cancelText: 'Batal',
+    type: 'danger',
+    onConfirm: () => deleteSavedSession(id)
+  });
+}
+
 async function deleteSavedSession(id: string) {
-  if (import.meta.client && !window.confirm('Hapus sesi simulasi ini? Tindakan ini tidak bisa dibatalkan.')) return;
   try {
     await $fetch(`/api/sim/session/${id}`, { method: 'DELETE' });
     savedSessions.value = savedSessions.value.filter((s) => s.id !== id);
     if (reviewData.value?.id === id) reset();
     loadInsights();
-  } catch { errorMsg.value = 'Gagal menghapus sesi'; }
+    notify('Sesi simulasi telah berhasil dihapus.', 'success');
+  } catch {
+    const msg = 'Gagal menghapus sesi simulasi';
+    errorMsg.value = msg;
+    notify(msg, 'error');
+  }
 }
 
 onMounted(() => { loadSavedSessions(); loadInsights(); });
@@ -479,7 +567,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
               <span v-if="s.alphaPct != null" class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="s.alphaPct >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'">
                 {{ s.alphaPct >= 0 ? '🚀 +' : '🔻 ' }}{{ fmtNum(s.alphaPct, 1) }}% vs IHSG
               </span>
-              <button type="button" @click.stop="deleteSavedSession(s.id)" title="Hapus sesi"
+              <button type="button" @click.stop="promptDeleteSession(s.id, s.startDate)" title="Hapus sesi"
                 class="shrink-0 w-6 h-6 flex items-center justify-center rounded-lg text-slate-600 hover:text-rose-400 hover:bg-rose-500/10 transition-colors opacity-60 group-hover:opacity-100">🗑</button>
             </div>
           </div>
@@ -919,5 +1007,53 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
 
       <button @click="reset" class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm">← Kembali ke daftar</button>
     </section>
+
+    <!-- CUSTOM CONFIRMATION POPUP MODAL -->
+    <div v-if="confirmModal.open" class="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md transition-all">
+      <div class="w-full max-w-md rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 text-center transform transition-all scale-100">
+        <div class="w-14 h-14 rounded-2xl mx-auto flex items-center justify-center shadow-inner"
+          :class="confirmModal.type === 'danger' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'">
+          <span class="text-2xl">{{ confirmModal.type === 'danger' ? '🗑️' : '⚠️' }}</span>
+        </div>
+
+        <div>
+          <h3 class="text-base font-extrabold text-slate-100">{{ confirmModal.title }}</h3>
+          <p class="text-xs text-slate-400 mt-2 leading-relaxed">{{ confirmModal.message }}</p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-2">
+          <button
+            type="button"
+            @click="handleCancelModal"
+            class="w-full px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors"
+          >
+            {{ confirmModal.cancelText }}
+          </button>
+          <button
+            type="button"
+            @click="handleConfirmModal"
+            class="w-full px-4 py-2.5 rounded-xl font-bold text-xs transition-all shadow-lg"
+            :class="confirmModal.type === 'danger' ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/20' : 'bg-emerald-500 hover:bg-emerald-600 text-slate-950 shadow-emerald-500/20'"
+          >
+            {{ confirmModal.confirmText }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CUSTOM TOAST NOTIFICATION POPUP -->
+    <div v-if="notificationModal.open" class="fixed top-5 right-5 z-[100] max-w-sm w-full animate-bounce-once">
+      <div class="rounded-2xl p-4 border shadow-2xl backdrop-blur-md flex items-start justify-between gap-3"
+        :class="notificationModal.type === 'error' ? 'bg-rose-950/90 border-rose-500/40 text-rose-200' : notificationModal.type === 'success' ? 'bg-emerald-950/90 border-emerald-500/40 text-emerald-200' : 'bg-slate-900/90 border-slate-700 text-slate-200'">
+        <div class="flex items-start gap-3">
+          <span class="text-lg shrink-0">{{ notificationModal.type === 'error' ? '❌' : notificationModal.type === 'success' ? '✨' : 'ℹ️' }}</span>
+          <div>
+            <h4 class="text-xs font-extrabold tracking-wide uppercase">{{ notificationModal.title }}</h4>
+            <p class="text-xs mt-0.5 opacity-90 leading-relaxed">{{ notificationModal.message }}</p>
+          </div>
+        </div>
+        <button type="button" @click="notificationModal.open = false" class="text-xs opacity-60 hover:opacity-100 p-1">✕</button>
+      </div>
+    </div>
   </div>
 </template>

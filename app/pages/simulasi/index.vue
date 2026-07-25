@@ -22,9 +22,18 @@ const yearsAgoDate = (y: number) => { const d = new Date(); d.setFullYear(d.getF
 const monthsAgoDate = (m: number) => { const d = new Date(); d.setMonth(d.getMonth() - m); return d.toISOString().split('T')[0]!; };
 
 const startDate = ref(yearsAgoDate(1));
+const startDateInput = ref<HTMLInputElement | null>(null);
 const horizonDays = ref(30);
 const decisionEveryDays = ref(5);
 const initialCapital = ref(100_000_000);
+
+function openDatePicker() {
+  try {
+    startDateInput.value?.showPicker();
+  } catch {
+    /* fallback if showPicker is not supported */
+  }
+}
 
 // ---------------- Formatters ----------------
 const fmtIDR = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID');
@@ -318,9 +327,26 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
     <section v-if="step === 'setup'" class="rounded-2xl bg-slate-900/60 border border-slate-800 p-6 space-y-5">
       <h2 class="text-lg font-bold text-slate-100">1 · Pilih Titik Waktu &amp; Parameter</h2>
       <div class="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <label class="block">
+        <label class="block cursor-pointer">
           <span class="text-[11px] font-bold text-slate-500 uppercase">Tanggal Masuk (masa lalu)</span>
-          <input v-model="startDate" type="date" :max="yearsAgoDate(0)" class="mt-1 w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-slate-100" />
+          <div class="relative mt-1">
+            <input
+              ref="startDateInput"
+              v-model="startDate"
+              type="date"
+              :max="yearsAgoDate(0)"
+              class="w-full bg-slate-950 border border-slate-800 rounded-lg pl-3 pr-10 py-2 text-sm text-slate-100 focus:outline-none focus:border-emerald-500 [color-scheme:dark] cursor-pointer"
+              @click="openDatePicker"
+            />
+            <button
+              type="button"
+              @click="openDatePicker"
+              class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-emerald-400 text-sm p-1 rounded transition-colors"
+              title="Buka Kalender"
+            >
+              📅
+            </button>
+          </div>
         </label>
         <label class="block">
           <span class="text-[11px] font-bold text-slate-500 uppercase">Horizon (hari bursa)</span>

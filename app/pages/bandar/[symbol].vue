@@ -205,7 +205,8 @@ const sankeyOption = computed(() => {
               <input
                 type="date"
                 v-model="customFrom"
-                class="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-emerald-500/50"
+                class="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-emerald-500/50 [color-scheme:dark] cursor-pointer"
+                @click="($event.target as HTMLInputElement)?.showPicker?.()"
               />
             </div>
             <span class="text-slate-600 hidden sm:inline">→</span>
@@ -214,7 +215,8 @@ const sankeyOption = computed(() => {
               <input
                 type="date"
                 v-model="customTo"
-                class="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-emerald-500/50"
+                class="bg-slate-950 text-slate-200 border border-slate-800 rounded-lg px-2 py-1 text-xs focus:outline-none focus:border-emerald-500/50 [color-scheme:dark] cursor-pointer"
+                @click="($event.target as HTMLInputElement)?.showPicker?.()"
               />
             </div>
           </div>

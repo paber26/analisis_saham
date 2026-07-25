@@ -187,6 +187,17 @@
                 <span class="text-sm shrink-0">🧪</span>
                 <span v-if="!isCollapsed" class="truncate">Backtest Strategi</span>
               </NuxtLink>
+
+              <NuxtLink
+                to="/simulasi"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/simulasi') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Simulasi Mesin Waktu' : ''"
+              >
+                <span class="text-sm shrink-0">🕰️</span>
+                <span v-if="!isCollapsed" class="truncate">Simulasi Mesin Waktu</span>
+              </NuxtLink>
             </div>
 
             <!-- Group 4: Pengetahuan & Infrastruktur -->
@@ -362,6 +373,7 @@ const currentPageTitle = computed(() => {
   if (p.startsWith('/analisa')) return 'Hub Analisa Emiten';
   if (p.startsWith('/forecast')) return 'Forecast & Proyeksi';
   if (p.startsWith('/backtest')) return 'Backtest Strategi';
+  if (p.startsWith('/simulasi')) return 'Simulasi Mesin Waktu';
   if (p.startsWith('/seasonal')) return 'Pola Musiman';
   if (p.startsWith('/saham')) return 'Chart & Keuangan';
   if (p.startsWith('/profil-saham')) return 'Profil Emiten';

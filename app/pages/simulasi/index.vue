@@ -71,6 +71,29 @@ const ratingCounts = computed(() => {
   return c;
 });
 
+// Popups: indicator help + recommendation reasoning
+const showIndicatorHelp = ref(false);
+const showRecommendation = ref(false);
+interface RecoNote { code: string; name: string; score: number; rating: string; reasons: string[]; cautions: string[] }
+const recommendations = computed<RecoNote[]>(() => {
+  const strong = screenRows.value.filter((r) => r.rating === 'Kuat' || r.rating === 'Menarik'); // already score-sorted
+  return strong.slice(0, 6).map((r) => {
+    const reasons: string[] = [];
+    const cautions: string[] = [];
+    reasons.push(`Skor teknikal ${Math.round(r.score)} — rating ${r.rating}`);
+    const rs = r.rs3m ?? 0, rsi = r.rsi ?? 50;
+    if (rs > 10) reasons.push(`Mengungguli IHSG kuat (RS 3B +${rs.toFixed(0)}%)`);
+    else if (rs > 0) reasons.push(`Sedikit di atas IHSG (RS 3B +${rs.toFixed(0)}%)`);
+    else cautions.push(`Lebih lemah dari IHSG (RS 3B ${rs.toFixed(0)}%)`);
+    if (rsi > 80) cautions.push(`RSI ${Math.round(rsi)} — overbought, rawan koreksi jangka pendek`);
+    else if (rsi >= 50 && rsi <= 75) reasons.push(`RSI ${Math.round(rsi)} — momentum sehat`);
+    else if (rsi < 40) cautions.push(`RSI ${Math.round(rsi)} — momentum lemah`);
+    if (r.pctFromHigh > -5) reasons.push(`Dekat puncak 52-minggu (${r.pctFromHigh.toFixed(0)}%) — tren kuat`);
+    else if (r.pctFromHigh < -20) cautions.push(`Jauh dari puncak (${r.pctFromHigh.toFixed(0)}%) — tren mungkin belum pulih`);
+    return { code: r.code, name: r.name, score: r.score, rating: r.rating, reasons, cautions };
+  });
+});
+
 // ---------------- Step 2 → 3: compose basket ----------------
 const basket = ref<BasketItem[]>([]);
 function buildBasket() {
@@ -596,6 +619,10 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Netral')">Netral {{ ratingCounts.Netral }}</span>
         <span class="px-2 py-0.5 rounded-full border font-bold" :class="ratingClass('Lemah')">Lemah {{ ratingCounts.Lemah }}</span>
         <span class="text-slate-600 ml-1">dari {{ screenRows.length }} saham teratas</span>
+        <div class="ml-auto flex items-center gap-2">
+          <button @click="showRecommendation = true" class="px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-bold transition-colors">💡 Mana yang direkomendasikan?</button>
+          <button @click="showIndicatorHelp = true" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 font-bold transition-colors">❓ Arti indikator</button>
+        </div>
       </div>
       <div class="rounded-xl border border-slate-800 overflow-x-auto">
         <table class="w-full text-xs">
@@ -621,6 +648,71 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         </table>
       </div>
     </section>
+
+    <!-- MODAL: rekomendasi -->
+    <div v-if="showRecommendation" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" @click.self="showRecommendation = false">
+      <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[85vh] overflow-y-auto">
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h3 class="text-lg font-bold text-slate-100">💡 Mana yang lebih direkomendasikan?</h3>
+            <p class="text-xs text-slate-400 mt-1">Panduan objektif dari skor teknikal &amp; momentum per {{ startDate }}. <span class="text-amber-300">Bukan ajakan beli</span> — kamu yang memutuskan; justru itu inti latihan ini.</p>
+          </div>
+          <button @click="showRecommendation = false" class="shrink-0 text-slate-500 hover:text-slate-200 text-xl leading-none">✕</button>
+        </div>
+        <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-3 text-[11px] text-emerald-200/80 leading-relaxed">
+          <span class="font-bold text-emerald-300">Prinsip:</span> utamakan Rating <b>Kuat/Menarik</b> + <b>Skor</b> tinggi + <b>RS 3B</b> positif (mengungguli IHSG) + <b>RSI</b> belum overbought (&lt;80) + harga <b>dekat puncak</b> (Dari High mendekati 0). Diversifikasi 4–6 saham lintas sektor untuk menekan risiko.
+        </div>
+        <div v-if="recommendations.length" class="space-y-2">
+          <div v-for="(r, i) in recommendations" :key="r.code" class="rounded-xl bg-slate-950/60 border border-slate-800 p-3">
+            <div class="flex items-center justify-between gap-2 mb-2">
+              <div class="flex items-center gap-2 min-w-0">
+                <span class="w-5 h-5 rounded bg-slate-800 text-slate-400 text-[10px] font-bold flex items-center justify-center shrink-0">{{ i + 1 }}</span>
+                <span class="font-bold text-slate-100">{{ r.code }}</span>
+                <span class="px-2 py-0.5 rounded-full border text-[10px] font-bold shrink-0" :class="ratingClass(r.rating)">{{ r.rating }}</span>
+                <span class="text-[11px] text-slate-500">skor {{ fmtNum(r.score, 0) }}</span>
+              </div>
+              <button @click="selected.add(r.code)" :disabled="selected.has(r.code)"
+                class="shrink-0 px-3 py-1 rounded-lg text-[11px] font-bold transition-colors" :class="selected.has(r.code) ? 'bg-emerald-500/15 text-emerald-400 cursor-default' : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950'">
+                {{ selected.has(r.code) ? '✓ Dipilih' : '+ Pilih' }}
+              </button>
+            </div>
+            <ul class="space-y-0.5">
+              <li v-for="(x, j) in r.reasons" :key="'r' + j" class="text-[11px] text-emerald-300/90 flex gap-1.5"><span>✓</span><span>{{ x }}</span></li>
+              <li v-for="(x, j) in r.cautions" :key="'c' + j" class="text-[11px] text-amber-300/90 flex gap-1.5"><span>⚠</span><span>{{ x }}</span></li>
+            </ul>
+          </div>
+        </div>
+        <p v-else class="text-xs text-slate-500">Tidak ada saham berating Kuat/Menarik pada tanggal ini.</p>
+        <button @click="showRecommendation = false" class="w-full px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm">Tutup</button>
+      </div>
+    </div>
+
+    <!-- MODAL: arti indikator -->
+    <div v-if="showIndicatorHelp" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm" @click.self="showIndicatorHelp = false">
+      <div class="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-3 max-h-[85vh] overflow-y-auto">
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-bold text-slate-100">❓ Arti Indikator Screening</h3>
+          <button @click="showIndicatorHelp = false" class="text-slate-500 hover:text-slate-200 text-xl leading-none">✕</button>
+        </div>
+        <div class="space-y-2.5">
+          <div v-for="ind in [
+            { k: 'Harga', d: 'Harga penutupan saham pada tanggal simulasi (bukan hari ini).' },
+            { k: 'Rating', d: 'Kesimpulan kualitas teknikal, diturunkan dari Skor: Kuat > Menarik > Netral > Lemah.' },
+            { k: 'Skor', d: 'Nilai teknikal 0–100 gabungan tren, momentum, & volume. Makin tinggi makin baik kondisi teknikalnya.' },
+            { k: 'RS 3B', d: 'Relative Strength 3 bulan vs IHSG (%). Positif = mengungguli pasar; negatif = tertinggal dari pasar.' },
+            { k: 'RSI', d: 'Relative Strength Index 0–100. >70 overbought (rawan koreksi), <30 oversold (jenuh jual), 50–70 momentum sehat.' },
+            { k: 'Dari High', d: 'Jarak harga dari puncak 52 minggu (%). Mendekati 0% = dekat puncak (tren kuat); sangat negatif = jauh di bawah puncak.' }
+          ]" :key="ind.k" class="flex gap-3 rounded-xl bg-slate-950/60 border border-slate-800 p-3">
+            <span class="shrink-0 font-bold text-emerald-400 text-xs w-20">{{ ind.k }}</span>
+            <span class="text-[11px] text-slate-400 leading-relaxed">{{ ind.d }}</span>
+          </div>
+        </div>
+        <div class="rounded-xl bg-sky-500/5 border border-sky-500/20 p-3 text-[11px] text-sky-200/80 leading-relaxed">
+          <span class="font-bold text-sky-300">Ingat:</span> semua dihitung dari data ≤ tanggal simulasi (tanpa lookahead) — inilah yang kamu lihat andai berada di masa itu.
+        </div>
+        <button @click="showIndicatorHelp = false" class="w-full px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-sm">Tutup</button>
+      </div>
+    </div>
 
     <!-- STEP 3: BASKET -->
     <section v-if="step === 'basket'" class="space-y-4">

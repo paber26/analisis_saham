@@ -11,7 +11,18 @@ interface AsOfRow {
   pctFromHigh: number; changePct: number;
 }
 interface PriceBar { date: string; open: number; high: number; low: number; close: number; volume: number }
-interface BasketItem { code: string; name: string; entryPrice: number; rating: string; weightPct: number; lots: number }
+interface BasketItem {
+  code: string;
+  name: string;
+  entryPrice: number;
+  rating: string;
+  score?: number | null;
+  rs3m?: number | null;
+  rsi?: number | null;
+  pctFromHigh?: number | null;
+  weightPct: number;
+  lots: number;
+}
 interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; lots: number; price: number; unrealizedPct: number; rating: string }
 
 // ---------------- Wizard state ----------------
@@ -99,7 +110,18 @@ const basket = ref<BasketItem[]>([]);
 function buildBasket() {
   const picks = screenRows.value.filter((r) => selected.has(r.code));
   const w = picks.length ? 100 / picks.length : 0;
-  basket.value = picks.map((r) => ({ code: r.code, name: r.name, entryPrice: r.price, rating: r.rating, weightPct: Math.round(w * 10) / 10, lots: 0 }));
+  basket.value = picks.map((r) => ({
+    code: r.code,
+    name: r.name,
+    entryPrice: r.price,
+    rating: r.rating,
+    score: r.score,
+    rs3m: r.rs3m,
+    rsi: r.rsi,
+    pctFromHigh: r.pctFromHigh,
+    weightPct: Math.round(w * 10) / 10,
+    lots: 0
+  }));
   recomputeLots();
   step.value = 'basket';
 }
@@ -222,7 +244,22 @@ onBeforeUnmount(pause);
 
 // ---------------- Decision gate ----------------
 const decisionOpen = ref(false);
-interface DecRow { code: string; name: string; price: number; avgPrice: number; plPct: number; lots: number; rating: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; avgDownLots: number }
+const decisionViewMode = ref<'cards' | 'table'>('cards');
+interface DecRow {
+  code: string;
+  name: string;
+  price: number;
+  avgPrice: number;
+  plPct: number;
+  lots: number;
+  rating: string;
+  score?: number | null;
+  rs3m?: number | null;
+  rsi?: number | null;
+  pctFromHigh?: number | null;
+  action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN';
+  avgDownLots: number;
+}
 const decisionRows = ref<DecRow[]>([]);
 
 function getRecommendedAvgDownLots(code: string, currentPrice: number) {
@@ -250,6 +287,10 @@ function openDecision() {
         plPct: (price / p.avgPrice - 1) * 100,
         lots: p.lots,
         rating: b.rating,
+        score: b.score,
+        rs3m: b.rs3m,
+        rsi: b.rsi,
+        pctFromHigh: b.pctFromHigh,
         action: 'HOLD' as const,
         avgDownLots: rec
       };
@@ -802,24 +843,32 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
 
     <!-- DECISION MODAL -->
     <div v-if="decisionOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
-      <div class="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <div class="flex items-start justify-between gap-4 pb-2 border-b border-slate-800">
+      <div class="w-full max-w-4xl rounded-2xl bg-slate-900 border border-slate-700 shadow-2xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div class="flex items-start justify-between gap-4 pb-3 border-b border-slate-800 flex-wrap">
           <div>
             <h3 class="text-lg font-bold text-slate-100 flex items-center gap-2">
               <span>🤔 Titik Keputusan</span>
               <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">{{ timeline[cursor] }}</span>
             </h3>
-            <p class="text-xs text-slate-400 mt-1">Pilih tindakan untuk masing-masing saham di portofolio kamu.</p>
+            <p class="text-xs text-slate-400 mt-1">Evaluasi indikator teknikal &amp; tentukan tindakan untuk setiap posisi portofolio kamu.</p>
           </div>
-          <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shrink-0">
-            <div class="text-[10px] text-slate-500 font-bold uppercase">Kas Tersedia</div>
-            <div class="text-sm font-extrabold text-emerald-400">{{ fmtIDR(cash) }}</div>
+          <div class="flex items-center gap-3">
+            <div class="flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800 text-[11px] font-bold">
+              <button @click="decisionViewMode = 'cards'" class="px-2.5 py-1 rounded-md transition-colors" :class="decisionViewMode === 'cards' ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'">🎴 Kartu</button>
+              <button @click="decisionViewMode = 'table'" class="px-2.5 py-1 rounded-md transition-colors" :class="decisionViewMode === 'table' ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:text-slate-300'">📊 Tabel</button>
+            </div>
+            <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shrink-0">
+              <div class="text-[10px] text-slate-500 font-bold uppercase">Kas Tersedia</div>
+              <div class="text-sm font-extrabold text-emerald-400">{{ fmtIDR(cash) }}</div>
+            </div>
           </div>
         </div>
 
-        <div class="space-y-3">
+        <!-- CARDS VIEW MODE -->
+        <div v-if="decisionViewMode === 'cards'" class="space-y-3">
           <div v-for="d in decisionRows" :key="d.code" class="rounded-xl bg-slate-950/60 border border-slate-800 p-4 space-y-3">
-            <div class="flex items-center justify-between">
+            <!-- Header row -->
+            <div class="flex items-center justify-between flex-wrap gap-2">
               <div>
                 <span class="font-extrabold text-slate-100 text-base">{{ d.code }}</span>
                 <span class="ml-2 px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(d.rating)">{{ d.rating }}</span>
@@ -831,6 +880,37 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
               </div>
             </div>
 
+            <!-- Technical Indicators Grid Bar -->
+            <div class="grid grid-cols-3 sm:grid-cols-6 gap-2 bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 text-center text-[11px] tabular-nums">
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Harga</div>
+                <div class="font-bold text-slate-100">{{ fmtIDR(d.price) }}</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Rating</div>
+                <div>
+                  <span class="px-1.5 py-0.5 rounded-full border text-[9px] font-bold" :class="ratingClass(d.rating)">{{ d.rating }}</span>
+                </div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Skor</div>
+                <div class="font-extrabold text-slate-200">{{ fmtNum(d.score, 0) }}</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">RS 3B</div>
+                <div class="font-bold" :class="(d.rs3m ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.rs3m) }}</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">RSI</div>
+                <div class="font-bold" :class="(d.rsi ?? 50) > 70 ? 'text-amber-400' : (d.rsi ?? 50) < 30 ? 'text-sky-400' : 'text-slate-200'">{{ fmtNum(d.rsi, 0) }}</div>
+              </div>
+              <div class="space-y-0.5">
+                <div class="text-[9px] text-slate-500 uppercase font-bold">Dari High</div>
+                <div class="font-bold text-slate-400">{{ fmtPct(d.pctFromHigh) }}</div>
+              </div>
+            </div>
+
+            <!-- Action Buttons -->
             <div class="grid grid-cols-3 gap-2">
               <button @click="d.action = 'HOLD'" class="px-2 py-2 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'HOLD' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'">Tahan</button>
               <button @click="d.action = 'SELL'" class="px-2 py-2 rounded-lg text-xs font-bold border transition-colors" :class="d.action === 'SELL' ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'">Jual</button>
@@ -887,6 +967,56 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
               </div>
             </div>
           </div>
+        </div>
+
+        <!-- TABLE VIEW MODE -->
+        <div v-else-if="decisionViewMode === 'table'" class="rounded-xl border border-slate-800 overflow-x-auto">
+          <table class="w-full text-xs">
+            <thead class="bg-slate-950 text-slate-400 uppercase text-[10px] tracking-wider">
+              <tr>
+                <th class="px-3 py-3 text-left">Kode</th>
+                <th class="px-3 py-3 text-right">Harga (P&amp;L)</th>
+                <th class="px-3 py-3 text-center">Rating</th>
+                <th class="px-3 py-3 text-right">Skor</th>
+                <th class="px-3 py-3 text-right">RS 3B</th>
+                <th class="px-3 py-3 text-right">RSI</th>
+                <th class="px-3 py-3 text-right">Dari High</th>
+                <th class="px-3 py-3 text-left">Holding</th>
+                <th class="px-3 py-3 text-center w-56">Tindakan</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/80 text-slate-300">
+              <tr v-for="d in decisionRows" :key="d.code" class="hover:bg-slate-950/40">
+                <td class="px-3 py-3 font-bold text-slate-100">{{ d.code }}</td>
+                <td class="px-3 py-3 text-right tabular-nums">
+                  <div class="text-slate-200 font-bold">{{ fmtIDR(d.price) }}</div>
+                  <div class="text-[10px]" :class="d.plPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.plPct) }}</div>
+                </td>
+                <td class="px-3 py-3 text-center">
+                  <span class="px-2 py-0.5 rounded-full border text-[10px] font-bold" :class="ratingClass(d.rating)">{{ d.rating }}</span>
+                </td>
+                <td class="px-3 py-3 text-right font-extrabold text-slate-200 tabular-nums">{{ fmtNum(d.score, 0) }}</td>
+                <td class="px-3 py-3 text-right tabular-nums font-bold" :class="(d.rs3m ?? 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.rs3m) }}</td>
+                <td class="px-3 py-3 text-right tabular-nums font-bold" :class="(d.rsi ?? 50) > 70 ? 'text-amber-400' : (d.rsi ?? 50) < 30 ? 'text-sky-400' : 'text-slate-200'">{{ fmtNum(d.rsi, 0) }}</td>
+                <td class="px-3 py-3 text-right tabular-nums text-slate-400 font-semibold">{{ fmtPct(d.pctFromHigh) }}</td>
+                <td class="px-3 py-3 text-left tabular-nums text-slate-400 text-[11px]">
+                  <div><strong class="text-slate-200">{{ d.lots }} lot</strong></div>
+                  <div class="text-[10px]">@ {{ fmtIDR(d.avgPrice) }}</div>
+                </td>
+                <td class="px-3 py-3">
+                  <div class="flex items-center justify-center gap-1">
+                    <button @click="d.action = 'HOLD'" class="px-2 py-1 rounded text-[10px] font-bold border" :class="d.action === 'HOLD' ? 'bg-emerald-500 text-slate-950 border-emerald-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Tahan</button>
+                    <button @click="d.action = 'SELL'" class="px-2 py-1 rounded text-[10px] font-bold border" :class="d.action === 'SELL' ? 'bg-rose-500 text-white border-rose-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Jual</button>
+                    <button @click="d.action = 'AVERAGE_DOWN'" class="px-2 py-1 rounded text-[10px] font-bold border" :class="d.action === 'AVERAGE_DOWN' ? 'bg-amber-500 text-slate-950 border-amber-500' : 'bg-slate-800 text-slate-300 border-slate-700'">Avg Down</button>
+                  </div>
+                  <div v-if="d.action === 'AVERAGE_DOWN'" class="mt-1.5 flex items-center justify-center gap-1 text-[10px]">
+                    <span class="text-amber-300 font-semibold">Lot:</span>
+                    <input v-model.number="d.avgDownLots" type="number" min="1" class="w-14 bg-slate-950 border border-amber-500/50 rounded px-1.5 py-0.5 text-right font-bold text-amber-200" />
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <button @click="applyDecisions" class="w-full px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-sm transition-colors shadow-lg shadow-emerald-500/20">

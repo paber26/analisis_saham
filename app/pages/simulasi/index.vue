@@ -85,6 +85,7 @@ const totalWeight = computed(() => basket.value.reduce((s, b) => s + b.weightPct
 
 // ---------------- Step 3 → 4: fetch prices + start playback ----------------
 const closesByCode = reactive<Record<string, number[]>>({}); // aligned to timeline
+const ihsgCloses = ref<number[]>([]);
 const timeline = ref<string[]>([]);
 const cursor = ref(0);
 const playing = ref(false);
@@ -105,6 +106,18 @@ function alignForwardFill(bars: PriceBar[], dates: string[]): number[] {
   return out;
 }
 
+function ihsgReturnPctAt(idx: number): number {
+  if (!ihsgCloses.value.length || idx < 0 || idx >= ihsgCloses.value.length) return 0;
+  const c0 = ihsgCloses.value[0];
+  const cIdx = ihsgCloses.value[idx];
+  if (!c0 || c0 <= 0) return 0;
+  return ((cIdx / c0) - 1) * 100;
+}
+
+function ihsgEquityAt(idx: number): number {
+  return initialCapital.value * (1 + ihsgReturnPctAt(idx) / 100);
+}
+
 async function startSimulation() {
   errorMsg.value = '';
   loadingPrices.value = true;
@@ -114,7 +127,7 @@ async function startSimulation() {
     end.setDate(end.getDate() + Math.ceil(horizonDays.value * 1.8) + 10); // enough calendar days for H trading days
     const to = end.toISOString().split('T')[0]!;
     const codes = basket.value.map((b) => b.code).join(',');
-    const res = await $fetch<{ series: { code: string; bars: PriceBar[] }[] }>('/api/sim/prices', { params: { codes, from, to } });
+    const res = await $fetch<{ series: { code: string; bars: PriceBar[] }[]; ihsgSeries?: { code: string; bars: PriceBar[] } }>('/api/sim/prices', { params: { codes, from, to } });
 
     // Union of trading dates >= start, then take first (horizon+1) as the window.
     const dateSet = new Set<string>();
@@ -124,6 +137,11 @@ async function startSimulation() {
     if (timeline.value.length < 2) { errorMsg.value = 'Data harga tidak cukup untuk periode ini.'; return; }
 
     for (const s of res.series) closesByCode[s.code] = alignForwardFill(s.bars, timeline.value);
+    if (res.ihsgSeries?.bars?.length) {
+      ihsgCloses.value = alignForwardFill(res.ihsgSeries.bars, timeline.value);
+    } else {
+      ihsgCloses.value = [];
+    }
 
     // Set entry prices to the actual first-bar close on the timeline, recompute lots.
     for (const b of basket.value) { const c0 = closesByCode[b.code]?.[0]; if (c0) b.entryPrice = c0; }
@@ -234,7 +252,16 @@ function applyDecisions() {
 }
 
 // ---------------- Finish → results + regression ----------------
-const result = ref<null | { finalValue: number; totalReturnPct: number; maxDrawdownPct: number; winRate: number; realizedPnl: number; perStock: { code: string; returnPct: number; contributionPct: number }[] }>(null);
+const result = ref<null | {
+  finalValue: number;
+  totalReturnPct: number;
+  ihsgReturnPct: number;
+  alphaPct: number;
+  maxDrawdownPct: number;
+  winRate: number;
+  realizedPnl: number;
+  perStock: { code: string; returnPct: number; contributionPct: number }[];
+}>(null);
 const regression = ref<any>(null);
 const loadingReg = ref(false);
 const savedId = ref('');
@@ -243,6 +270,9 @@ async function finish() {
   const lastIdx = timeline.value.length - 1;
   const finalValue = valueAt(lastIdx);
   const totalReturnPct = (finalValue / initialCapital.value - 1) * 100;
+  const ihsgReturnPct = ihsgReturnPctAt(lastIdx);
+  const alphaPct = totalReturnPct - ihsgReturnPct;
+
   let peak = -Infinity, maxDd = 0;
   for (const e of equityCurve.value) { peak = Math.max(peak, e.value); maxDd = Math.min(maxDd, (e.value / peak - 1) * 100); }
   const perStock = basket.value.map((b) => {
@@ -252,7 +282,16 @@ async function finish() {
     return { code: b.code, returnPct, contributionPct };
   });
   const winRate = perStock.length ? perStock.filter((s) => s.returnPct > 0).length / perStock.length * 100 : 0;
-  result.value = { finalValue, totalReturnPct, maxDrawdownPct: maxDd, winRate, realizedPnl: finalValue - initialCapital.value, perStock };
+  result.value = {
+    finalValue,
+    totalReturnPct,
+    ihsgReturnPct,
+    alphaPct,
+    maxDrawdownPct: maxDd,
+    winRate,
+    realizedPnl: finalValue - initialCapital.value,
+    perStock
+  };
   step.value = 'result';
   loadRegression();
 }
@@ -301,22 +340,27 @@ function reset() { pause(); step.value = 'setup'; screenRows.value = []; selecte
 
 // ---------------- Equity chart option ----------------
 const equityOption = computed(() => {
-  const data = equityCurve.value.map((e) => [e.date, Math.round(e.value)]);
+  const portData = equityCurve.value.map((e) => [e.date, Math.round(e.value)]);
+  const ihsgData = equityCurve.value.map((e, idx) => [e.date, Math.round(ihsgEquityAt(idx))]);
   const base = initialCapital.value;
   return {
-    grid: { left: 8, right: 12, top: 16, bottom: 24, containLabel: true },
+    grid: { left: 8, right: 12, top: 28, bottom: 24, containLabel: true },
+    legend: { data: ['Portofolio', 'IHSG Benchmark'], textStyle: { color: '#94a3b8', fontSize: 11 }, top: 0, right: 12 },
     tooltip: { trigger: 'axis', valueFormatter: (v: number) => fmtIDR(v) },
     xAxis: { type: 'category', data: equityCurve.value.map((e) => e.date), axisLabel: { color: '#64748b', fontSize: 10 }, axisLine: { lineStyle: { color: '#1e293b' } } },
     yAxis: { type: 'value', scale: true, axisLabel: { color: '#64748b', fontSize: 10, formatter: (v: number) => (v / 1e6).toFixed(0) + 'jt' }, splitLine: { lineStyle: { color: '#1e293b' } } },
     series: [
-      { type: 'line', data, showSymbol: false, smooth: true, lineStyle: { width: 2, color: '#34d399' }, areaStyle: { color: 'rgba(52,211,153,0.12)' } },
-      { type: 'line', data: equityCurve.value.map((e) => [e.date, base]), showSymbol: false, lineStyle: { width: 1, type: 'dashed', color: '#475569' } }
+      { name: 'Portofolio', type: 'line', data: portData, showSymbol: false, smooth: true, lineStyle: { width: 2.5, color: '#34d399' }, areaStyle: { color: 'rgba(52,211,153,0.12)' } },
+      { name: 'IHSG Benchmark', type: 'line', data: ihsgData, showSymbol: false, smooth: true, lineStyle: { width: 2, type: 'dashed', color: '#38bdf8' } },
+      { type: 'line', data: equityCurve.value.map((e) => [e.date, base]), showSymbol: false, lineStyle: { width: 1, type: 'dotted', color: '#475569' } }
     ]
   };
 });
 
 const currentValue = computed(() => equityCurve.value.at(-1)?.value ?? initialCapital.value);
 const currentReturnPct = computed(() => (currentValue.value / initialCapital.value - 1) * 100);
+const currentIhsgReturnPct = computed(() => ihsgReturnPctAt(cursor.value));
+const currentAlphaPct = computed(() => currentReturnPct.value - currentIhsgReturnPct.value);
 const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (timeline.value.length - 1)) * 100 : 0);
 </script>
 
@@ -405,13 +449,21 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
       <p v-if="!savedSessions.length" class="text-xs text-slate-500">Belum ada. Jalankan simulasi lalu tekan <span class="text-emerald-400 font-semibold">Simpan analisa</span> di akhir — sesi akan muncul di sini untuk kamu pelajari kembali.</p>
       <div v-else class="grid sm:grid-cols-2 gap-2">
         <button v-for="s in savedSessions" :key="s.id" @click="openReview(s.id)"
-          class="text-left rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 p-3 transition-colors">
+          class="text-left rounded-xl bg-slate-950/60 border border-slate-800 hover:border-emerald-500/40 p-3.5 transition-colors">
           <div class="flex items-center justify-between">
             <span class="font-bold text-slate-100 text-sm">📅 {{ s.startDate }}</span>
-            <span v-if="s.totalReturnPct != null" class="text-sm font-bold tabular-nums" :class="s.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.totalReturnPct) }}</span>
+            <div class="flex items-center gap-2">
+              <span v-if="s.totalReturnPct != null" class="text-sm font-bold tabular-nums" :class="s.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(s.totalReturnPct) }}</span>
+              <span v-if="s.alphaPct != null" class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="s.alphaPct >= 0 ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-rose-500/10 text-rose-400 border-rose-500/20'">
+                {{ s.alphaPct >= 0 ? '🚀 +' : '🔻 ' }}{{ fmtNum(s.alphaPct, 1) }}% vs IHSG
+              </span>
+            </div>
           </div>
-          <div class="text-[11px] text-slate-400 mt-1 truncate">{{ s.picks.join(' · ') }}</div>
-          <div class="text-[10px] text-slate-600 mt-1">horizon {{ s.horizonDays }} hari bursa · {{ s.status }} · tinjau →</div>
+          <div class="text-[11px] text-slate-400 mt-1.5 truncate">{{ s.picks.join(' · ') }}</div>
+          <div class="text-[10px] text-slate-600 mt-1 flex items-center justify-between">
+            <span>horizon {{ s.horizonDays }} hari bursa · {{ s.status }}</span>
+            <span class="text-emerald-400 font-semibold">tinjau →</span>
+          </div>
         </button>
       </div>
     </section>
@@ -488,12 +540,23 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
     <section v-if="step === 'play'" class="space-y-4">
       <div class="grid lg:grid-cols-3 gap-4">
         <div class="lg:col-span-2 rounded-2xl bg-slate-900/60 border border-slate-800 p-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
             <div>
               <div class="text-[11px] text-slate-500 uppercase font-bold">Nilai Portofolio · {{ timeline[cursor] }}</div>
               <div class="text-2xl font-extrabold" :class="currentReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtIDR(currentValue) }} <span class="text-sm">({{ fmtPct(currentReturnPct) }})</span></div>
             </div>
-            <div class="text-right text-[11px] text-slate-500">Hari {{ cursor }} / {{ timeline.length - 1 }}</div>
+            <div class="flex items-center gap-2.5">
+              <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5">
+                <div class="text-[10px] text-slate-500 font-bold uppercase">Benchmark IHSG</div>
+                <div class="text-xs font-bold text-sky-400">{{ fmtPct(currentIhsgReturnPct) }}</div>
+              </div>
+              <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5">
+                <div class="text-[10px] text-slate-500 font-bold uppercase">Alpha vs IHSG</div>
+                <div class="text-xs font-extrabold" :class="currentAlphaPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ currentAlphaPct >= 0 ? '🚀 +' : '🔻 ' }}{{ fmtNum(currentAlphaPct, 1) }}%
+                </div>
+              </div>
+            </div>
           </div>
           <div class="h-64"><VChart :option="equityOption" class="w-full h-full" autoresize /></div>
           <!-- Progress + controls -->
@@ -622,9 +685,55 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
     <!-- STEP 5: RESULT -->
     <section v-if="step === 'result' && result" class="space-y-5">
       <h2 class="text-lg font-bold text-slate-100">5 · Hasil &amp; Pembelajaran</h2>
+
+      <!-- Benchmark Comparison Card -->
+      <div class="rounded-2xl p-5 border overflow-hidden relative" :class="result.alphaPct >= 0 ? 'bg-emerald-500/[0.08] border-emerald-500/30' : 'bg-rose-500/[0.08] border-rose-500/30'">
+        <div class="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="text-xl">{{ result.alphaPct >= 0 ? '🚀' : '🔻' }}</span>
+              <h3 class="text-base font-extrabold" :class="result.alphaPct >= 0 ? 'text-emerald-300' : 'text-rose-300'">
+                {{ result.alphaPct >= 0 ? 'TERBUKTI MENGALAHKAN IHSG!' : 'DI BAWAH BENCHMARK IHSG' }}
+              </h3>
+            </div>
+            <p class="text-xs text-slate-300 mt-1 max-w-xl leading-relaxed">
+              <template v-if="result.alphaPct >= 0">
+                Strategi kamu terbukti mengalahkan IHSG sebesar <strong class="text-emerald-400 font-bold">+{{ fmtNum(result.alphaPct, 1) }}%</strong>!
+                <template v-if="result.totalReturnPct < 0">
+                  Meskipun portofolio bernilai minus, penurunannya jauh lebih terkendali dibanding pasar IHSG yang turun lebih dalam.
+                </template>
+                <template v-else>
+                  Portofolio kamu berhasil memaksimalkan tren naik melebihi kenaikan indeks pasar.
+                </template>
+              </template>
+              <template v-else>
+                Portofolio kamu tertinggal <strong class="text-rose-400 font-bold">{{ fmtNum(result.alphaPct, 1) }}%</strong> di bawah performa IHSG pada periode ini.
+              </template>
+            </p>
+          </div>
+
+          <div class="flex items-center gap-4 bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 shrink-0">
+            <div>
+              <div class="text-[10px] text-slate-500 font-bold uppercase">Portofolio Kamu</div>
+              <div class="text-lg font-black" :class="result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(result.totalReturnPct) }}</div>
+            </div>
+            <div class="text-slate-600 font-extrabold text-lg">vs</div>
+            <div>
+              <div class="text-[10px] text-slate-500 font-bold uppercase">IHSG Index</div>
+              <div class="text-lg font-black text-sky-400">{{ fmtPct(result.ihsgReturnPct) }}</div>
+            </div>
+            <div class="pl-3 border-l border-slate-800">
+              <div class="text-[10px] text-slate-500 font-bold uppercase">Keunggulan (Alpha)</div>
+              <div class="text-lg font-black" :class="result.alphaPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ result.alphaPct >= 0 ? '+' : '' }}{{ fmtNum(result.alphaPct, 1) }}%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Metrics -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Total</div><div class="text-xl font-extrabold" :class="result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(result.totalReturnPct) }}</div></div>
+      <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Portofolio</div><div class="text-xl font-extrabold" :class="result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(result.totalReturnPct) }}</div></div>
+        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Benchmark IHSG</div><div class="text-xl font-extrabold text-sky-400">{{ fmtPct(result.ihsgReturnPct) }}</div></div>
         <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Nilai Akhir</div><div class="text-xl font-extrabold text-slate-100">{{ fmtIDR(result.finalValue) }}</div></div>
         <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(result.maxDrawdownPct) }}</div></div>
         <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(result.winRate, 0) }}%</div></div>
@@ -695,11 +804,26 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
         <button @click="reset" class="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-300">← Kembali ke daftar</button>
       </div>
 
-      <div v-if="reviewData.result" class="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Total</div><div class="text-xl font-extrabold" :class="reviewData.result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(reviewData.result.totalReturnPct) }}</div></div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Nilai Akhir</div><div class="text-xl font-extrabold text-slate-100">{{ fmtIDR(reviewData.result.finalValue) }}</div></div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(reviewData.result.maxDrawdownPct) }}</div></div>
-        <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(reviewData.result.winRate, 0) }}%</div></div>
+      <div v-if="reviewData.result" class="space-y-4">
+        <div v-if="reviewData.result.alphaPct != null" class="rounded-2xl p-4 border flex items-center justify-between flex-wrap gap-3" :class="reviewData.result.alphaPct >= 0 ? 'bg-emerald-500/[0.08] border-emerald-500/30' : 'bg-rose-500/[0.08] border-rose-500/30'">
+          <div class="flex items-center gap-2">
+            <span class="text-base">{{ reviewData.result.alphaPct >= 0 ? '🚀' : '🔻' }}</span>
+            <span class="font-extrabold text-sm" :class="reviewData.result.alphaPct >= 0 ? 'text-emerald-300' : 'text-rose-300'">
+              {{ reviewData.result.alphaPct >= 0 ? 'MENGALAHKAN BENCHMARK IHSG' : 'DI BAWAH BENCHMARK IHSG' }}
+            </span>
+          </div>
+          <div class="text-xs font-bold" :class="reviewData.result.alphaPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+            Alpha: {{ reviewData.result.alphaPct >= 0 ? '+' : '' }}{{ fmtNum(reviewData.result.alphaPct, 1) }}% vs IHSG
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Return Total</div><div class="text-xl font-extrabold" :class="reviewData.result.totalReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(reviewData.result.totalReturnPct) }}</div></div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Benchmark IHSG</div><div class="text-xl font-extrabold text-sky-400">{{ fmtPct(reviewData.result.ihsgReturnPct ?? null) }}</div></div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Nilai Akhir</div><div class="text-xl font-extrabold text-slate-100">{{ fmtIDR(reviewData.result.finalValue) }}</div></div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(reviewData.result.maxDrawdownPct) }}</div></div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(reviewData.result.winRate, 0) }}%</div></div>
+        </div>
       </div>
 
       <div class="grid lg:grid-cols-2 gap-4">

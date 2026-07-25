@@ -34,6 +34,8 @@ export interface SimResult {
   endDate: string;
   finalValue: number;
   totalReturnPct: number;
+  ihsgReturnPct?: number | null;
+  alphaPct?: number | null;
   maxDrawdownPct: number;
   winRate: number;
   realizedPnl: number;
@@ -62,6 +64,8 @@ export interface SimSummary {
   status: SimSession['status'];
   picks: string[];
   totalReturnPct: number | null;
+  ihsgReturnPct?: number | null;
+  alphaPct?: number | null;
 }
 
 const DIR = path.join(process.env.DATA_STORE_DIR || './.data-store', 'simulations');
@@ -75,7 +79,9 @@ function summarize(s: SimSession): SimSummary {
     horizonDays: s.horizonDays,
     status: s.status,
     picks: s.picks.map((p) => p.code),
-    totalReturnPct: s.result?.totalReturnPct ?? null
+    totalReturnPct: s.result?.totalReturnPct ?? null,
+    ihsgReturnPct: s.result?.ihsgReturnPct ?? null,
+    alphaPct: s.result?.alphaPct ?? (s.result && s.result.totalReturnPct != null && s.result.ihsgReturnPct != null ? s.result.totalReturnPct - s.result.ihsgReturnPct : null)
   };
 }
 

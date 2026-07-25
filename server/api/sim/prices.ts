@@ -7,7 +7,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export interface PriceBar { date: string; open: number; high: number; low: number; close: number; volume: number }
 export interface PriceSeries { code: string; bars: PriceBar[] }
-interface PricesResponse { from: string; to: string; series: PriceSeries[] }
+export interface PricesResponse { from: string; to: string; series: PriceSeries[]; ihsgSeries: PriceSeries }
 
 // OHLC series per stock over [from, to] for the playback animation. The server
 // legitimately holds the "future" here — the client only reveals it bar-by-bar
@@ -43,6 +43,9 @@ export default defineEventHandler(async (event): Promise<PricesResponse> => {
   if (!codes.length) {
     throw createError({ statusCode: 400, statusMessage: 'codes wajib diisi' });
   }
-  const series = await Promise.all(codes.map((c) => cachedSeries(c, from, to)));
-  return { from, to, series };
+  const [series, ihsgSeries] = await Promise.all([
+    Promise.all(codes.map((c) => cachedSeries(c, from, to))),
+    cachedSeries('^JKSE', from, to)
+  ]);
+  return { from, to, series, ihsgSeries };
 });

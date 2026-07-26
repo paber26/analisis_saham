@@ -1,4 +1,5 @@
 <script setup lang="ts">
+definePageMeta({ layout: 'simulasi' });
 useHead({
   title: 'Arsitektur — Simulasi Mesin Waktu Reksa Dana | Saham IDX',
   meta: [{ name: 'description', content: 'Cetak biru arsitektur fitur simulasi reksa dana masa lampau: screening point-in-time, playback harga, keputusan hold/jual/average-down, regresi linear berganda, dan pembelajaran meta dari kinerja masa lampau.' }]

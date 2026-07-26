@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, onBeforeUnmount, onMounted } from 'vue';
 
+definePageMeta({ layout: 'simulasi' });
 useHead({ title: 'Simulasi Mesin Waktu — Reksa Dana Masa Lampau | Saham IDX' });
 
 // ---------------- Types (mirror server contracts) ----------------

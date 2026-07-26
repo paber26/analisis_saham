@@ -356,7 +356,15 @@ const decisionViewMode = ref<'cards' | 'table'>('cards');
 const decisionTab = ref<'positions' | 'buy_new'>('positions');
 const midScreenRows = ref<AsOfRow[]>([]);
 const loadingMidScreen = ref(false);
-const newStockBuyLots = reactive<Record<string, number>>({});
+// Buy new stocks by NOMINAL (Rp): the system fits the maximum whole lots that
+// the nominal buys, capped by available cash.
+const newStockBuyNominal = reactive<Record<string, number>>({});
+function lotsFromNominal(r: AsOfRow): number {
+  const lotPrice = r.price * 100;
+  const byNominal = Math.floor((Number(newStockBuyNominal[r.code]) || 0) / lotPrice);
+  const byCash = Math.floor(cash.value / lotPrice);
+  return Math.max(0, Math.min(byNominal, byCash));
+}
 
 interface DecRow {
   code: string;
@@ -391,11 +399,11 @@ async function fetchMidScreening(dateStr: string) {
     const res = await $fetch<{ results: AsOfRow[] }>('/api/sim/screen', { params: { date: dateStr, limit: 30 } });
     midScreenRows.value = res.results;
     for (const r of res.results) {
-      if (!newStockBuyLots[r.code]) {
+      if (!newStockBuyNominal[r.code]) {
         const lotPrice = r.price * 100;
         const maxAffordable = Math.floor(cash.value / lotPrice);
         const defaultLots = Math.min(5, Math.max(1, Math.floor(maxAffordable / 3)));
-        newStockBuyLots[r.code] = defaultLots > 0 ? defaultLots : 1;
+        newStockBuyNominal[r.code] = defaultLots * lotPrice; // nominal awal ≈ beberapa lot
       }
     }
   } catch {
@@ -406,12 +414,12 @@ async function fetchMidScreening(dateStr: string) {
 }
 
 async function buyNewStockMidSim(r: AsOfRow) {
-  const requestedLots = Math.max(1, Number(newStockBuyLots[r.code]) || 1);
-  const cost = requestedLots * 100 * r.price;
-  if (cash.value < cost) {
-    notify(`Kas tidak mencukupi untuk membeli ${requestedLots} lot ${r.code}. Sisa kas: ${fmtIDR(cash.value)}`, 'error');
+  const requestedLots = lotsFromNominal(r);
+  if (requestedLots < 1) {
+    notify(`Nominal terlalu kecil / kas tak cukup untuk 1 lot ${r.code} (${fmtIDR(r.price * 100)}/lot). Sisa kas: ${fmtIDR(cash.value)}`, 'error');
     return;
   }
+  const cost = requestedLots * 100 * r.price;
 
   // Ensure price series for new symbol is loaded
   if (!closesByCode[r.code] || !closesByCode[r.code]?.length) {
@@ -1220,7 +1228,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           <!-- Regime-aware cut-loss suggestion (from entry-date Kondisi Pasar) -->
           <div v-if="regimeInfo" class="w-full flex items-center justify-between gap-2 pt-2 mt-1 border-t border-slate-800/70 flex-wrap">
             <span class="text-[11px]">
-              <span class="font-bold" :class="regimeTextClass">{{ regimeEmoji }} Rezim saat masuk: {{ regimeInfo.label }}</span>
+              <span class="font-bold" :class="regimeTextClass">{{ regimeEmoji }} Fase pasar saat masuk: {{ regimeInfo.label }}</span>
               <span class="text-slate-500"> · saran <b>{{ regimeInfo.cutloss }}</b> → jual otomatis bila rugi &lt; {{ regimeInfo.threshold }}%</span>
             </span>
             <button @click="applySuggestions" class="px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 text-[11px] font-bold hover:bg-cyan-500/25 transition-colors shrink-0">✨ Terapkan saran</button>
@@ -1473,7 +1481,7 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
                   <th @click="sortBy('pctFromHigh')" class="px-3 py-3 text-right cursor-pointer hover:text-emerald-400 transition-colors">
                     Dari High <span v-if="sortKey === 'pctFromHigh'" class="text-emerald-400 font-bold">{{ sortOrder === 'desc' ? '↓' : '↑' }}</span><span v-else class="text-slate-600">↕</span>
                   </th>
-                  <th class="px-3 py-3 text-center w-32">Beli (Lot)</th>
+                  <th class="px-3 py-3 text-center w-36">Beli (Rp Nominal)</th>
                   <th class="px-3 py-3 text-center">Aksi</th>
                 </tr>
               </thead>
@@ -1492,18 +1500,25 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
                   <td class="px-3 py-2.5 text-right tabular-nums font-bold" :class="(r.rsi ?? 50) > 70 ? 'text-amber-400' : (r.rsi ?? 50) < 30 ? 'text-sky-400' : 'text-slate-200'">{{ fmtNum(r.rsi, 0) }}</td>
                   <td class="px-3 py-2.5 text-right tabular-nums text-slate-400 font-semibold">{{ fmtPct(r.pctFromHigh) }}</td>
                   <td class="px-3 py-2.5 text-center">
-                    <input
-                      v-model.number="newStockBuyLots[r.code]"
-                      type="number"
-                      min="1"
-                      :max="Math.max(1, Math.floor(cash / (r.price * 100)))"
-                      class="w-16 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-right font-bold text-slate-100"
-                    />
+                    <div class="flex items-center justify-center gap-1">
+                      <span class="text-[11px] text-slate-500">Rp</span>
+                      <input
+                        v-model.number="newStockBuyNominal[r.code]"
+                        type="number"
+                        min="0"
+                        step="100000"
+                        class="w-24 bg-slate-950 border border-slate-700 rounded px-2 py-1 text-right font-bold text-slate-100"
+                      />
+                      <button type="button" @click="newStockBuyNominal[r.code] = cash" title="Pakai semua kas" class="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-bold">Max</button>
+                    </div>
+                    <div class="text-[10px] mt-0.5" :class="lotsFromNominal(r) >= 1 ? 'text-emerald-400' : 'text-rose-400'">
+                      ≈ {{ lotsFromNominal(r) }} lot · {{ fmtIDR(lotsFromNominal(r) * 100 * r.price) }}
+                    </div>
                   </td>
                   <td class="px-3 py-2.5 text-center">
                     <button
                       @click="buyNewStockMidSim(r)"
-                      :disabled="cash < (newStockBuyLots[r.code] || 1) * 100 * r.price"
+                      :disabled="lotsFromNominal(r) < 1"
                       class="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 font-bold text-xs transition-colors"
                     >
                       + Beli

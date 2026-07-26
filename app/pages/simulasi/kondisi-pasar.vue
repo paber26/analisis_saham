@@ -149,7 +149,7 @@ const chartOption = computed(() => {
 
       <!-- CTA -->
       <div class="rounded-2xl bg-cyan-500/5 border border-cyan-500/20 p-5 flex items-center justify-between flex-wrap gap-3">
-        <p class="text-sm text-slate-300">Pakai konteks rezim ini untuk menyusun keranjang pada tanggal yang sama.</p>
+        <p class="text-sm text-slate-300">Pakai konteks fase pasar ini untuk menyusun keranjang pada tanggal yang sama.</p>
         <NuxtLink to="/simulasi" class="px-4 py-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-sm transition-colors">▶ Mulai Simulasi tanggal ini</NuxtLink>
       </div>
     </template>

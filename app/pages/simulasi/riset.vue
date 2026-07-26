@@ -68,7 +68,7 @@ const freqOption = computed(() => ({
 
     <!-- Chart 1: regime × threshold -->
     <div class="rounded-2xl bg-slate-900/60 border border-slate-800 p-5">
-      <div class="text-sm font-bold text-slate-100">Return rata-rata per ambang cut-loss, dipisah rezim pasar</div>
+      <div class="text-sm font-bold text-slate-100">Return rata-rata per ambang cut-loss, dipisah fase pasar</div>
       <p class="text-[11px] text-slate-500 mb-2">Terlihat pola menyilang: di Bull makin longgar makin baik; di Bear makin ketat makin baik.</p>
       <div class="h-80"><VChart :option="regimeOption" class="w-full h-full" autoresize /></div>
     </div>
@@ -84,15 +84,15 @@ const freqOption = computed(() => ({
     <div class="rounded-2xl bg-cyan-500/5 border border-cyan-500/20 p-5">
       <div class="text-sm font-bold text-cyan-300 mb-2">🎯 Aturan main yang direkomendasikan</div>
       <ul class="text-xs text-slate-300 space-y-1.5 list-disc pl-5">
-        <li><b>Deteksi rezim dulu</b> (lihat halaman Kondisi Pasar) — ini pengungkit terbesar, bukan angka stop-nya.</li>
+        <li><b>Deteksi fase pasar dulu</b> (lihat halaman Kondisi Pasar) — ini pengungkit terbesar, bukan angka stop-nya.</li>
         <li><b>Bull:</b> stop longgar −12% s/d trailing 12–15%, biarkan pemenang jalan.</li>
         <li><b>Bear:</b> stop ketat −5% atau trailing 8%, prioritaskan jaga modal.</li>
         <li><b>Sideways:</b> moderat −8%; seleksi saham lebih menentukan daripada stop.</li>
         <li><b>Hindari</b> average down membabi-buta pada saham yang sedang koreksi (pola merugikan terkuat).</li>
       </ul>
-      <NuxtLink to="/simulasi/kondisi-pasar" class="inline-block mt-3 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-colors">🐂🐻 Cek rezim tanggalku →</NuxtLink>
+      <NuxtLink to="/simulasi/kondisi-pasar" class="inline-block mt-3 px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition-colors">🐂🐻 Cek fase pasar tanggalku →</NuxtLink>
     </div>
 
-    <p class="text-[11px] text-slate-600">Catatan: hasil indikatif dari ~40–70 skenario/uji (bukan riset final), belum memodelkan slippage & aturan beli-ulang. Rezim diklasifikasi dari arah IHSG.</p>
+    <p class="text-[11px] text-slate-600">Catatan: hasil indikatif dari ~40–70 skenario/uji (bukan riset final), belum memodelkan slippage & aturan beli-ulang. Fase pasar diklasifikasi dari arah IHSG.</p>
   </div>
 </template>

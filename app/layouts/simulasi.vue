@@ -38,7 +38,7 @@
             <!-- Selected date context (global) -->
             <div class="mx-1 p-3 rounded-xl bg-slate-900/70 border border-cyan-500/15">
               <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">Tanggal Simulasi Aktif</div>
-              <input v-model="simDate" type="date" :max="today" class="w-full bg-slate-950 border border-cyan-500/20 rounded-lg px-2 py-1.5 text-xs text-cyan-200" />
+              <input v-model="simDate" type="date" :max="today" @click="openPicker" class="w-full bg-slate-950 border border-cyan-500/20 rounded-lg px-2 py-1.5 text-xs text-cyan-200 cursor-pointer [color-scheme:dark]" />
               <NuxtLink to="/simulasi/kondisi-pasar" class="mt-2 block text-center text-[11px] font-bold text-cyan-300 hover:text-cyan-200">Lihat kondisi pasar →</NuxtLink>
             </div>
 
@@ -116,11 +116,13 @@ const isMobileOpen = ref(false);
 
 const simDate = useSimDate();
 const today = new Date().toISOString().split('T')[0]!;
+const openPicker = (e: MouseEvent) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch { /* unsupported */ } };
 
 const nav = [
   { to: '/simulasi', icon: '🕰️', label: 'Simulasi Mesin Waktu', active: () => route.path === '/simulasi' },
   { to: '/simulasi/kondisi-pasar', icon: '🐂', label: 'Kondisi Pasar (Bull/Bear)', active: () => route.path.startsWith('/simulasi/kondisi-pasar') },
   { to: '/simulasi/riwayat', icon: '📚', label: 'Bank Pembelajaran', active: () => route.path.startsWith('/simulasi/riwayat') },
+  { to: '/simulasi/riset', icon: '📊', label: 'Riset & Temuan', active: () => route.path.startsWith('/simulasi/riset') },
   { to: '/simulasi/panduan', icon: '📘', label: 'Panduan Cara Kerja', active: () => route.path.startsWith('/simulasi/panduan') }
 ];
 

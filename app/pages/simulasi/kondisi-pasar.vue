@@ -14,6 +14,7 @@ interface RegimeResponse {
 
 const date = useSimDate();
 const today = new Date().toISOString().split('T')[0]!;
+const openPicker = (e: MouseEvent) => { try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch { /* unsupported */ } };
 const { data: reg, pending, error } = await useFetch<RegimeResponse>('/api/sim/regime', { query: { date }, watch: [date] });
 
 const fmtNum = (n: number | null | undefined, d = 1) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -54,7 +55,7 @@ const chartOption = computed(() => {
         </div>
         <label class="block">
           <span class="text-[11px] font-bold text-slate-500 uppercase">Tanggal simulasi</span>
-          <input v-model="date" type="date" :max="today" class="mt-1 block bg-slate-950 border border-cyan-500/20 rounded-lg px-3 py-2 text-sm text-slate-100" />
+          <input v-model="date" type="date" :max="today" @click="openPicker" class="mt-1 block bg-slate-950 border border-cyan-500/20 rounded-lg px-3 py-2 text-sm text-slate-100 cursor-pointer [color-scheme:dark]" />
         </label>
       </div>
     </div>

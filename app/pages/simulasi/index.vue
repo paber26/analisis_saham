@@ -261,6 +261,28 @@ function ihsgEquityAt(idx: number): number {
   return initialCapital.value * (1 + ihsgReturnPctAt(idx) / 100);
 }
 
+// Regime-aware cut-loss suggestion (from Kondisi Pasar of the entry date).
+const regimeInfo = ref<null | { regime: string; label: string; cutloss: string; threshold: number; note: string }>(null);
+async function loadRegime() {
+  try {
+    const r = await $fetch<any>('/api/sim/regime', { params: { date: startDate.value } });
+    const threshold = r.regime === 'bull' ? -12 : r.regime === 'bear' ? -5 : -8;
+    regimeInfo.value = { regime: r.regime, label: r.label, cutloss: r.stance.cutloss, threshold, note: r.stance.note };
+  } catch { regimeInfo.value = null; }
+}
+const regimeBadgeClass = computed(() => {
+  const r = regimeInfo.value?.regime;
+  return r === 'bull' ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30'
+    : r === 'bear' ? 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+    : 'bg-amber-500/10 text-amber-300 border-amber-500/30';
+});
+const regimeEmoji = computed(() => (regimeInfo.value?.regime === 'bull' ? '🐂' : regimeInfo.value?.regime === 'bear' ? '🐻' : '➡️'));
+const regimeTextClass = computed(() => (regimeInfo.value?.regime === 'bull' ? 'text-emerald-300' : regimeInfo.value?.regime === 'bear' ? 'text-rose-300' : 'text-amber-300'));
+function suggestedAction(plPct: number): 'HOLD' | 'SELL' {
+  return regimeInfo.value && plPct < regimeInfo.value.threshold ? 'SELL' : 'HOLD';
+}
+function applySuggestions() { for (const d of decisionRows.value) d.action = suggestedAction(d.plPct); }
+
 async function startSimulation() {
   errorMsg.value = '';
   loadingPrices.value = true;
@@ -298,6 +320,7 @@ async function startSimulation() {
     decisions.value = [];
     cursor.value = 0;
     equityCurve.value = [{ date: timeline.value[0]!, value: valueAt(0) }];
+    loadRegime();
     step.value = 'play';
   } catch (e: any) {
     errorMsg.value = e?.data?.statusMessage || e?.message || 'Gagal memuat harga';
@@ -1126,6 +1149,11 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
             </div>
           </div>
           <div class="h-64"><VChart :option="equityOption" class="w-full h-full" autoresize /></div>
+          <!-- Regime-aware stop guidance -->
+          <div v-if="regimeInfo" class="mt-3 flex items-center gap-2 flex-wrap text-[11px] rounded-xl border px-3 py-2" :class="regimeBadgeClass">
+            <span class="font-bold">{{ regimeEmoji }} {{ regimeInfo.label }}</span>
+            <span class="opacity-80">· saran cut-loss: <b>{{ regimeInfo.cutloss }}</b> (jual bila rugi &lt; {{ regimeInfo.threshold }}%)</span>
+          </div>
           <!-- Progress + controls -->
           <div class="mt-3 h-1.5 rounded-full bg-slate-800 overflow-hidden"><div class="h-full bg-emerald-500 transition-all" :style="{ width: progressPct + '%' }"></div></div>
           <div class="flex items-center gap-2 mt-3">
@@ -1188,6 +1216,14 @@ const progressPct = computed(() => timeline.value.length > 1 ? (cursor.value / (
           </div>
           <div class="text-[11px] text-slate-400">
             Holding Aktif: <strong class="text-slate-200 font-bold">{{ decisionRows.length }} saham</strong>
+          </div>
+          <!-- Regime-aware cut-loss suggestion (from entry-date Kondisi Pasar) -->
+          <div v-if="regimeInfo" class="w-full flex items-center justify-between gap-2 pt-2 mt-1 border-t border-slate-800/70 flex-wrap">
+            <span class="text-[11px]">
+              <span class="font-bold" :class="regimeTextClass">{{ regimeEmoji }} Rezim saat masuk: {{ regimeInfo.label }}</span>
+              <span class="text-slate-500"> · saran <b>{{ regimeInfo.cutloss }}</b> → jual otomatis bila rugi &lt; {{ regimeInfo.threshold }}%</span>
+            </span>
+            <button @click="applySuggestions" class="px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-300 border border-cyan-500/25 text-[11px] font-bold hover:bg-cyan-500/25 transition-colors shrink-0">✨ Terapkan saran</button>
           </div>
         </div>
 

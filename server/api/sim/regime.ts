@@ -21,6 +21,7 @@ export interface RegimeResponse {
   label: string;
   confidence: number;      // 0..100 heuristic
   stance: { cutloss: string; note: string };
+  action: { verdict: string; tone: 'emerald' | 'rose' | 'amber'; detail: string; allocation: string };
   series: RegimePoint[];   // last ~130 bars up to T, for charting
 }
 
@@ -82,6 +83,13 @@ const cached = defineCachedFunction(
       ? { cutloss: 'Ketat (−5% atau trailing 8%)', note: 'Tren turun — prioritaskan jaga modal; memotong rugi dini terbukti unggul (alpha positif).' }
       : { cutloss: 'Moderat (−8%)', note: 'Pasar menyamping paling menyulitkan stop; waspada whipsaw, seleksi saham lebih penting.' };
 
+    // Market-timing verdict: worth entering, be selective, or step aside to cash.
+    const action = regime === 'bull'
+      ? { verdict: 'LAYAK MASUK', tone: 'emerald' as const, detail: 'Tren naik & struktur MA positif — akumulasi bertahap boleh lebih agresif; ikuti tren.', allocation: '80–100% saham' }
+      : regime === 'bear'
+      ? { verdict: 'KELUAR / TUNGGU DI KAS', tone: 'rose' as const, detail: 'Tren turun — kurangi eksposur, prioritaskan kas, dan tunggu konfirmasi pembalikan sebelum masuk lagi.', allocation: '0–30% saham (banyak kas)' }
+      : { verdict: 'MASUK SELEKTIF', tone: 'amber' as const, detail: 'Pasar menyamping — hanya saham terkuat, posisi lebih kecil, siap cut-loss cepat bila salah arah.', allocation: '30–60% saham' };
+
     const ma20s = smaSeries(closes, 20), ma50s = smaSeries(closes, 50);
     const tail = 130;
     const start = Math.max(0, upto.length - tail);
@@ -92,7 +100,7 @@ const cached = defineCachedFunction(
       date, price, changePct: tech.changePct, score: tech.score, rating: tech.rating,
       sma20: tech.sma20, sma50: tech.sma50, sma200: tech.sma200, rsi: tech.rsi, adx: tech.adx,
       pctFromHigh: tech.pctFromHigh, ret1m, ret3m, ret6m, aboveMa50, ma50AboveMa200,
-      regime, label, confidence, stance, series
+      regime, label, confidence, stance, action, series
     };
   },
   { maxAge: 60 * 60 * 24 * 30, swr: true, name: 'sim-regime', getKey: (date: string) => `${date}:${shortHash('jkse')}:${tradingDay()}` }

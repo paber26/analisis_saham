@@ -9,7 +9,9 @@ interface RegimeResponse {
   sma20: number | null; sma50: number | null; sma200: number | null; rsi: number | null; adx: number | null;
   pctFromHigh: number; ret1m: number | null; ret3m: number | null; ret6m: number | null;
   aboveMa50: boolean; ma50AboveMa200: boolean; regime: 'bull' | 'bear' | 'sideways'; label: string;
-  confidence: number; stance: { cutloss: string; note: string }; series: RegimePoint[];
+  confidence: number; stance: { cutloss: string; note: string };
+  action: { verdict: string; tone: 'emerald' | 'rose' | 'amber'; detail: string; allocation: string };
+  series: RegimePoint[];
 }
 
 const date = useSimDate();
@@ -25,6 +27,13 @@ const regimeTheme = computed(() => {
   if (r === 'bull') return { bg: 'from-emerald-500/15 to-emerald-500/5', border: 'border-emerald-500/30', text: 'text-emerald-300', accent: 'text-emerald-400', emoji: '🐂', line: '#34d399' };
   if (r === 'bear') return { bg: 'from-rose-500/15 to-rose-500/5', border: 'border-rose-500/30', text: 'text-rose-300', accent: 'text-rose-400', emoji: '🐻', line: '#fb7185' };
   return { bg: 'from-amber-500/15 to-amber-500/5', border: 'border-amber-500/30', text: 'text-amber-300', accent: 'text-amber-400', emoji: '➡️', line: '#fbbf24' };
+});
+
+const actionTheme = computed(() => {
+  const t = reg.value?.action?.tone;
+  if (t === 'emerald') return { bg: 'bg-emerald-500/10', border: 'border-emerald-500/30', text: 'text-emerald-300', emoji: '🟢' };
+  if (t === 'rose') return { bg: 'bg-rose-500/10', border: 'border-rose-500/30', text: 'text-rose-300', emoji: '🔴' };
+  return { bg: 'bg-amber-500/10', border: 'border-amber-500/30', text: 'text-amber-300', emoji: '🟡' };
 });
 
 const chartOption = computed(() => {
@@ -80,6 +89,24 @@ const chartOption = computed(() => {
           </div>
         </div>
         <p class="text-xs text-slate-300/80 mt-3 leading-relaxed">{{ reg.stance.note }}</p>
+      </div>
+
+      <!-- Market-timing verdict: masuk / selektif / keluar -->
+      <div v-if="reg.action" class="rounded-2xl p-5 border" :class="[actionTheme.bg, actionTheme.border]">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+          <div class="flex items-center gap-3">
+            <span class="text-3xl">{{ actionTheme.emoji }}</span>
+            <div>
+              <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Rekomendasi Aksi Pasar</div>
+              <div class="text-xl font-black" :class="actionTheme.text">{{ reg.action.verdict }}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[10px] text-slate-400 uppercase font-bold tracking-wide">Saran alokasi</div>
+            <div class="text-sm font-extrabold text-slate-100">{{ reg.action.allocation }}</div>
+          </div>
+        </div>
+        <p class="text-xs text-slate-300/80 mt-2.5 leading-relaxed">{{ reg.action.detail }}</p>
       </div>
 
       <!-- Signals grid -->

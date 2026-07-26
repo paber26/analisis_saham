@@ -33,7 +33,7 @@ const step = ref<Step>('setup');
 const yearsAgoDate = (y: number) => { const d = new Date(); d.setFullYear(d.getFullYear() - y); return d.toISOString().split('T')[0]!; };
 const monthsAgoDate = (m: number) => { const d = new Date(); d.setMonth(d.getMonth() - m); return d.toISOString().split('T')[0]!; };
 
-const startDate = ref(yearsAgoDate(1));
+const startDate = useSimDate(); // shared across the whole Simulasi Lab
 const startDateInput = ref<HTMLInputElement | null>(null);
 const horizonDays = ref(30);
 const decisionEveryDays = ref(5);
@@ -720,7 +720,13 @@ async function deleteSavedSession(id: string) {
   }
 }
 
-onMounted(() => { loadSavedSessions(); loadInsights(); });
+const route = useRoute();
+onMounted(() => {
+  loadSavedSessions();
+  loadInsights();
+  const rid = route.query.review;
+  if (rid) openReview(String(rid));
+});
 
 function reset() { pause(); step.value = 'setup'; screenRows.value = []; selected.clear(); basket.value = []; result.value = null; regression.value = null; savedId.value = ''; reviewData.value = null; }
 

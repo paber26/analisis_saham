@@ -26,19 +26,20 @@
             <div class="space-y-1">
               <div class="px-3 text-[10px] font-bold text-cyan-300/60 uppercase tracking-wider mb-1.5">Ruang Kerja</div>
               <NuxtLink
-                to="/simulasi" @click="isMobileOpen = false"
+                v-for="l in nav" :key="l.to"
+                :to="l.to" @click="isMobileOpen = false"
                 class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all"
-                :class="[route.path === '/simulasi' ? 'bg-cyan-500/15 text-cyan-200 border border-cyan-500/25' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :class="[l.active() ? 'bg-cyan-500/15 text-cyan-200 border border-cyan-500/25' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
               >
-                <span>🕰️</span> <span class="truncate">Simulasi Mesin Waktu</span>
+                <span>{{ l.icon }}</span> <span class="truncate">{{ l.label }}</span>
               </NuxtLink>
-              <NuxtLink
-                to="/simulasi/panduan" @click="isMobileOpen = false"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all"
-                :class="[route.path.startsWith('/simulasi/panduan') ? 'bg-cyan-500/15 text-cyan-200 border border-cyan-500/25' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
-              >
-                <span>📘</span> <span class="truncate">Panduan Cara Kerja</span>
-              </NuxtLink>
+            </div>
+
+            <!-- Selected date context (global) -->
+            <div class="mx-1 p-3 rounded-xl bg-slate-900/70 border border-cyan-500/15">
+              <div class="text-[10px] text-slate-500 font-bold uppercase mb-1">Tanggal Simulasi Aktif</div>
+              <input v-model="simDate" type="date" :max="today" class="w-full bg-slate-950 border border-cyan-500/20 rounded-lg px-2 py-1.5 text-xs text-cyan-200" />
+              <NuxtLink to="/simulasi/kondisi-pasar" class="mt-2 block text-center text-[11px] font-bold text-cyan-300 hover:text-cyan-200">Lihat kondisi pasar →</NuxtLink>
             </div>
 
             <!-- Panduan quick anchors -->
@@ -87,8 +88,8 @@
             </div>
           </div>
           <div class="flex items-center gap-2">
-            <span class="hidden sm:flex items-center gap-2 text-[11px] bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-xl text-slate-400">
-              <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span> Mode Simulasi
+            <span class="hidden sm:flex items-center gap-2 text-[11px] bg-cyan-500/10 border border-cyan-500/20 px-3 py-1.5 rounded-xl text-cyan-300 font-bold">
+              📅 {{ simDate }}
             </span>
             <NuxtLink to="/screening" class="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 hover:text-emerald-300 hover:border-emerald-500/30 text-xs font-bold transition-all">
               ← Analisis
@@ -113,6 +114,16 @@ import { ref, computed } from 'vue';
 const route = useRoute();
 const isMobileOpen = ref(false);
 
+const simDate = useSimDate();
+const today = new Date().toISOString().split('T')[0]!;
+
+const nav = [
+  { to: '/simulasi', icon: '🕰️', label: 'Simulasi Mesin Waktu', active: () => route.path === '/simulasi' },
+  { to: '/simulasi/kondisi-pasar', icon: '🐂', label: 'Kondisi Pasar (Bull/Bear)', active: () => route.path.startsWith('/simulasi/kondisi-pasar') },
+  { to: '/simulasi/riwayat', icon: '📚', label: 'Bank Pembelajaran', active: () => route.path.startsWith('/simulasi/riwayat') },
+  { to: '/simulasi/panduan', icon: '📘', label: 'Panduan Cara Kerja', active: () => route.path.startsWith('/simulasi/panduan') }
+];
+
 const anchors = [
   { id: 'konsep', label: '1. Konsep & Tujuan' },
   { id: 'alur', label: '2. Alur Pengguna' },
@@ -123,7 +134,7 @@ const anchors = [
   { id: 'caveat', label: '10. Isu Metodologis' }
 ];
 
-const pageLabel = computed(() => (route.path.startsWith('/simulasi/panduan') ? 'Panduan Cara Kerja' : 'Mesin Waktu'));
+const pageLabel = computed(() => nav.find((l) => l.active())?.label ?? 'Mesin Waktu');
 
 // Live learning-bank stats (best-effort; deduped by Nuxt).
 const { data: sessions } = await useFetch<{ count: number }>('/api/sim/sessions', { default: () => ({ count: 0 }) });

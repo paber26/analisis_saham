@@ -1,11 +1,12 @@
-// File-based persistence for time-machine simulation sessions.
-// Each session is one JSON file under .data-store/simulations/<id>.json, plus a
-// lightweight index.json of summaries for fast listing. Single-user, no DB —
-// same idiom as store.ts / learningStore.ts (safe for Mac→Linux deploy).
+// Persistence for time-machine simulation sessions.
+// Dual-mode persistence:
+// 1. Primary: Vercel Postgres / Neon Postgres ('simulations' table) when POSTGRES_URL is set.
+// 2. Secondary/Fallback: Local file store under .data-store/simulations/<id>.json
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { RegressionResult } from './regression';
+import { getSql, ensureTablesExist } from './postgres';
 
 export type SimAction = 'HOLD' | 'SELL' | 'AVERAGE_DOWN' | 'BUY';
 
@@ -85,18 +86,21 @@ function summarize(s: SimSession): SimSummary {
   };
 }
 
-async function readIndex(): Promise<SimSummary[]> {
+async function readIndexLocal(): Promise<SimSummary[]> {
   try {
     return JSON.parse(await fs.readFile(INDEX, 'utf-8')) as SimSummary[];
   } catch {
     return [];
   }
 }
-async function writeIndex(list: SimSummary[]): Promise<void> {
-  await fs.mkdir(DIR, { recursive: true });
-  const tmp = INDEX + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify(list), 'utf-8');
-  await fs.rename(tmp, INDEX);
+
+async function writeIndexLocal(list: SimSummary[]): Promise<void> {
+  try {
+    await fs.mkdir(DIR, { recursive: true });
+    const tmp = INDEX + '.tmp';
+    await fs.writeFile(tmp, JSON.stringify(list), 'utf-8');
+    await fs.rename(tmp, INDEX);
+  } catch { /* ignore local file errors in serverless */ }
 }
 
 export function newSimId(): string {
@@ -104,19 +108,54 @@ export function newSimId(): string {
 }
 
 export async function saveSession(session: SimSession): Promise<void> {
-  await fs.mkdir(DIR, { recursive: true });
-  const file = path.join(DIR, `${session.id}.json`);
-  const tmp = file + '.tmp';
-  await fs.writeFile(tmp, JSON.stringify(session), 'utf-8');
-  await fs.rename(tmp, file);
+  const sql = getSql();
+  if (sql) {
+    try {
+      await ensureTablesExist();
+      const payload = JSON.stringify(session);
+      await sql`
+        INSERT INTO simulations (id, data)
+        VALUES (${session.id}, ${payload}::jsonb)
+        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data;
+      `;
+      console.log(`[simStore] Saved session ${session.id} to Postgres.`);
+    } catch (err) {
+      console.warn(`[simStore] Failed to save session ${session.id} to Postgres:`, (err as Error).message);
+    }
+  }
 
-  const list = await readIndex();
-  const next = list.filter((s) => s.id !== session.id);
-  next.unshift(summarize(session));
-  await writeIndex(next);
+  // Mirror to local disk if writable
+  try {
+    await fs.mkdir(DIR, { recursive: true });
+    const file = path.join(DIR, `${session.id}.json`);
+    const tmp = file + '.tmp';
+    await fs.writeFile(tmp, JSON.stringify(session), 'utf-8');
+    await fs.rename(tmp, file);
+
+    const list = await readIndexLocal();
+    const next = list.filter((s) => s.id !== session.id);
+    next.unshift(summarize(session));
+    await writeIndexLocal(next);
+  } catch { /* ignore file write errors in read-only serverless */ }
 }
 
 export async function loadSession(id: string): Promise<SimSession | null> {
+  const sql = getSql();
+  if (sql) {
+    try {
+      await ensureTablesExist();
+      const rows = await sql<{ data: SimSession }[]>`
+        SELECT data FROM simulations WHERE id = ${id} LIMIT 1;
+      `;
+      if (rows.length > 0 && rows[0]?.data) {
+        return rows[0].data;
+      }
+    } catch (err) {
+      console.warn(`[simStore] Failed to load session ${id} from Postgres, trying local file fallback:`, (err as Error).message);
+    }
+  }
+
+  // Fallback to local file store
   try {
     return JSON.parse(await fs.readFile(path.join(DIR, `${id}.json`), 'utf-8')) as SimSession;
   } catch {
@@ -125,11 +164,37 @@ export async function loadSession(id: string): Promise<SimSession | null> {
 }
 
 export async function listSessions(): Promise<SimSummary[]> {
-  return readIndex();
+  const sql = getSql();
+  if (sql) {
+    try {
+      await ensureTablesExist();
+      const rows = await sql<{ data: SimSession }[]>`
+        SELECT data FROM simulations ORDER BY created_at DESC;
+      `;
+      return rows.map((r) => summarize(r.data));
+    } catch (err) {
+      console.warn('[simStore] Failed to list sessions from Postgres, trying local index fallback:', (err as Error).message);
+    }
+  }
+
+  return readIndexLocal();
 }
 
 export async function loadAllSessions(): Promise<SimSession[]> {
-  const list = await readIndex();
+  const sql = getSql();
+  if (sql) {
+    try {
+      await ensureTablesExist();
+      const rows = await sql<{ data: SimSession }[]>`
+        SELECT data FROM simulations ORDER BY created_at DESC;
+      `;
+      return rows.map((r) => r.data);
+    } catch (err) {
+      console.warn('[simStore] Failed to load all sessions from Postgres, trying local fallback:', (err as Error).message);
+    }
+  }
+
+  const list = await readIndexLocal();
   const out: SimSession[] = [];
   for (const s of list) {
     const full = await loadSession(s.id);
@@ -139,7 +204,22 @@ export async function loadAllSessions(): Promise<SimSession[]> {
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  try { await fs.unlink(path.join(DIR, `${id}.json`)); } catch { /* ignore */ }
-  const list = await readIndex();
-  await writeIndex(list.filter((s) => s.id !== id));
+  const sql = getSql();
+  if (sql) {
+    try {
+      await ensureTablesExist();
+      await sql`
+        DELETE FROM simulations WHERE id = ${id};
+      `;
+      console.log(`[simStore] Deleted session ${id} from Postgres.`);
+    } catch (err) {
+      console.warn(`[simStore] Failed to delete session ${id} from Postgres:`, (err as Error).message);
+    }
+  }
+
+  try {
+    await fs.unlink(path.join(DIR, `${id}.json`));
+  } catch { /* ignore */ }
+  const list = await readIndexLocal();
+  await writeIndexLocal(list.filter((s) => s.id !== id));
 }

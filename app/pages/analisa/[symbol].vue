@@ -144,6 +144,28 @@ const SIGNAL_TONE: Record<string, string> = {
 };
 const isUptrend = computed(() => t.value && t.value.sma200 != null && t.value.price > t.value.sma200);
 
+const TRADE_ACTION_META: Record<string, { label: string; cls: string }> = {
+  beli: { label: 'Beli', cls: 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' },
+  tahan: { label: 'Tahan', cls: 'text-amber-300 bg-amber-500/10 border-amber-500/30' },
+  'ambil-untung': { label: 'Ambil Untung', cls: 'text-orange-300 bg-orange-500/10 border-orange-500/30' },
+  'cut-loss': { label: 'Cut-Loss', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' },
+  hindari: { label: 'Hindari', cls: 'text-rose-300 bg-rose-500/10 border-rose-500/30' }
+};
+const tradeAction = computed(() => {
+  const tr = t.value?.trade;
+  if (!tr) return null;
+  return { ...(TRADE_ACTION_META[tr.action] || TRADE_ACTION_META.tahan!), ...tr };
+});
+const tradeOddsMeta = computed(() => {
+  const o = fc.value?.tradeOdds;
+  if (!o) return null;
+  return {
+    ...o,
+    edgeCls: o.edge === 'positif' ? 'text-emerald-300' : o.edge === 'negatif' ? 'text-rose-300' : 'text-slate-300',
+    edgeLabel: o.edge === 'positif' ? 'Ekspektasi positif' : o.edge === 'negatif' ? 'Ekspektasi negatif' : 'Ekspektasi netral'
+  };
+});
+
 // ---- Position sizing calculator ----
 const modal = ref(10_000_000);
 const riskPct = ref(1);
@@ -389,6 +411,7 @@ const verdict = computed(() => {
                   :title="token ? (watchlisted ? 'Hapus dari watchlist' : 'Tambah ke watchlist') : 'Buka watchlist untuk menyimpan'"
                   @click="toggleStar">{{ watchlisted ? '★' : '☆' }}</button>
                 <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="ratingClass(t.rating)">{{ t.rating }} · {{ t.score }}/100</span>
+                <span v-if="tradeAction" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="tradeAction.cls">{{ tradeAction.label }}</span>
                 <span v-if="verdict" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="verdict.cls">{{ verdict.label }}</span>
                 <span v-if="rsChip" class="text-[10px] font-bold px-2.5 py-1 rounded-full border" :class="rsChip.cls"
                   title="Relative strength 3 bulan vs IHSG">{{ rsChip.label }}</span>
@@ -421,6 +444,30 @@ const verdict = computed(() => {
             <NuxtLink :to="`/seasonal?symbol=${an.code}`" class="text-emerald-400 hover:text-emerald-300 font-semibold">→ Pola musiman lengkap</NuxtLink>
             <NuxtLink :to="`/forecast?symbol=${an.code}`" class="text-emerald-400 hover:text-emerald-300 font-semibold">→ Forecast lengkap</NuxtLink>
             <NuxtLink :to="`/profil-saham?symbol=${an.code}`" class="text-emerald-400 hover:text-emerald-300 font-semibold">→ Profil emiten</NuxtLink>
+          </div>
+        </section>
+
+        <!-- Explicit trade signal (entry / exit when) -->
+        <section v-if="tradeAction" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h4 class="text-sm font-bold text-slate-100">Sinyal Trade — Kapan Entry & Exit</h4>
+            <span class="text-[11px] font-bold px-3 py-1 rounded-full border" :class="tradeAction.cls">{{ tradeAction.label }} · keyakinan {{ tradeAction.conviction }}/3</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
+              <p class="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide mb-1.5">Kapan Entry</p>
+              <p class="text-xs text-slate-300 leading-relaxed">{{ tradeAction.entryAdvice }}</p>
+            </div>
+            <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
+              <p class="text-[10px] font-semibold text-rose-400 uppercase tracking-wide mb-1.5">Kapan Exit</p>
+              <p class="text-xs text-slate-300 leading-relaxed">{{ tradeAction.exitAdvice }}</p>
+            </div>
+          </div>
+          <div v-if="tradeOddsMeta" class="mt-3 flex flex-wrap gap-x-6 gap-y-1.5 text-[11px] items-center">
+            <span class="text-slate-400">Odds {{ fc?.horizon ?? 14 }} hari:</span>
+            <span class="text-slate-300">P kena stop (−{{ tradeOddsMeta.stopPct }}%) = <strong class="text-rose-300">{{ tradeOddsMeta.probDownToStop }}%</strong></span>
+            <span class="text-slate-300">P capai target (+{{ tradeOddsMeta.targetPct }}%) = <strong class="text-emerald-300">{{ tradeOddsMeta.probUpToTarget }}%</strong></span>
+            <span class="font-semibold" :class="tradeOddsMeta.edgeCls">{{ tradeOddsMeta.edgeLabel }}</span>
           </div>
         </section>
 

@@ -1,6 +1,6 @@
 <template>
   <div class="min-h-screen bg-slate-950 text-slate-50 font-sans flex flex-col antialiased selection:bg-emerald-500/30 selection:text-emerald-200">
-    <div class="flex flex-1 relative min-h-screen overflow-x-hidden">
+    <div class="flex flex-1 relative min-h-screen overflow-x-clip">
       <!-- Mobile Backdrop Overlay -->
       <div
         v-if="isMobileOpen"
@@ -322,7 +322,7 @@
           </main>
           <aside
             v-if="showRail"
-            class="hidden lg:block w-[300px] xl:w-[340px] shrink-0 sticky top-16 h-[calc(100vh-4rem)] border-l border-slate-900 bg-slate-950/60 overflow-hidden"
+            class="hidden lg:block w-[300px] xl:w-[340px] shrink-0 sticky top-16 h-[calc(100vh-4rem)] border-l border-slate-900 bg-slate-950/85 backdrop-blur-md shadow-[-12px_0_32px_-16px_rgba(0,0,0,0.8)] overflow-hidden z-20"
           >
             <ScreenRail />
           </aside>

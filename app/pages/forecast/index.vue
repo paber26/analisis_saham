@@ -92,6 +92,16 @@ const rangeEnd = computed(() => {
   return fc && fc.length ? fc[fc.length - 1] : null;
 });
 
+const tradeOddsView = computed(() => {
+  const o = data.value?.tradeOdds;
+  if (!o) return null;
+  return {
+    ...o,
+    edgeCls: o.edge === 'positif' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : o.edge === 'negatif' ? 'text-rose-300 bg-rose-500/10 border-rose-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700',
+    edgeLabel: o.edge === 'positif' ? 'Ekspektasi positif' : o.edge === 'negatif' ? 'Ekspektasi negatif' : 'Ekspektasi netral'
+  };
+});
+
 // ---- Chart ----
 const chartOption = computed(() => {
   const d = data.value;
@@ -241,6 +251,30 @@ const chartOption = computed(() => {
           </div>
         </section>
 
+        <!-- Entry / exit odds -->
+        <section v-if="data?.tradeOdds" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h3 class="text-sm font-bold text-slate-100">Peluang Entry & Exit ({{ data.horizon }} hari)</h3>
+            <span class="text-[11px] font-bold px-3 py-1 rounded-full border" :class="data.tradeOdds.edge === 'positif' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : data.tradeOdds.edge === 'negatif' ? 'text-rose-300 bg-rose-500/10 border-rose-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">{{ data.tradeOdds.edge === 'positif' ? 'Ekspektasi positif' : data.tradeOdds.edge === 'negatif' ? 'Ekspektasi negatif' : 'Ekspektasi netral' }}</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
+              <p class="text-[10px] text-rose-400 uppercase tracking-wide">P kena stop −{{ data.tradeOdds.stopPct }}%</p>
+              <p class="text-2xl font-extrabold text-rose-300 mt-1">{{ data.tradeOdds.probDownToStop }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
+            </div>
+            <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
+              <p class="text-[10px] text-emerald-400 uppercase tracking-wide">P capai target +{{ data.tradeOdds.targetPct }}%</p>
+              <p class="text-2xl font-extrabold text-emerald-300 mt-1">{{ data.tradeOdds.probUpToTarget }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
+              <p class="text-[10px] text-slate-400 uppercase tracking-wide">Cara baca</p>
+              <p class="text-[11px] text-slate-300 leading-relaxed mt-1">Jika P(kena stop) jauh lebih besar dari P(target), hindari entri baru / kecilkan posisi.</p>
+            </div>
+          </div>
+        </section>
+
         <!-- Chart -->
         <section class="glow-card rounded-2xl p-4">
           <div class="w-full h-[440px]">
@@ -264,7 +298,7 @@ const chartOption = computed(() => {
               <p>
                 Stabilitas arah per fold:
                 <span v-for="(f, i) in data.foldStability" :key="i" class="ml-1 text-slate-200 font-semibold">
-                  {{ f.dirAcc ?? '—' }}%<span v-if="i < data.foldStability.length - 1" class="text-slate-600"> /</span>
+                  {{ f.dirAcc ?? '—' }}%<span v-if="Number(i) < data.foldStability.length - 1" class="text-slate-600"> /</span>
                 </span>
               </p>
             </div>

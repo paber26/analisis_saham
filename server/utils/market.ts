@@ -17,6 +17,16 @@ export interface Breadth {
   strongTrend: number; // ADX >= 25
   regime: 'risk-on' | 'netral' | 'risk-off';
   regimeScore: number; // 0-100
+  /**
+   * Entry/exit guidance tied to the regime (Indonesian).
+   * - positionSizePct: suggested max % of capital per new entry
+   * - entryBias: 'agresif' | 'selektif' | 'defensif'
+   */
+  guidance: {
+    positionSizePct: number;
+    entryBias: 'agresif' | 'selektif' | 'defensif';
+    advice: string;
+  };
 }
 
 export interface SectorStat {
@@ -76,10 +86,16 @@ export function computeBreadth(rows: ScreenRow[]): Breadth {
   const regimeScore = Math.round(aboveMA200Pct * 0.6 + advShare * 0.2 + rsiComponent * 0.2);
   const regime: Breadth['regime'] = regimeScore >= 60 ? 'risk-on' : regimeScore <= 40 ? 'risk-off' : 'netral';
 
+  const guidance: Breadth['guidance'] = regime === 'risk-on'
+    ? { positionSizePct: 2, entryBias: 'agresif', advice: 'Breadth kuat — momentum mendukung. Entry baru boleh dengan ukuran normal (maks 2% modal per posisi) dan stop lebih lebar (2-3×ATR).' }
+    : regime === 'risk-off'
+      ? { positionSizePct: 0.5, entryBias: 'defensif', advice: 'Breadth lemah — mayoritas di bawah MA200. Hindari entry baru; jika terpaksa ukuran sangat kecil (maks 0,5% modal) & stop ketat. Prioritaskan cash.' }
+      : { positionSizePct: 1, entryBias: 'selektif', advice: 'Pasar campuran — pilih saham selektif (skor tinggi + di atas MA200). Ukuran posisi sedang: maks 1% modal per posisi.' };
+
   return {
     total, aboveMA200, aboveMA200Pct, aboveMA50Pct,
     advancers, decliners, avgRsi, newHigh52, newLow52, strongTrend,
-    regime, regimeScore
+    regime, regimeScore, guidance
   };
 }
 

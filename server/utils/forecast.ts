@@ -44,6 +44,14 @@ export interface ForecastResult {
     hitRate: number | null;          // ensemble dirAcc on test
   };
   vol: { dailyPct: number; annualPct: number; regime: 'rendah' | 'normal' | 'tinggi' };
+  /** Entry/exit probabilities over the horizon (drift + EWMA vol). */
+  tradeOdds: {
+    stopPct: number;
+    targetPct: number;
+    probDownToStop: number;
+    probUpToTarget: number;
+    edge: 'positif' | 'negatif' | 'netral';
+  };
   trainSize: number;
   testSize: number;
   horizon: number;
@@ -555,6 +563,18 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
   const ratio = sigMed > 0 ? sigmaNow / sigMed : 1;
   const regime: 'rendah' | 'normal' | 'tinggi' = ratio < 0.85 ? 'rendah' : ratio > 1.25 ? 'tinggi' : 'normal';
 
+  // ----- Entry/exit probabilities over horizon -----
+  // Drift-adjusted lognormal probabilities (uses mu1 & sigmaNow above).
+  const stopPct = round(2 * sigmaNow * 100, 2);   // ≈2σ below
+  const targetPct = round(3 * sigmaNow * 100, 2); // ≈3σ above
+  const muH = mu1 * horizon;
+  const sigmaH = sigmaNow * Math.sqrt(horizon);
+  const probDownToStop = sigmaH > 0 ? round(Phi((Math.log(1 - stopPct / 100) - muH) / sigmaH) * 100, 1) : 50;
+  const probUpToTarget = sigmaH > 0 ? round(Phi((Math.log(1 + targetPct / 100) - muH) / sigmaH) * 100, 1) : 50;
+  const edge: 'positif' | 'negatif' | 'netral' =
+    probUpToTarget - probDownToStop >= 10 ? 'positif' :
+      probDownToStop - probUpToTarget >= 10 ? 'negatif' : 'netral';
+
   // ----- Chart series (test window) -----
   const winStart = Math.max(0, n - Math.max(180, testTargets.length));
   const series: SeriesPoint[] = [];
@@ -593,6 +613,13 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
       dailyPct: round(sigmaNow * 100, 2),
       annualPct: round(sigmaNow * Math.sqrt(252) * 100, 1),
       regime
+    },
+    tradeOdds: {
+      stopPct,
+      targetPct,
+      probDownToStop,
+      probUpToTarget,
+      edge
     },
     trainSize: folds[0]!.ts,
     testSize: testTargets.length,

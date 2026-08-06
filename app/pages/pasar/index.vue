@@ -65,6 +65,20 @@ const pct = (n: number | null | undefined) => (n == null ? '—' : n + '%');
       </div>
 
       <template v-else-if="breadth">
+        <!-- Regime guidance (position sizing / entry bias) -->
+        <section v-if="breadth.guidance" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <h3 class="text-sm font-bold text-slate-100">Panduan Entry / Exit Berdasarkan Regime</h3>
+              <p class="text-[11px] text-slate-400 mt-1 leading-relaxed max-w-2xl">{{ breadth.guidance.advice }}</p>
+            </div>
+            <div class="flex gap-3 text-[11px] font-bold">
+              <span class="px-3 py-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/10 text-emerald-300">Maks posisi: {{ breadth.guidance.positionSizePct }}% modal</span>
+              <span class="px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-900 text-slate-300">Bias: {{ breadth.guidance.entryBias }}</span>
+            </div>
+          </div>
+        </section>
+
         <!-- Regime hero -->
         <section class="rounded-2xl border p-6" :class="regimeMeta.cls">
           <div class="flex flex-wrap items-center justify-between gap-4">

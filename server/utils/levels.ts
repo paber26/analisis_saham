@@ -6,6 +6,16 @@ import type { DailyBar } from './yahoo';
 
 export interface LevelCluster { price: number; touches: number }
 
+export interface TradePlan {
+  entry: number;
+  stop: number;
+  target: number;
+  rr: number;
+  regime: 'breakout' | 'pullback' | 'range';
+  stopPct: number;   // % drop from entry to stop
+  targetPct: number; // % gain from entry to target
+}
+
 export interface Levels {
   pivot: { p: number; r1: number; r2: number; s1: number; s2: number };
   supports: LevelCluster[];     // nearest below price, strongest-first ordering by proximity
@@ -13,10 +23,11 @@ export interface Levels {
   fib: { low52: number; high52: number; l382: number; l500: number; l618: number };
   atr: number;
   atrPct: number;
-  plan: { entry: number; stop: number; target: number; rr: number };
+  plan: TradePlan;
 }
 
 const roundPrice = (v: number) => (v >= 100 ? Math.round(v) : Math.round(v * 100) / 100);
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 function atr14(bars: DailyBar[]): number {
   const n = bars.length;
@@ -55,6 +66,15 @@ function cluster(levels: number[], tol: number): LevelCluster[] {
   }
   out.push({ price: roundPrice(cur.sum / cur.count), touches: cur.count });
   return out;
+}
+
+/** 20-day simple moving average at the last bar (for pullback detection). */
+function sma20At(bars: DailyBar[]): number | null {
+  const n = bars.length;
+  if (n < 20) return null;
+  let s = 0;
+  for (let i = n - 20; i < n; i++) s += bars[i]!.close;
+  return s / 20;
 }
 
 export function computeLevels(bars: DailyBar[]): Levels | null {
@@ -120,9 +140,38 @@ export function computeLevels(bars: DailyBar[]): Levels | null {
     l618: roundPrice(high52 - 0.618 * span)
   };
 
-  // ATR-based plan: stop 2×ATR below, target 3×ATR above → R:R 1.5
-  const stop = Math.max(price - 2 * atr, 0);
-  const target = price + 3 * atr;
+  // ---- ADAPTIVE trade plan ----
+  const sma20 = sma20At(bars);
+  // Baseline: stop 2×ATR below, target 3×ATR above (R:R 1.5).
+  const rawStop = price - 2 * atr;
+  const rawTarget = price + 3 * atr;
+
+  // Improve stop: use the strongest real support below price when it's
+  // BETWEEN the raw stop and price (tighter, more mechanical stop).
+  const nearestSupport = supports.find((s) => s.price > rawStop && s.price < price * 0.999);
+  const stop = nearestSupport ? Math.max(nearestSupport.price, 0) : Math.max(rawStop, 0);
+
+  // Improve target: use the nearest real resistance above price when it's
+  // BELOW the raw target (realistic, closer target instead of hoping for 3×ATR).
+  const nearestResistance = resistances.find((r) => r.price < rawTarget && r.price > price * 1.001);
+  const target = nearestResistance ? nearestResistance.price : rawTarget;
+
+  // Entry regime classification (informational for the UI):
+  // - breakout: price near/at resistance (needs close above to trigger)
+  // - pullback: price near/at support (buy the dip at a known level)
+  // - range: no clear signal (mid-channel)
+  const atrPct = (atr / price) * 100;
+  const distToSupportAtr = nearestSupport ? (price - nearestSupport.price) / atr : 2.5;
+  const distToResAtr = nearestResistance ? (nearestResistance.price - price) / atr : 2.5;
+  const belowSma20 = sma20 != null && price < sma20;
+  const regime: TradePlan['regime'] =
+    distToResAtr <= 0.4 ? 'breakout' :
+      (distToSupportAtr <= 0.75 || belowSma20) ? 'pullback' : 'range';
+
+  // R:R — computed from the refined levels
+  const riskPerShare = stop > 0 && stop < price ? price - stop : 2 * atr;
+  const rewardPerShare = Math.max(target - price, 0);
+  const rr = riskPerShare > 0 ? round2(rewardPerShare / riskPerShare) : 0;
 
   return {
     pivot,
@@ -130,7 +179,15 @@ export function computeLevels(bars: DailyBar[]): Levels | null {
     resistances,
     fib,
     atr: roundPrice(atr),
-    atrPct: Math.round((atr / price) * 10000) / 100,
-    plan: { entry: roundPrice(price), stop: roundPrice(stop), target: roundPrice(target), rr: 1.5 }
+    atrPct: Math.round(atrPct * 100) / 100,
+    plan: {
+      entry: roundPrice(price),
+      stop: roundPrice(stop),
+      target: roundPrice(target),
+      rr,
+      regime,
+      stopPct: Math.round(((price - stop) / price) * 10000) / 100,
+      targetPct: Math.round(((target - price) / price) * 10000) / 100
+    }
   };
 }

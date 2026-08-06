@@ -75,6 +75,18 @@ export async function setWatchlist(codes: string[]): Promise<void> {
   await writeJson('watchlist.json', clean);
 }
 
+// ---- Skips ("kurang menarik") ----
+// Codes the user has flagged as "not interesting" so they stop appearing in
+// the right-rail screening list and the daily digest. Personal single-user data
+// like watchlist, stored as a plain string[] JSON file.
+export async function getSkips(): Promise<string[]> {
+  return readJson<string[]>('skips.json', []);
+}
+export async function setSkips(codes: string[]): Promise<void> {
+  const clean = Array.from(new Set(codes.map((c) => c.toUpperCase().trim()).filter(Boolean)));
+  await writeJson('skips.json', clean);
+}
+
 // ---- Portfolio ----
 export interface Holding {
   symbol: string;   // display code, e.g. 'BBCA'

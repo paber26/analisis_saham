@@ -6,18 +6,25 @@ import { ref, computed } from 'vue';
 // the current view (analisa/saham/forecast/seasonal/profil-saham).
 const route = useRoute();
 const { isWatchlisted, toggleWatchlist, codes: watchlistCodes } = useWatchlist();
+const { isSkipped, toggleSkip, codes: skipCodes } = useSkips();
 
 const { data } = await useFetch<any>(() => '/api/screen', { key: 'screen' });
 const rows = computed<any[]>(() => data.value?.results || []);
 
 const search = ref('');
-const sortBy = ref<'score' | 'qvm' | 'watchlist'>('score');
+const sortBy = ref<'score' | 'qvm' | 'watchlist' | 'skip'>('score');
 
 const filtered = computed(() => {
   const q = search.value.trim().toUpperCase();
   let r = rows.value;
   if (sortBy.value === 'watchlist') {
     r = r.filter((x) => isWatchlisted(x.code));
+  } else if (sortBy.value === 'skip') {
+    r = r.filter((x) => isSkipped(x.code));
+  } else {
+    // Hide "kurang menarik" stocks from the default list so the user does not
+    // keep re-checking them. They can switch to the Skip tab to review/unskip.
+    r = r.filter((x) => !isSkipped(x.code));
   }
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
   if (sortBy.value === 'qvm') r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
@@ -88,6 +95,13 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
         >
           <span>⭐</span> Watchlist <span class="text-[9px] font-mono">({{ watchlistCodes.length }})</span>
         </button>
+        <button
+          class="flex-1 text-[10px] font-semibold py-1 rounded-md border transition-colors flex items-center justify-center gap-1"
+          :class="sortBy === 'skip' ? 'bg-rose-500/15 text-rose-300 border-rose-500/30' : 'bg-slate-900 text-slate-400 border-slate-800'"
+          @click="sortBy = 'skip'"
+        >
+          <span>🙈</span> Skip <span class="text-[9px] font-mono">({{ skipCodes.length }})</span>
+        </button>
       </div>
     </div>
 
@@ -112,6 +126,16 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
               <span v-if="isWatchlisted(row.code)" class="text-amber-400">★</span>
               <span v-else class="text-slate-600 hover:text-amber-400">☆</span>
             </button>
+            <!-- Skip ("kurang menarik") toggle button -->
+            <button
+              type="button"
+              @click.prevent.stop="toggleSkip(row.code)"
+              class="text-xs transition-transform hover:scale-125 focus:outline-none p-0.5"
+              :title="isSkipped(row.code) ? 'Batalkan Kurang Menarik' : 'Tandai Kurang Menarik'"
+            >
+              <span v-if="isSkipped(row.code)" class="text-rose-400">⊘</span>
+              <span v-else class="text-slate-600 hover:text-rose-400">⊗</span>
+            </button>
             <span class="text-xs font-bold truncate" :class="row.code === activeCode ? 'text-emerald-300' : 'text-slate-100'">{{ row.code }}</span>
           </div>
           <div class="text-right shrink-0">
@@ -131,7 +155,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
         </div>
       </NuxtLink>
       <p v-if="!filtered.length" class="px-3 py-6 text-center text-[11px] text-slate-500">
-        {{ sortBy === 'watchlist' ? 'Belum ada saham di Watchlist.' : 'Tidak ada hasil.' }}
+        {{ sortBy === 'watchlist' ? 'Belum ada saham di Watchlist.' : sortBy === 'skip' ? 'Belum ada saham ditandai kurang menarik.' : 'Tidak ada hasil.' }}
       </p>
     </div>
   </div>

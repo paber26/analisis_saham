@@ -14,6 +14,18 @@ export interface TechSignal {
   tone: SignalTone;
 }
 
+/** Explicit entry/exit decision for a stock at the current bar. */
+export interface TradeSignal {
+  /** Overarching recommended action. */
+  action: 'beli' | 'tahan' | 'ambil-untung' | 'cut-loss' | 'hindari';
+  /** Short human-readable advice on WHEN to enter (Indonesian). */
+  entryAdvice: string;
+  /** Short human-readable advice on WHEN to exit (Indonesian). */
+  exitAdvice: string;
+  /** How strongly the signal is supported (1 = weak, 3 = strong). */
+  conviction: 1 | 2 | 3;
+}
+
 export interface TechResult {
   price: number;
   changePct: number;
@@ -40,6 +52,8 @@ export interface TechResult {
   score: number;
   rating: 'Kuat' | 'Menarik' | 'Netral' | 'Lemah';
   signals: TechSignal[];
+  /** Explicit, rule-based entry/exit decision (Indonesia). */
+  trade: TradeSignal;
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -301,6 +315,76 @@ export function analyzeTechnical(bars: Bar[]): TechResult | null {
   score = Math.max(0, Math.min(100, Math.round(score)));
   const rating: TechResult['rating'] = score >= 70 ? 'Kuat' : score >= 55 ? 'Menarik' : score >= 40 ? 'Netral' : 'Lemah';
 
+  // ---- Explicit entry/exit signal ----
+  const diUp = dmiVal ? dmiVal.plusDI > dmiVal.minusDI : null;
+  const strongDi = dmiVal ? dmiVal.adx >= 25 : false;
+  const aboveMA200 = sma200 != null && price > sma200;
+  const aboveMA50 = sma50 != null && price > sma50;
+  const aboveMA20 = sma20 != null && price > sma20;
+  const rsiOverbought = rsiVal != null && rsiVal > 70;
+  const macdUp = macd > macdSignal;
+  const macdCrossDown = bearishCross;
+
+  let action: TradeSignal['action'];
+  let entryAdvice: string;
+  let exitAdvice: string;
+  let conviction: TradeSignal['conviction'] = 1;
+
+  // Scenario 1 — Downtrend struktural + momentum lemah → hindari
+  if (!aboveMA200 && !aboveMA50 && diUp === false) {
+    action = 'hindari';
+    entryAdvice = 'Jangan beli dulu — tren turun (di bawah MA200 & MA50).';
+    exitAdvice = 'Jika sudah pegang: keluar / jangan menambah posisi.';
+  }
+  // Scenario 2 — Cut-loss: uptrend rusak (break MA20 & MA50) + MACD bearish
+  else if (aboveMA200 && !aboveMA20 && !aboveMA50 && macdCrossDown) {
+    action = 'cut-loss';
+    entryAdvice = 'Jangan entri baru — tren jangka pendek patah.';
+    exitAdvice = 'Cut-loss jika sudah pegang: harga menembus MA20 & MA50 dengan MACD bearish.';
+    conviction = 3;
+  }
+  // Scenario 3 — Ambil untung: momentum sangat panas
+  else if ((rsiOverbought || (rsiVal != null && rsiVal >= 68)) && strongDi && diUp) {
+    action = 'ambil-untung';
+    entryAdvice = 'Jangan kejar di sini — harga sudah mahal (RSI >= 68).';
+    exitAdvice = 'Ambil untung sebagian / pasang trailing stop — momentum panas, rawan koreksi.';
+    conviction = 2;
+  }
+  // Scenario 4 — Tahan: uptrend sehat tapi koreksi ringan
+  else if (aboveMA200 && aboveMA50 && (rsiVal != null && rsiVal > 60) && !aboveMA20) {
+    action = 'tahan';
+    entryAdvice = 'Tunggu pullback ke MA20/MA50 atau support untuk entry baru.';
+    exitAdvice = 'Posisi yang ada: tahan selama masih di atas support & MA50.';
+    conviction = 2;
+  }
+  // Scenario 5 — Tahan: uptrend kuat dan sehat
+  else if (aboveMA200 && aboveMA50 && aboveMA20 && diUp && macdUp) {
+    action = 'tahan';
+    entryAdvice = 'Uptrend sehat — entry baru boleh saat pullback ringan ke MA20.';
+    exitAdvice = 'Tahan — tren naik selaras (MA20>MA50>MA200, +DI>-DI). Exit bila break MA20 & MACD bearish.';
+    conviction = 3;
+  }
+  // Scenario 6 — Beli: pemulihan / reversal awal (short-term reclaim, long-term lemah)
+  else if (!aboveMA200 && aboveMA20 && !rsiOverbought && (diUp === true || bullishCross)) {
+    action = 'beli';
+    entryAdvice = 'Entry bertahap (scale-in) — harga baru reclaim MA20. Konfirmasi bila tembus & bertahan di atas MA200.';
+    exitAdvice = 'Stop ketat di bawah MA20; exit bila harga gagal bertahan dan MACD berbalik bearish.';
+    conviction = 2;
+  }
+  // Scenario 7 — Beli: pullback sehat dalam uptrend (di atas MA200, koreksi ke MA20/support)
+  else if (aboveMA200 && !aboveMA20 && !rsiOverbought && !macdCrossDown) {
+    action = 'beli';
+    entryAdvice = 'Beli saat pullback — harga di atas MA200 tapi koreksi ke MA20/support.';
+    exitAdvice = 'Stop di bawah support terdekat; target resistance terdekat.';
+    conviction = 2;
+  }
+  // Scenario 8 — Netral: tidak ada sinyal tegas
+  else {
+    action = 'tahan';
+    entryAdvice = 'Belum ada sinyal tegas — tunggu konfirmasi arah (MA20 vs MA50, MACD cross).';
+    exitAdvice = 'Posisi existing: pertahankan selama tidak terjadi break support / death cross.';
+  }
+
   return {
     price: round2(price),
     changePct,
@@ -326,6 +410,7 @@ export function analyzeTechnical(bars: Bar[]): TechResult | null {
     pctFromLow,
     score,
     rating,
-    signals
+    signals,
+    trade: { action, entryAdvice, exitAdvice, conviction }
   };
 }

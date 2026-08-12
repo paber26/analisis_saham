@@ -17,6 +17,7 @@ tanggal WIB.
 │ /api/screen        skor teknikal semua universe (~170)             │
 │ /api/analysis      teknikal + level S/R + rencana ATR (per saham)  │
 │ /api/forecast      backtest walk-forward + proyeksi (per saham)    │
+│ /api/forecast-screen batch scan seluruh snapshot: proyeksi>aktual  │
 │ /api/seasonal      return bulanan 10y (per saham)                  │
 │ /api/detail        OHLCV harian 1y + meta (chart)                  │
 │ /api/fundamentals  PER/PBV/ROE/DY live (crumb auth)                │

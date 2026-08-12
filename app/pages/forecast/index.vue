@@ -33,6 +33,16 @@ const { data, pending, error } = await useFetch<any>(() => '/api/forecast', {
   watch: [activeSymbol, horizon]
 });
 
+// Filter: saham dengan proyeksi (prediksi forward) > harga aktual, dari batch
+// scan server-side (semua saham snapshot screening). Di-cache 1 hari.
+const { data: filterData, pending: filterPending, refresh: refreshFilter } = await useFetch<any>(
+  () => '/api/forecast-screen',
+  { params: { horizon } }
+);
+const filterRows = computed<any[]>(() => filterData.value?.results || []);
+const filterCount = computed(() => filterData.value?.count ?? filterRows.value.length);
+const filterScanned = computed(() => filterData.value?.scanned ?? 0);
+
 const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('id-ID'));
 
 const MODEL_LABELS: Record<string, string> = {
@@ -199,6 +209,78 @@ const chartOption = computed(() => {
         </div>
       </section>
 
+      <!-- Filter: proyeksi > aktual (batch scan seluruh saham IDX) -->
+      <section class="glow-card rounded-2xl p-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+          <div>
+            <h2 class="text-lg font-bold text-slate-50">📈 Filter: Proyeksi &gt; Aktual</h2>
+            <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
+              Saham di mana <strong class="text-slate-300">proyeksi harga akhir horizon lebih tinggi dari harga aktual</strong> saat ini.
+              Dibuat dari batch scan server-side atas {{ filterScanned }} saham snapshot screening ({{ filterData?.date || '—' }}).
+            </p>
+          </div>
+          <button
+            type="button"
+            class="text-[11px] font-semibold px-3 py-1.5 rounded-lg border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-emerald-500/50 transition-colors"
+            :disabled="filterPending"
+            @click="refreshFilter()"
+          >
+            {{ filterPending ? 'Memindai…' : '⟳ Muat ulang' }}
+          </button>
+        </div>
+
+        <div v-if="filterPending" class="py-8 flex items-center justify-center gap-3 text-sm text-slate-400">
+          <div class="w-6 h-6 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+          Memindai {{ filterScanned }} saham (fetch 5y + fit 5 model/saham)…
+        </div>
+
+        <div v-else-if="filterRows.length" class="overflow-x-auto mt-3">
+          <table class="w-full text-sm min-w-[680px]">
+            <thead>
+              <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
+                <th class="px-3 py-2 font-semibold">#</th>
+                <th class="px-3 py-2 font-semibold">Saham</th>
+                <th class="px-3 py-2 font-semibold text-right">Aktual</th>
+                <th class="px-3 py-2 font-semibold text-right">Proyeksi {{ horizon }}h</th>
+                <th class="px-3 py-2 font-semibold text-right">Upside</th>
+                <th class="px-3 py-2 font-semibold text-right">Ekspektasi 1h</th>
+                <th class="px-3 py-2 font-semibold text-right">P Naik</th>
+                <th class="px-3 py-2 font-semibold text-right">Edge</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(r, i) in filterRows.slice(0, 50)" :key="r.code" class="border-b border-slate-900/70 hover:bg-slate-900/40">
+                <td class="px-3 py-2.5 text-xs text-slate-500">{{ i + 1 }}</td>
+                <td class="px-3 py-2.5">
+                  <NuxtLink :to="`/forecast?symbol=${r.code}`" class="font-bold text-emerald-300 hover:text-emerald-200">{{ r.code }}</NuxtLink>
+                  <p class="text-[10px] text-slate-500 truncate max-w-[220px]">{{ r.name }}</p>
+                </td>
+                <td class="px-3 py-2.5 text-right font-mono text-slate-300">{{ fmt(r.price) }}</td>
+                <td class="px-3 py-2.5 text-right font-mono text-sky-300">{{ fmt(r.projPrice) }}</td>
+                <td class="px-3 py-2.5 text-right font-mono font-bold text-emerald-400">+{{ r.upsidePct }}%</td>
+                <td class="px-3 py-2.5 text-right font-mono" :class="r.expectedReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ r.expectedReturnPct >= 0 ? '+' : '' }}{{ r.expectedReturnPct }}%
+                </td>
+                <td class="px-3 py-2.5 text-right font-mono" :class="r.probUp >= 50 ? 'text-emerald-400' : 'text-rose-400'">{{ r.probUp }}%</td>
+                <td class="px-3 py-2.5 text-right">
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border"
+                    :class="r.edge === 'positif' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : r.edge === 'negatif' ? 'text-rose-300 bg-rose-500/10 border-rose-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">
+                    {{ r.edge }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="filterCount > 50" class="text-[11px] text-slate-500 mt-2 px-3">
+            Menampilkan 50 terbaik dari {{ filterCount }} saham dengan proyeksi &gt; aktual.
+          </p>
+        </div>
+
+        <div v-else class="py-8 text-center text-sm text-slate-400">
+          Tidak ada saham dengan proyeksi &gt; aktual pada horizon {{ horizon }} hari hari ini.
+        </div>
+      </section>
+
       <!-- Loading / Error -->
       <div v-if="pending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -215,6 +297,40 @@ const chartOption = computed(() => {
           <span class="text-sm text-slate-400">{{ data.name }}</span>
           <NuxtLink :to="`/analisa/${(data.symbol || '').replace('.JK', '')}`" class="text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold ml-auto">→ Analisa lengkap</NuxtLink>
         </div>
+
+        <!-- Chart (moved to top) -->
+        <section class="glow-card rounded-2xl p-4">
+          <div class="w-full h-[440px]">
+            <ClientOnly>
+              <VChart :option="chartOption" class="w-full h-full" autoresize />
+              <template #fallback><div class="h-full flex items-center justify-center text-slate-500 text-sm">Memuat grafik…</div></template>
+            </ClientOnly>
+          </div>
+        </section>
+
+        <!-- Entry / exit odds -->
+        <section v-if="data?.tradeOdds" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h3 class="text-sm font-bold text-slate-100">Peluang Entry & Exit ({{ data.horizon }} hari)</h3>
+            <span class="text-[11px] font-bold px-3 py-1 rounded-full border" :class="data.tradeOdds.edge === 'positif' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : data.tradeOdds.edge === 'negatif' ? 'text-rose-300 bg-rose-500/10 border-rose-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">{{ data.tradeOdds.edge === 'positif' ? 'Ekspektasi positif' : data.tradeOdds.edge === 'negatif' ? 'Ekspektasi negatif' : 'Ekspektasi netral' }}</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
+              <p class="text-[10px] text-rose-400 uppercase tracking-wide">P kena stop −{{ data.tradeOdds.stopPct }}%</p>
+              <p class="text-2xl font-extrabold text-rose-300 mt-1">{{ data.tradeOdds.probDownToStop }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
+            </div>
+            <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
+              <p class="text-[10px] text-emerald-400 uppercase tracking-wide">P capai target +{{ data.tradeOdds.targetPct }}%</p>
+              <p class="text-2xl font-extrabold text-emerald-300 mt-1">{{ data.tradeOdds.probUpToTarget }}%</p>
+              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
+              <p class="text-[10px] text-slate-400 uppercase tracking-wide">Cara baca</p>
+              <p class="text-[11px] text-slate-300 leading-relaxed mt-1">Jika P(kena stop) jauh lebih besar dari P(target), hindari entri baru / kecilkan posisi.</p>
+            </div>
+          </div>
+        </section>
 
         <!-- Summary cards -->
         <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -248,40 +364,6 @@ const chartOption = computed(() => {
               ≈ {{ data.vol.annualPct }}%/tahun ·
               <span v-if="rangeEnd">rentang {{ data.horizon }}h: {{ fmt(rangeEnd.lower) }}–{{ fmt(rangeEnd.upper) }}</span>
             </p>
-          </div>
-        </section>
-
-        <!-- Entry / exit odds -->
-        <section v-if="data?.tradeOdds" class="glow-card rounded-2xl p-6">
-          <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h3 class="text-sm font-bold text-slate-100">Peluang Entry & Exit ({{ data.horizon }} hari)</h3>
-            <span class="text-[11px] font-bold px-3 py-1 rounded-full border" :class="data.tradeOdds.edge === 'positif' ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : data.tradeOdds.edge === 'negatif' ? 'text-rose-300 bg-rose-500/10 border-rose-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">{{ data.tradeOdds.edge === 'positif' ? 'Ekspektasi positif' : data.tradeOdds.edge === 'negatif' ? 'Ekspektasi negatif' : 'Ekspektasi netral' }}</span>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="rounded-xl bg-rose-500/5 border border-rose-500/20 p-4">
-              <p class="text-[10px] text-rose-400 uppercase tracking-wide">P kena stop −{{ data.tradeOdds.stopPct }}%</p>
-              <p class="text-2xl font-extrabold text-rose-300 mt-1">{{ data.tradeOdds.probDownToStop }}%</p>
-              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
-            </div>
-            <div class="rounded-xl bg-emerald-500/5 border border-emerald-500/20 p-4">
-              <p class="text-[10px] text-emerald-400 uppercase tracking-wide">P capai target +{{ data.tradeOdds.targetPct }}%</p>
-              <p class="text-2xl font-extrabold text-emerald-300 mt-1">{{ data.tradeOdds.probUpToTarget }}%</p>
-              <p class="text-[10px] text-slate-500 mt-0.5">dalam {{ data.horizon }} hari</p>
-            </div>
-            <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
-              <p class="text-[10px] text-slate-400 uppercase tracking-wide">Cara baca</p>
-              <p class="text-[11px] text-slate-300 leading-relaxed mt-1">Jika P(kena stop) jauh lebih besar dari P(target), hindari entri baru / kecilkan posisi.</p>
-            </div>
-          </div>
-        </section>
-
-        <!-- Chart -->
-        <section class="glow-card rounded-2xl p-4">
-          <div class="w-full h-[440px]">
-            <ClientOnly>
-              <VChart :option="chartOption" class="w-full h-full" autoresize />
-              <template #fallback><div class="h-full flex items-center justify-center text-slate-500 text-sm">Memuat grafik…</div></template>
-            </ClientOnly>
           </div>
         </section>
 

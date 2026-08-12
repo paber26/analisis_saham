@@ -51,7 +51,7 @@ async function fetchMaterials() {
     if (res.success) {
       materials.value = res.data;
       if (!selectedMaterial.value && materials.value.length > 0) {
-        selectedMaterial.value = materials.value[0];
+        selectedMaterial.value = materials.value[0] ?? null;
       }
     }
   } catch (err) {

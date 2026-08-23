@@ -100,3 +100,42 @@ export async function getPortfolio(): Promise<Holding[]> {
 export async function setPortfolio(holdings: Holding[]): Promise<void> {
   await writeJson('portfolio.json', holdings);
 }
+
+// ---- Alerts (rule-based notifications) ----
+// Rules are evaluated against the daily screener snapshot by /api/alerts/run
+// (cron after /api/sync). Dedupe is date-keyed: a rule notifies at most once
+// per WIB trading day via lastTriggeredAt.
+export interface AlertRule {
+  id: string;
+  code: string;              // 'BBCA' or '*' (seluruh snapshot)
+  type: 'rsi_oversold' | 'breakout_52w' | 'above_ma200' | 'score_above' | 'price_below' | 'murah_uptrend';
+  value?: number | null;     // threshold (wajib utk price_below/score_above/rsi_oversold custom)
+  active?: boolean;
+  createdAt?: string;
+  lastTriggeredAt?: string | null; // YYYY-MM-DD (WIB trading day)
+}
+
+export interface AlertTrigger {
+  id: string;
+  ruleId: string;
+  code: string;
+  type: AlertRule['type'];
+  message: string;
+  date: string;              // YYYY-MM-DD (WIB)
+}
+
+export interface AlertStore {
+  rules: AlertRule[];
+  history: AlertTrigger[];   // newest first, capped
+}
+
+const ALERTS_FILE = 'alerts.json';
+const HISTORY_CAP = 100;
+
+export async function getAlertStore(): Promise<AlertStore> {
+  const s = await readJson<AlertStore>(ALERTS_FILE, { rules: [], history: [] });
+  return { rules: s.rules ?? [], history: s.history ?? [] };
+}
+export async function saveAlertStore(store: AlertStore): Promise<void> {
+  await writeJson(ALERTS_FILE, { ...store, history: store.history.slice(0, HISTORY_CAP) });
+}

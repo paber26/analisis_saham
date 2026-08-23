@@ -167,6 +167,17 @@
               </NuxtLink>
 
               <NuxtLink
+                to="/alert"
+                @click="isMobileOpen = false"
+                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
+                :class="[route.path.startsWith('/alert') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
+                :title="isCollapsed ? 'Alert Sinyal' : ''"
+              >
+                <span class="text-sm shrink-0">🔔</span>
+                <span v-if="!isCollapsed" class="truncate">Alert Sinyal</span>
+              </NuxtLink>
+
+              <NuxtLink
                 to="/portofolio"
                 @click="isMobileOpen = false"
                 class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"

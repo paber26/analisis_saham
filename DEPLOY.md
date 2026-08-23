@@ -54,10 +54,22 @@ Lalu `./deploy.sh` (env ikut ter-inject ke PM2). Endpoint:
 Jadwalkan via **crontab server** (jalankan SETELAH `/api/sync` menghasilkan snapshot harian). Contoh (WIB, server UTC → +7):
 
 ```cron
-# sync screener 17:30 WIB (10:30 UTC), lalu email 17:45 WIB (10:45 UTC), hari kerja
+# sync screener 17:30 WIB (10:30 UTC), alert 17:40, email 17:45, hari kerja
 30 10 * * 1-5 curl -s "http://127.0.0.1:3200/api/sync?token=SYNC_TOKEN" >/dev/null
+40 10 * * 1-5 curl -s "http://127.0.0.1:3200/api/alerts/run?token=SYNC_TOKEN" >/dev/null
 45 10 * * 1-5 curl -s "http://127.0.0.1:3200/api/notify/daily?token=NOTIFY_TOKEN" >/dev/null
 ```
+
+## Alert sinyal harian (Telegram/email)
+
+Rule alert dikelola di halaman **/alert** (tombol "Uji Evaluasi" = dry-run).
+Evaluasi otomatis via cron di atas; notifikasi dikirim bila ada kondisi yang
+terpenuhi, maksimal **sekali per rule per hari** (dedupe via `lastTriggeredAt`).
+
+- Channel Telegram (opsional): isi `TELEGRAM_BOT_TOKEN` (dari @BotFather) dan
+  `TELEGRAM_CHAT_ID` di `.deploy.env`, lalu deploy ulang.
+- Email otomatis ikut terkirim bila SMTP terkonfigurasi.
+- Histori trigger tersimpan di `.data-store/alerts.json` (maks 100 entri).
 
 ## Setup awal server (sudah dilakukan — untuk referensi/recovery)
 

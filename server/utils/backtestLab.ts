@@ -1,12 +1,10 @@
 // Strategi Lab — systematic parameter sweep for the backtest engine.
 //
-// A sweep runs EXACTLY 50 configurations (28 monthly + 22 weekly) over the
-// same bars, reusing one precomputed signal matrix per (family × cadence) so
-// the whole grid costs roughly the CPU of ~10 individual backtests.
+// A sweep runs EXACTLY 500 configurations (legacy 50 + 450 faktorial) over the
+// same bars, reusing one precomputed signal matrix per (family × cadence).
 //
-// Honesty: results are exploratory. Picking the best-of-50 afterwards is
-// curve-fitting — the UI says so, and every run is stored in history so
-// future-you can check whether the "winner" stayed a winner.
+// Honesty: results are exploratory. Picking the best-of-500 afterwards is
+// curve-fitting — the UI says so, and every run is stored in history.
 
 import type { DailyBar } from './yahoo';
 import { normalizeSymbol } from './symbol';
@@ -66,13 +64,9 @@ export interface LabRunResult extends LabConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Grid — tepat 50 kombinasi deterministik.
-// Bulanan 28: score(11×all) + score({60,70,80}×10) + score_ma200({60,70,80}×all)
-//           + ma200(all) + golden(all) + baseline(always,all)
-//           + score(70×{10,5}) + score_ma200(70×10)
-//           + score({50..65}×5) + ma200(top10)
-// Mingguan 22: score(11×all) + score({60,70,80}×10) + score_ma200({60,70,80}×all)
-//           + ma200(all) + golden(all) + baseline(always,all) + score(70×{10,5})
+// Grid — tepat 500 kombinasi deterministik.
+// 50 legacy (v1, 28 bulanan + 22 mingguan) DIJAMIN ada di urutan awal agar
+// kompatibel dgn histori; 450 sisanya diisi faktorial terurut sampai cap 500.
 // ---------------------------------------------------------------------------
 const SCORE_THR_ALL = [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90];
 
@@ -81,10 +75,11 @@ function cfg(cadence: Cadence, family: FamilyKey, threshold: number | null, maxN
     : family === 'score_ma200' ? 'Skor+MA200'
     : family === 'ma200' ? 'MA200'
     : family === 'golden' ? 'Golden Cross'
+    : family === 'lowvol' ? 'LowVol'
     : 'Baseline';
   const thr = threshold != null ? `≥${threshold}` : '';
   const top = maxNames != null ? `Top${maxNames}` : 'Semua';
-  const kad = cadence === 'weekly' ? 'Mingguan' : 'Bulanan';
+  const kad = cadence === 'weekly' ? 'Mingguan' : cadence === 'biweekly' ? 'Dwi-mingguan' : 'Bulanan';
   return {
     id: `${cadence}-${family}-t${threshold ?? 'x'}-k${maxNames ?? 'all'}`,
     cadence, family, threshold, maxNames,
@@ -92,7 +87,7 @@ function cfg(cadence: Cadence, family: FamilyKey, threshold: number | null, maxN
   };
 }
 
-export function buildLabGrid(): LabConfig[] {
+function buildLegacyGrid(): LabConfig[] {
   const grid: LabConfig[] = [];
 
   // ---- BLOK BULANAN (28) ----
@@ -120,7 +115,80 @@ export function buildLabGrid(): LabConfig[] {
   grid.push(cfg('weekly', 'score_ma200', 70, 5));                                      // 1
   // = 22
 
-  return grid; // 50 total — dipin oleh test
+  return grid;
+}
+
+const LEGACY_GRID = buildLegacyGrid();
+
+export function buildLabGrid(): LabConfig[] {
+  const TARGET = 500;
+  const seen = new Set(LEGACY_GRID.map((c) => c.id));
+  const grid: LabConfig[] = [...LEGACY_GRID];
+
+  // Faktorial deterministik — cadence luar, family, ambang, topK dalam.
+  const cadences: Cadence[] = ['monthly', 'weekly', 'biweekly'];
+  const THR_SCORE = [30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95];
+  const TOPK_SCORE: (number | null)[] = [null, 30, 20, 15, 10, 7, 5, 3];
+  const TOPK_TREND: (number | null)[] = [null, 30, 20, 15, 10, 5, 3];
+  const TOPK_LOWVOL: (number | null)[] = [null, 30, 20, 15, 10, 7, 5, 3];
+
+  function pushUnique(c: LabConfig) {
+    if (seen.has(c.id) || grid.length >= TARGET) return;
+    seen.add(c.id);
+    grid.push(c);
+  }
+
+  for (const cad of cadences) {
+    // Skor (threshold matters)
+    for (const thr of THR_SCORE) {
+      for (const k of TOPK_SCORE) {
+        pushUnique(cfg(cad, 'score', thr, k));
+        if (grid.length >= TARGET) break;
+      }
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+
+    // Skor+MA200
+    for (const thr of [40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90]) {
+      for (const k of [null, 30, 20, 15, 10, 5, 3] as (number | null)[]) {
+        pushUnique(cfg(cad, 'score_ma200', thr, k));
+        if (grid.length >= TARGET) break;
+      }
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+
+    // MA200
+    for (const k of TOPK_TREND) {
+      pushUnique(cfg(cad, 'ma200', null, k));
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+
+    // Golden
+    for (const k of TOPK_TREND) {
+      pushUnique(cfg(cad, 'golden', null, k));
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+
+    // LowVol
+    for (const k of TOPK_LOWVOL) {
+      pushUnique(cfg(cad, 'lowvol', null, k));
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+
+    // Baseline
+    for (const k of [null, 20, 10, 5] as (number | null)[]) {
+      pushUnique(cfg(cad, 'always', null, k));
+      if (grid.length >= TARGET) break;
+    }
+    if (grid.length >= TARGET) break;
+  }
+
+  return grid.slice(0, TARGET);
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +238,7 @@ function median(v: number[]): number {
 }
 
 /**
- * Jalankan seluruh 50 konfigurasi pada data yang sama.
+ * Jalankan seluruh grid (500) pada data yang sama.
  * Konfigurasi dikelompokkan per (family × cadence) agar matrix prakomputasi
  * dipakai ulang — biaya CPU dominan hanya pada pembentukan matrix.
  */

@@ -14,8 +14,8 @@ import { analyzeTechnical, type Bar } from './technical';
 
 export type SignalFn = (bars: Bar[]) => boolean;
 
-/** 'monthly' = bar terakhir tiap bulan (default lama); 'weekly' = bar terakhir tiap minggu-ISO. */
-export type Cadence = 'monthly' | 'weekly';
+/** 'monthly' = bar terakhir tiap bulan; 'weekly' = minggu-ISO; 'biweekly' = 2 mingguan. */
+export type Cadence = 'monthly' | 'weekly' | 'biweekly';
 
 export interface BacktestMetrics {
   totalReturnPct: number;
@@ -57,10 +57,19 @@ function isoWeekKey(d: Date): string {
   return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
 }
 
+function biweeklyKey(d: Date): string {
+  const iso = isoWeekKey(d); // YYYY-Www
+  const [y, wStr] = iso.split('-W');
+  const w = parseInt(wStr!, 10);
+  const half = Math.ceil(w / 2);
+  return `${y}-B${String(half).padStart(2, '0')}`;
+}
+
 /** Indeks bar terakhir tiap periode pada deret kronologis. */
 export function rebalanceIndices(bars: DailyBar[], cadence: Cadence = 'monthly'): number[] {
-  const keyOf = cadence === 'weekly'
-    ? (b: DailyBar) => isoWeekKey(new Date(b.date + 'T00:00:00Z'))
+  const keyOf =
+    cadence === 'weekly' ? (b: DailyBar) => isoWeekKey(new Date(b.date + 'T00:00:00Z'))
+    : cadence === 'biweekly' ? (b: DailyBar) => biweeklyKey(new Date(b.date + 'T00:00:00Z'))
     : (b: DailyBar) => b.date.slice(0, 7); // YYYY-MM
   const out: number[] = [];
   for (let i = 0; i < bars.length; i++) {
@@ -109,8 +118,8 @@ export function signalFor(strategy: string, threshold: number): SignalFn {
   };
 }
 
-// ---- Signal families + precomputed matrix (for the 50-run Strategi Lab) ----
-export type FamilyKey = 'score' | 'ma200' | 'golden' | 'score_ma200' | 'always';
+// ---- Signal families + precomputed matrix (for the 500-run Strategi Lab) ----
+export type FamilyKey = 'score' | 'ma200' | 'golden' | 'score_ma200' | 'always' | 'lowvol';
 
 export interface MatrixCell { ok: boolean; rank: number }
 /** code -> rebalance-date -> cell. `rank` dipakai untuk top-K & ambang numerik. */
@@ -143,6 +152,18 @@ export function evaluateFamily(family: FamilyKey, bars: Bar[]): MatrixCell | nul
     const ma50 = s50 / 50;
     const ma200v = s200 / 200;
     return ma200v > 0 ? { ok: ma50 > ma200v, rank: ((ma50 / ma200v) - 1) * 100 } : null;
+  }
+  if (family === 'lowvol') {
+    if (bars.length < 61) return null;
+    const rets: number[] = [];
+    for (let i = bars.length - 60; i < bars.length; i++) {
+      const prev = bars[i - 1]!.close;
+      if (prev > 0) rets.push(Math.log(bars[i]!.close / prev));
+    }
+    if (rets.length < 30) return null;
+    const sigma = std(rets) * Math.sqrt(252) * 100; // vol tahunan %
+    if (!isFinite(sigma) || sigma <= 0) return null;
+    return { ok: true, rank: -sigma }; // makin tenang makin tinggi rank
   }
   // score & score_ma200
   const t = analyzeTechnical(bars);
@@ -258,7 +279,7 @@ export function runBacktest(
   }
 
   const periods = monthlyRets.length;
-  const perYear = cadence === 'weekly' ? 52 : 12;
+  const perYear = cadence === 'weekly' ? 52 : cadence === 'biweekly' ? 26 : 12;
   const annFactor = Math.sqrt(perYear);
   const years = periods / perYear;
   const totalReturn = equity / 100 - 1;

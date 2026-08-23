@@ -11,21 +11,30 @@ import { analyzeTechnical } from '../server/utils/technical';
 import type { LabHistory } from '../server/utils/backtestHistory';
 import { bars, dates, geometric, randomWalk } from './helpers';
 
-describe('buildLabGrid — tepat 50 kombinasi deterministik', () => {
+describe('buildLabGrid — tepat 500 kombinasi deterministik', () => {
   const grid = buildLabGrid();
 
-  it('panjang grid = 50; bulanan 28 + mingguan 22', () => {
-    expect(grid.length).toBe(50);
-    expect(grid.filter((c) => c.cadence === 'monthly').length).toBe(28);
-    expect(grid.filter((c) => c.cadence === 'weekly').length).toBe(22);
+  it('panjang grid = 500; semua ID unik', () => {
+    expect(grid.length).toBe(500);
+    expect(new Set(grid.map((c) => c.id)).size).toBe(500);
   });
 
-  it('semua id unik', () => {
-    expect(new Set(grid.map((c) => c.id)).size).toBe(50);
+  it('mencakup 3 kadensi dan 6 family; 50 legacy ⊆ grid', () => {
+    const months = grid.filter((c) => c.cadence === 'monthly').length;
+    const weeks = grid.filter((c) => c.cadence === 'weekly').length;
+    const biw = grid.filter((c) => c.cadence === 'biweekly').length;
+    expect(months + weeks + biw).toBe(500);
+    expect(months).toBeGreaterThan(100);
+    expect(weeks).toBeGreaterThan(100);
+    expect(biw).toBeGreaterThan(30);
+    // legacy first 50 still prefix
+    expect(grid[0]!.id).toBe('monthly-score-t40-kall');
+    expect(grid.filter((c) => c.family === 'lowvol').length).toBeGreaterThan(0);
   });
+
 });
 
-describe('rebalanceIndices — mingguan & bulanan', () => {
+describe('rebalanceIndices — mingguan, dwi-mingguan & bulanan', () => {
   // 15 hari kerja berturut: Sen 2022-01-03 … Jum 2022-01-21
   const ds = dates(15);
   const b = bars(geometric(100, 0.001, 15), { dateList: ds });
@@ -38,6 +47,11 @@ describe('rebalanceIndices — mingguan & bulanan', () => {
   it('bulanan = bar terakhir tiap bulan', () => {
     expect(rebalanceIndices(b, 'monthly')).toEqual([14]);
   });
+
+  it('dwi-mingguan = bar terakhir tiap 2 minggu ISO', () => {
+    const idx = rebalanceIndices(b, 'biweekly');
+    expect(idx).toEqual([9, 14]); // 2022-W01+W02 → Jum 14, W03 → Jum 21
+  });
 });
 
 describe('evaluateFamily — konsisten dgn hitungan langsung', () => {
@@ -48,6 +62,12 @@ describe('evaluateFamily — konsisten dgn hitungan langsung', () => {
     const tech = analyzeTechnical(slice)!;
     expect(cell.ok).toBe(true);
     expect(cell.rank).toBe(tech.score);
+  });
+
+  it("family 'lowvol' ranking monoton: makin volatil makin buruk", () => {
+    const volatile = bars(randomWalk(500, 0.04, 260, 11));
+    const calm = bars(randomWalk(500, 0.005, 260, 11));
+    expect(evaluateFamily('lowvol', volatile)!.rank).toBeLessThan(evaluateFamily('lowvol', calm)!.rank);
   });
 
   it("family 'ma200' = % jarak harga ke MA200", () => {
@@ -102,14 +122,14 @@ describe('runSweep — jalur matrix identik dgn jalur langsung', () => {
     expect(r.metrics.winRatePct).toBe(100);
   });
 
-  it('sweep penuh: 50 konfig dijalankan pada data sintetis', () => {
+  it('sweep penuh: 500 konfig dijalankan pada data sintetis', () => {
     const summary = runSweep(new Map([...barsBySymbol, ['FLAT3', bars(new Array(N).fill(500), { dateList: DS })]]), ihsgBars);
-    expect(summary.runs.length).toBe(50);
-    expect(summary.executed + summary.failed).toBe(50);
+    expect(summary.runs.length).toBe(500);
+    expect(summary.executed + summary.failed).toBe(500);
     expect(summary.beatsCount).toBeGreaterThanOrEqual(0);
     // FLAT gagal guard likuiditas → tak menambah pemilih, tapi sweep tetap jalan
     expect(summary.periodStart).toBeTruthy();
-  }, 30000);
+  }, 60000);
 });
 
 describe('backtestHistory — round-trip & kapasitas', () => {
@@ -138,7 +158,7 @@ describe('backtestHistory — round-trip & kapasitas', () => {
           equity: [], metrics, benchmark: bench, costPerRebalancePct: 0.15
         }
       }],
-      executed: 50, failed: 0,
+      executed: 500, failed: 0,
       periodStart: '2022-06-30', periodEnd: '2026-08-21',
       universeSize: 45,
       beatsCount: alpha > 0 ? 1 : 0,

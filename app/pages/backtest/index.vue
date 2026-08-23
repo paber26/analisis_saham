@@ -33,7 +33,7 @@ const beatsIhsg = computed(() => bench.value && bench.value.alphaCagrPct > 0);
 
 const fmtPct = (n: number | null | undefined) => (n == null ? '—' : (n >= 0 ? '+' : '') + n + '%');
 
-// ---- Strategi Lab: 50 kombinasi parameter + histori sweep ----
+// ---- Strategi Lab: 500 kombinasi parameter + histori sweep ----
 interface LabRun {
   id: string; cadence: 'monthly' | 'weekly'; family: string;
   threshold: number | null; maxNames: number | null; label: string;
@@ -231,13 +231,13 @@ const chartOption = computed(() => {
             <button type="button" :disabled="labRunning"
               class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold transition-colors"
               @click="runLab">
-              {{ labRunning ? '⏳ Menjalankan 50 percobaan…' : '▶ Jalankan 50 percobaan' }}
+              {{ labRunning ? '⏳ Menjalankan 500 percobaan…' : '▶ Jalankan 500 percobaan' }}
             </button>
             <select v-if="labSweeps.length" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-300 max-w-[260px]"
               @change="selectSweep(($event.target as HTMLSelectElement).value)">
               <option value="">📚 Histori sweep ({{ labSweeps.length }})…</option>
               <option v-for="s in labSweeps" :key="s.id" :value="s.id">
-                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/50 menang
+                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/500 menang
               </option>
             </select>
           </div>
@@ -250,7 +250,7 @@ const chartOption = computed(() => {
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
               <p class="text-[10px] text-slate-500 uppercase font-bold">Mengungguli IHSG</p>
-              <p class="text-xl font-extrabold mt-0.5" :class="labSweep.beatsCount > 0 ? 'text-emerald-400' : 'text-slate-300'">{{ labSweep.beatsCount }}<span class="text-sm text-slate-500">/50</span></p>
+              <p class="text-xl font-extrabold mt-0.5" :class="labSweep.beatsCount > 0 ? 'text-emerald-400' : 'text-slate-300'">{{ labSweep.beatsCount }}<span class="text-sm text-slate-500">/500</span></p>
             </div>
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
               <p class="text-[10px] text-slate-500 uppercase font-bold">Alpha Terbaik</p>
@@ -312,14 +312,14 @@ const chartOption = computed(() => {
           </div>
 
           <p class="text-[11px] text-slate-500 leading-relaxed">
-            ⚠ <strong class="text-slate-300">Kejujuran metodologi:</strong> memilih konfigurasi terbaik dari 50 percobaan
+            ⚠ <strong class="text-slate-300">Kejujuran metodologi:</strong> memilih konfigurasi terbaik dari 500 percobaan
             <strong class="text-slate-300">rawan overfitting</strong> — sebagian "menang" karena kebetulan periode ini.
             Gunakan leaderboard sebagai eksplorasi karakter strategi (mis. top-K vs semua, mingguan vs bulanan),
             lalu validasi konfigurasi favorit di sweep berikutnya via histori.
           </p>
         </template>
         <p v-else-if="!labRunning" class="text-xs text-slate-500">
-          Belum ada sweep tersimpan. Tekan <span class="text-emerald-400 font-semibold">▶ Jalankan 50 percobaan</span> — hasilnya otomatis masuk histori.
+          Belum ada sweep tersimpan. Tekan <span class="text-emerald-400 font-semibold">▶ Jalankan 500 percobaan</span> — hasilnya otomatis masuk histori.
         </p>
       </section>
 

@@ -237,7 +237,7 @@ const chartOption = computed(() => {
               @change="selectSweep(($event.target as HTMLSelectElement).value)">
               <option value="">📚 Histori sweep ({{ labSweeps.length }})…</option>
               <option v-for="s in labSweeps" :key="s.id" :value="s.id">
-                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/500 menang
+                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/{{ s.executed ?? 500 }} menang
               </option>
             </select>
           </div>
@@ -250,7 +250,7 @@ const chartOption = computed(() => {
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
               <p class="text-[10px] text-slate-500 uppercase font-bold">Mengungguli IHSG</p>
-              <p class="text-xl font-extrabold mt-0.5" :class="labSweep.beatsCount > 0 ? 'text-emerald-400' : 'text-slate-300'">{{ labSweep.beatsCount }}<span class="text-sm text-slate-500">/500</span></p>
+              <p class="text-xl font-extrabold mt-0.5" :class="labSweep.beatsCount > 0 ? 'text-emerald-400' : 'text-slate-300'">{{ labSweep.beatsCount }}<span class="text-sm text-slate-500">/{{ labSweep.runs.length }}</span></p>
             </div>
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
               <p class="text-[10px] text-slate-500 uppercase font-bold">Alpha Terbaik</p>

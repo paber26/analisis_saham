@@ -4,8 +4,13 @@ Blueprint untuk memperluas analisa dari **per-saham** ke tiga lapisan di atasnya
 **konteks pasar**, **portofolio pribadi**, dan **validasi (backtest)**, ditutup
 dengan **otomasi (alert)**.
 
-Dokumen ini melengkapi [ARCHITECTURE.md](ARCHITECTURE.md) (kondisi saat ini) —
-di sini adalah rancangan yang **belum dibangun**.
+Dokumen ini melengkapi [ARCHITECTURE.md](ARCHITECTURE.md) (kondisi saat ini).
+
+> **STATUS (agustus 2026):** Tier 1a, 1b, 1c, 2a, 2b, dan 3 **SUDAH DIBANGUN**
+> (lihat `/pasar`, RS di hub, kolom fundamental, `/watchlist`, `/portofolio`,
+> `/backtest`). Tier 4 (alert rule-based) belum — dijadwalkan sebagai Fase C
+> dalam [pengembangan/](pengembangan/), bersama backfill histori & broker-flow
+> screening lintas universe.
 
 ## Prinsip yang dipertahankan
 

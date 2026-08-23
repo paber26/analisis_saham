@@ -26,7 +26,6 @@ Sudah berjalan (jauh melebihi README lama):
 | Market breadth & rotasi sektor `/pasar` | ✅ |
 | Watchlist, Portofolio (korelasi + risiko) | ✅ |
 | Backtest engine + event study `/backtest` | ✅ |
-| Bandar detector Stockbit `/bandar/[symbol]` + extension Chrome token-sync | ✅ |
 | Simulasi Lab time-machine (MLR Fase 1–4, regime-aware, vs IHSG) | ✅ |
 | LMS `/belajar` (5 program, quiz, streak) + auth login | ✅ |
 | Digest email harian (`mailer.ts`, nodemailer) | ✅ |
@@ -38,7 +37,7 @@ Sudah berjalan (jauh melebihi README lama):
 |---|---|---|---|
 | G1 | Nol test untuk ~20rb baris kode analitik murni | tidak ada `vitest`/`test` di package.json | bug hitung tak terdeteksi |
 | G2 | Tidak ada `lint`/`typecheck` script & CI | package.json hanya build/dev/generate | regresi lolos tanpa sengaja |
-| G3 | Dokumentasi drift | README tidak menyebut pasar/portofolio/backtest/bandar/simulasi/belajar | sulit navigasi diri sendiri |
+| G3 | Dokumentasi drift | README tidak menyebut pasar/portofolio/backtest/simulasi/belajar | sulit navigasi diri sendiri |
 | G4 | Histori screener muda | `.data-store/history/` terisi mulai sync pertama saja | backtest strategi skor/QVM belum bisa jalan |
 | G5 | Bandar hanya per-simbol | `fetchBandarDetector(symbol)` satu-satu | tidak tahu saham apa yang sedang diakumulasi lintas pasar |
 | G6 | Tier 4 alert belum ada (hanya digest pasif) | tidak ada `alerts.ts`; ROADMAP T4 kosong | harus cek manual |
@@ -52,8 +51,8 @@ Fase A — Fondasi Kualitas          Fase B — Keunggulan Data            Fase 
 │   ├─ technical.test.ts           ├─ /api/backfill-history (token)     │    evaluate(rules, snapshot)
 │   ├─ forecast.test.ts            ├─ server/utils/brokerFlow.ts        ├─ store.ts: alerts.json CRUD
 │   ├─ levels/factor/portfolio     ├─ /api/broker-screen (token+cache)  ├─ /api/alerts CRUD, /api/alerts/run
-│   └─ backtest.test.ts            ├─ UI: seksi agregasi bandar         ├─ notify: email (ada) + Telegram
-├─ typecheck script (vue-tsc)      │   (/pasar atau /bandar-screen)     ├─ halaman /alert
+│   └─ backtest.test.ts            │                                    ├─ notify: email (ada) + Telegram
+├─ typecheck script (vue-tsc)      │                                    ├─ halaman /alert
 ├─ .github/workflows/ci.yml        └─ integrasi cron pasca-sync         └─ refactor simulasi → composables/
 └─ README/ARCHITECTURE sinkron                                              + components/simulasi/*
 ```
@@ -105,7 +104,7 @@ Build tidak memanggil Yahoo (semua fetch runtime) → aman di CI.
 
 ### A3. Sinkron dokumentasi
 
-- README: daftar fitur aktual (pasar, portofolio, backtest, bandar, simulasi,
+- README: daftar fitur aktual (pasar, portofolio, backtest, simulasi,
   belajar, auth, digest).
 - ROADMAP: tandai Tier 1–3 selesai; sisakan T4 → dialihkan ke Fase C di sini.
 
@@ -144,26 +143,9 @@ Acceptance:
 - [ ] Setelah run, `listHistoryDates()` ≥ 240 tanggal unik.
 - [ ] Halaman tren skor (sparkline hub) & `/backtest` strategi skor jalan dgn data ini.
 
-### B2. Broker-flow screening lintas universe (G5)
-
-Pemanfaatan penuh aset unik aplikasi: token Stockbit + extension Chrome.
-
-```
-server/utils/brokerFlow.ts
-  aggregateBrokerFlow(symbols[], period='1d'):
-    loop concurrency 8 → fetchBandarDetector (cache per-hari per-simbol
-    .data-store/bandar/SYMBOL-date.json SUDAH ADA → repeat-call = 0)
-    → [{ code, netBuyRp, topBrokers[5], accumRating, changePct }] urut netBuyRp
-/api/broker-screen?token=x-app-token   (owner-gated: memakai token personal)
-```
-
-- Cron pasca-sync (opsional, terbatas top-N likuid) agar pagi hari data siap.
-- UI: blok "Akalumulasi Bandar Hari Ini" di `/pasar` (atau halaman
-  `/bandar-screen`) — tabel top akumulasi/distribusi + link ke `/bandar/[symbol]`.
-
-Acceptance:
-- [ ] Endpoint return ≤ beberapa detik pada panggilan kedua (cache hit penuh).
-- [ ] Degrade mulus bila token Stockbit kedaluwarsa (pesan jelas, bukan crash).
+> **B2 (broker-flow screening via Stockbit) DIBATALKAN** — integrasi Stockbit
+> (bandar detector, broker flow/distribution, extension token-sync) telah
+> dihapus dari aplikasi karena tidak dibutuhkan lagi.
 
 ---
 
@@ -215,11 +197,10 @@ Acceptance:
 | A1–A2 | Test + CI | Sedang | ★★★ (melindungi semuanya) |
 | B1 | Backfill histori | Sedang | ★★★ (membuka backtest QVM/skor) |
 | C1 | Alert | Sedang | ★★★ |
-| B2 | Broker-flow screening | Sedang-tinggi | ★★☆ |
 | A3 | Docs sinkron | Rendah | ★☆☆ |
 | C2 | Refactor simulasi | Sedang | ★★☆ |
 
-**Urutan:** A1 → A2 → B1 → C1 → B2 → A3 → C2
+**Urutan:** A1 → A2 → B1 → C1 → A3 → C2
 (fondasi dulu, lalu nilai analitis tercepat, lalu otomasi, kebersihan terakhir).
 
 ## 8. Risiko & mitigasi
@@ -227,6 +208,5 @@ Acceptance:
 | Risiko | Mitigasi |
 |---|---|
 | Rate-limit Yahoo saat backfill ~900 simbol | concurrency 6, jalankan manual di luar jam pasar, opsi `limit=` bertahap |
-| Token Stockbit kedaluwarsa (~24 jam) | extension auto-push; endpoint degrade dgn pesan jelas |
 | Divergensi Postgres vs file store | ikuti pola existing (DB primer → file fallback); merge history by-date |
 | CI build butuh network | build Nuxt tidak mem-fetch data (runtime only) — diverifikasi saat setup |

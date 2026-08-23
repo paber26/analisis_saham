@@ -65,11 +65,6 @@ const { data: hist } = await useFetch<any>(() => '/api/history', {
   params: { symbol }, watch: [symbol], lazy: true
 });
 
-// Bandarmology (Stockbit) — owner-only (gated by app token); cached PER DAY server-side
-const { data: bandar, pending: bandarPending } = await useFetch<any>(() => '/api/bandar', {
-  params: { symbol: codeOnly }, headers: authHeaders, watch: [codeOnly, token], server: false, lazy: true
-});
-
 const t = computed(() => an.value?.technical || null);
 const lv = computed(() => an.value?.levels || null);
 const liveFund = computed(() => (fund.value?.available ? fund.value : null));
@@ -93,31 +88,6 @@ const trendSpark = computed(() => {
 const fmt = (n: number | null | undefined) => (n == null ? '—' : n.toLocaleString('id-ID'));
 const fmtIdr = (n: number | null | undefined) =>
   n == null ? '—' : 'Rp ' + n.toLocaleString('id-ID', { maximumFractionDigits: 2 });
-
-// Compact IDR for large money flows: Rp 178,4 M · Rp 1,23 T
-const fmtBig = (n: number | null | undefined) => {
-  if (n == null || !isFinite(n)) return '—';
-  const sign = n < 0 ? '−' : '';
-  const a = Math.abs(n);
-  if (a >= 1e12) return `${sign}Rp ${(a / 1e12).toFixed(2)} T`;
-  if (a >= 1e9) return `${sign}Rp ${(a / 1e9).toFixed(1)} M`;
-  if (a >= 1e6) return `${sign}Rp ${Math.round(a / 1e6)} Jt`;
-  return `${sign}Rp ${a.toLocaleString('id-ID')}`;
-};
-
-// ---- Bandarmology (smart-money flow, from Stockbit) ----
-const bandarData = computed(() => (bandar.value && bandar.value.avgAccdist ? bandar.value : null));
-const bandarAccum = computed(() => (bandarData.value?.netValue ?? 0) >= 0);
-const bandarCls = computed(() =>
-  bandarAccum.value
-    ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/25'
-    : 'text-rose-300 bg-rose-500/10 border-rose-500/25'
-);
-function brokerTypeCls(type: string) {
-  if (type === 'Asing') return 'text-sky-300';
-  if (type === 'Pemerintah') return 'text-amber-300';
-  return 'text-slate-400'; // Lokal / lainnya
-}
 
 // ---- Seasonal: current & next month from monthly history ----
 const monthlyStats = computed(() => {
@@ -322,16 +292,6 @@ const conclusions = computed<Bullet[]>(() => {
     out.push({
       text: `Manajemen risiko: stop 2×ATR di ${fmt(lv.value.plan.stop)} (−${lv.value.atrPct * 2}% dari entry), target 3×ATR di ${fmt(lv.value.plan.target)} (R:R 1,5).`,
       tone: 'neutral'
-    });
-  }
-
-  // Bandarmology (smart-money accumulation/distribution, from Stockbit)
-  const bd = bandarData.value;
-  if (bd) {
-    const acc = bd.netValue >= 0;
-    out.push({
-      text: `Bandarmology (${bd.to}): ${bd.avgAccdist} — net ${acc ? 'beli' : 'jual'} ${fmtBig(Math.abs(bd.netValue))} (${bd.totalBuyer} broker beli vs ${bd.totalSeller} jual). ${acc ? 'Indikasi akumulasi bandar.' : 'Indikasi distribusi bandar — hati-hati.'}`,
-      tone: acc ? 'bull' : 'bear'
     });
   }
 
@@ -607,67 +567,6 @@ const verdict = computed(() => {
               <polyline :points="trendSpark.points" fill="none" :stroke="trendSpark.up ? '#34d399' : '#fb7185'" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
             </svg>
             <p class="text-[10px] text-slate-600 mt-1">Skor 0–100 dihitung ulang pada potongan historis (tanpa look-ahead). Garis: 70 (kuat) & 50.</p>
-          </div>
-        </section>
-
-        <!-- Bandarmology (Stockbit) — smart-money net buy/sell per broker -->
-        <section class="glow-card rounded-2xl p-6">
-          <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <h4 class="text-sm font-bold text-slate-100">Bandarmology — Aktivitas Bandar
-              <span class="text-slate-500 font-normal">(net buy/sell broker)</span></h4>
-            <span v-if="bandarData" class="text-[11px] font-bold px-2.5 py-1 rounded-lg border" :class="bandarCls">
-              {{ bandarData.avgAccdist }} · net {{ fmtBig(Math.abs(bandarData.netValue)) }} {{ bandarAccum ? '↑ akumulasi' : '↓ distribusi' }}
-            </span>
-          </div>
-
-          <NuxtLink :to="`/bandar/${codeOnly}`" class="inline-block mb-3 text-[11px] text-emerald-400 hover:text-emerald-300 font-semibold">→ Broker Analysis lengkap (flow intraday + distribusi Sankey)</NuxtLink>
-
-          <div v-if="bandarPending" class="text-xs text-slate-500 animate-pulse">Memuat data bandar dari Stockbit…</div>
-
-          <template v-else-if="bandarData">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div>
-                <p class="text-[10px] font-semibold text-emerald-400 uppercase tracking-wide mb-2">Top Net Buy (akumulasi)</p>
-                <div class="space-y-1.5">
-                  <div v-for="b in bandarData.brokersBuy.slice(0, 6)" :key="'b' + b.code"
-                    class="flex items-center justify-between text-sm bg-emerald-500/5 border border-emerald-500/15 rounded-lg px-3 py-1.5">
-                    <span class="font-bold text-emerald-300">{{ b.code }}
-                      <span class="text-[10px] font-medium" :class="brokerTypeCls(b.type)">{{ b.type }}</span></span>
-                    <span class="text-slate-300 text-xs">{{ fmtBig(b.value) }} <span class="text-slate-600">@{{ fmt(Math.round(b.avgPrice)) }}</span></span>
-                  </div>
-                  <p v-if="!bandarData.brokersBuy.length" class="text-xs text-slate-600">— tidak ada net buyer.</p>
-                </div>
-              </div>
-              <div>
-                <p class="text-[10px] font-semibold text-rose-400 uppercase tracking-wide mb-2">Top Net Sell (distribusi)</p>
-                <div class="space-y-1.5">
-                  <div v-for="b in bandarData.brokersSell.slice(0, 6)" :key="'s' + b.code"
-                    class="flex items-center justify-between text-sm bg-rose-500/5 border border-rose-500/15 rounded-lg px-3 py-1.5">
-                    <span class="font-bold text-rose-300">{{ b.code }}
-                      <span class="text-[10px] font-medium" :class="brokerTypeCls(b.type)">{{ b.type }}</span></span>
-                    <span class="text-slate-300 text-xs">{{ fmtBig(b.value) }} <span class="text-slate-600">@{{ fmt(Math.round(b.avgPrice)) }}</span></span>
-                  </div>
-                  <p v-if="!bandarData.brokersSell.length" class="text-xs text-slate-600">— tidak ada net seller.</p>
-                </div>
-              </div>
-            </div>
-            <p class="text-[11px] text-slate-500 mt-3 leading-relaxed">
-              Sumber: Stockbit · periode {{ bandarData.from }}<span v-if="bandarData.to !== bandarData.from">–{{ bandarData.to }}</span>.
-              Tipe broker: <span class="text-sky-300">Asing</span> · <span class="text-amber-300">Pemerintah</span> · <span class="text-slate-400">Lokal</span>.
-              Di-cache per hari (WIB) — sekali buka, tidak menarik ulang hari ini.
-            </p>
-          </template>
-
-          <div v-else class="rounded-xl bg-slate-900/40 border border-slate-800 p-4 text-[11px] text-slate-400 leading-relaxed">
-            <template v-if="!token">
-              Data bandar bersifat privat (owner-only). Masukkan <strong class="text-slate-200">token akses</strong> lewat
-              <NuxtLink to="/watchlist" class="text-emerald-400 hover:text-emerald-300 font-semibold">halaman Watchlist</NuxtLink>
-              untuk melihatnya.
-            </template>
-            <template v-else>
-              Data bandar (Stockbit) belum tersedia. Pastikan <code class="text-slate-200">STOCKBIT_TOKEN</code> di server masih valid —
-              token Stockbit kedaluwarsa ~harian, jadi mungkin perlu diperbarui. Data di-cache per hari agar hemat kuota.
-            </template>
           </div>
         </section>
 

@@ -2,7 +2,7 @@
 
 Aplikasi analisis saham Bursa Efek Indonesia (personal) — live di
 **https://saham.kuydinas.id**. Dibangun dengan Nuxt 4 SSR + Tailwind + ECharts;
-data dari Yahoo Finance (cache disk per-hari) dan Stockbit (bandar/broker).
+data dari Yahoo Finance dengan cache disk per-hari.
 
 ## Fitur
 
@@ -21,8 +21,6 @@ data dari Yahoo Finance (cache disk per-hari) dan Stockbit (bandar/broker).
 - **/seasonal** — pola musiman bulanan/kuartalan + uji signifikansi t-stat
 - **/saham** — chart candlestick ala TradingView + rasio keuangan live
 - **/profil-saham** — profil emiten
-- **/bandar/[symbol]** — deteksi akumulasi/distribusi broker via Stockbit
-  (owner-only; token disinkron otomatis oleh [extension Chrome](extension/))
 
 ### Pengelolaan uang
 - **/watchlist** — daftar pantauan

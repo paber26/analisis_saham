@@ -78,7 +78,7 @@ useHead({ title: 'Masuk — Analisis Saham' });
       </form>
 
       <p class="text-center text-[11px] text-slate-600 mt-4">
-        Akses pribadi. Setelah masuk, semua fitur (bandar, watchlist, portofolio) terbuka otomatis.
+        Akses pribadi. Setelah masuk, semua fitur (watchlist, portofolio, alert) terbuka otomatis.
       </p>
     </div>
   </div>

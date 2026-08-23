@@ -24,7 +24,7 @@ interface BasketItem {
   weightPct: number;
   lots: number;
 }
-interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN'; lots: number; price: number; unrealizedPct: number; rating: string }
+interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' | 'BUY'; lots: number; price: number; unrealizedPct: number; rating: string }
 
 // ---------------- Wizard state ----------------
 type Step = 'setup' | 'screen' | 'basket' | 'play' | 'result' | 'review';
@@ -49,8 +49,8 @@ function openDatePicker() {
 
 // ---------------- Formatters ----------------
 const fmtIDR = (n: number) => 'Rp' + Math.round(n).toLocaleString('id-ID');
-const fmtNum = (n: number | null, d = 1) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
-const fmtPct = (n: number | null, d = 1) => n == null || !Number.isFinite(n) ? '—' : (n >= 0 ? '+' : '') + fmtNum(n, d) + '%';
+const fmtNum = (n: number | null | undefined, d = 1) => n == null || !Number.isFinite(n) ? '—' : n.toLocaleString('id-ID', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtPct = (n: number | null | undefined, d = 1) => n == null || !Number.isFinite(n) ? '—' : (n >= 0 ? '+' : '') + fmtNum(n, d) + '%';
 const ratingClass = (r: string) => r === 'Kuat' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/30'
   : r === 'Menarik' ? 'text-sky-400 bg-sky-500/10 border-sky-500/30'
   : r === 'Lemah' ? 'text-rose-400 bg-rose-500/10 border-rose-500/30'

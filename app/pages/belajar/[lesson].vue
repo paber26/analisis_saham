@@ -29,11 +29,11 @@ const located = computed(() => {
   const flat: { program: Program; path: Path; module: Module; lesson: Lesson }[] = [];
   for (const prog of programs) for (const p of prog.paths) for (const m of p.modules) for (const l of m.lessons) flat.push({ program: prog, path: p, module: m, lesson: l });
   const idx = flat.findIndex((f) => f.lesson.id === lessonId.value);
-  if (idx < 0) return null;
+  if (idx < 0 || !flat[idx]) return null;
   return {
     ...flat[idx],
-    prev: idx > 0 ? flat[idx - 1].lesson : null,
-    next: idx < flat.length - 1 ? flat[idx + 1].lesson : null,
+    prev: idx > 0 ? flat[idx - 1]?.lesson ?? null : null,
+    next: idx < flat.length - 1 ? flat[idx + 1]?.lesson ?? null : null,
     position: idx + 1,
     total: flat.length,
   };

@@ -1,5 +1,6 @@
 import { defineEventHandler, readBody, getQuery, createError } from 'h3';
-import { getMaterials, saveMaterials, MaterialItem } from '../utils/materialsStore';
+import { getMaterials, saveMaterials } from '../utils/materialsStore';
+import type { MaterialItem } from '../utils/materialsStore';
 
 export default defineEventHandler(async (event) => {
   const method = event.node.req.method;

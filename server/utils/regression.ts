@@ -29,13 +29,13 @@ function transpose(m: number[][]): number[][] {
 }
 
 function matMul(a: number[][], b: number[][]): number[][] {
-  const n = a.length, m = b[0]!.length, p = b.length;
+  const n = a.length, m = b[0]?.length ?? 0, p = b.length;
   const out: number[][] = Array.from({ length: n }, () => new Array(m).fill(0));
   for (let i = 0; i < n; i++)
     for (let k = 0; k < p; k++) {
       const aik = a[i]![k]!;
       if (aik === 0) continue;
-      for (let j = 0; j < m; j++) out[i]![j] += aik * b[k]![j]!;
+      for (let j = 0; j < m; j++) out[i]![j]! += aik * b[k]![j]!;
     }
   return out;
 }

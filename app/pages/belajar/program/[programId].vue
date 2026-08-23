@@ -33,7 +33,7 @@ const ACCENT: Record<string, { text: string; border: string; bar: string; soft: 
   violet: { text: 'text-violet-400', border: 'border-violet-500/25', bar: 'bg-violet-500', soft: 'bg-violet-500/10' },
   rose: { text: 'text-rose-400', border: 'border-rose-500/25', bar: 'bg-rose-500', soft: 'bg-rose-500/10' },
 };
-const ac = computed(() => ACCENT[program.value?.accent ?? 'emerald'] ?? ACCENT.emerald);
+const ac = computed(() => ACCENT[program.value?.accent ?? 'emerald'] ?? ACCENT.emerald ?? { text: '', border: '', bar: '', soft: '' });
 </script>
 
 <template>

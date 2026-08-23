@@ -2,17 +2,10 @@ import { getQuery, createError } from 'h3';
 import { normalizeSymbol } from '../utils/symbol';
 import { fetchDailyBars, type DailyBar } from '../utils/yahoo';
 import { runBacktest, signalFor } from '../utils/backtest';
+import { LAB_UNIVERSE } from '../utils/backtestLab';
 import { tradingDay } from '../utils/cacheKey';
 
-// Liquid LQ45/IDX30-style universe for backtesting (kept small so a cold run
-// is fast; survivorship bias acknowledged on the page).
-const BACKTEST_UNIVERSE = [
-  'BBCA', 'BBRI', 'BMRI', 'BBNI', 'BRIS', 'TLKM', 'ISAT', 'EXCL', 'ASII', 'UNTR',
-  'ADRO', 'PTBA', 'ITMG', 'INDY', 'UNVR', 'ICBP', 'INDF', 'MYOR', 'KLBF', 'CPIN',
-  'JPFA', 'ANTM', 'INCO', 'MDKA', 'AMMN', 'SMGR', 'INTP', 'TPIA', 'BRPT', 'AKRA',
-  'PGAS', 'TOWR', 'MTEL', 'GOTO', 'MAPI', 'ACES', 'ERAA', 'BSDE', 'PWON', 'SMRA',
-  'CTRA', 'HMSP', 'GGRM', 'MEDC', 'HRUM'
-];
+const BACKTEST_UNIVERSE = LAB_UNIVERSE;
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);

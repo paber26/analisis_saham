@@ -1,4 +1,4 @@
-// Strategy backtest engine — cross-sectional, monthly-rebalanced, equal-weight.
+// Strategy backtest engine — cross-sectional, periodic-rebalanced, equal-weight.
 //
 // Honesty guarantees:
 // - No look-ahead: the signal at rebalance date t is computed ONLY from bars up
@@ -14,6 +14,9 @@ import { analyzeTechnical, type Bar } from './technical';
 
 export type SignalFn = (bars: Bar[]) => boolean;
 
+/** 'monthly' = bar terakhir tiap bulan (default lama); 'weekly' = bar terakhir tiap minggu-ISO. */
+export type Cadence = 'monthly' | 'weekly';
+
 export interface BacktestMetrics {
   totalReturnPct: number;
   cagrPct: number;
@@ -27,7 +30,8 @@ export interface BacktestMetrics {
 export interface BacktestResult {
   start: string;
   end: string;
-  months: number;
+  months: number; // jumlah periode rebalance (bulanan=bulan, mingguan=minggu)
+  cadence: Cadence;
   equity: { date: string; strat: number; ihsg: number }[];
   metrics: BacktestMetrics;
   benchmark: { totalReturnPct: number; cagrPct: number; maxDrawdownPct: number; alphaCagrPct: number };
@@ -42,13 +46,27 @@ const std = (v: number[]) => {
 };
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
-// Month-end indices in a chronological bar array (last trading day of each month)
-function monthEndIndices(bars: DailyBar[]): number[] {
+// ---- Rebalance point detection -------------------------------------------
+function isoWeekKey(d: Date): string {
+  // ISO-8601 week (year-Www) — deterministic across engines.
+  const date = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = date.getUTCDay() || 7; // Mon=1..Sun=7
+  date.setUTCDate(date.getUTCDate() + 4 - dayNum); // Thursday of this ISO week
+  const yearStart = new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+  const week = Math.ceil(((date.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${date.getUTCFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+/** Indeks bar terakhir tiap periode pada deret kronologis. */
+export function rebalanceIndices(bars: DailyBar[], cadence: Cadence = 'monthly'): number[] {
+  const keyOf = cadence === 'weekly'
+    ? (b: DailyBar) => isoWeekKey(new Date(b.date + 'T00:00:00Z'))
+    : (b: DailyBar) => b.date.slice(0, 7); // YYYY-MM
   const out: number[] = [];
   for (let i = 0; i < bars.length; i++) {
-    const cur = bars[i]!.date.slice(0, 7); // YYYY-MM
-    const next = bars[i + 1]?.date.slice(0, 7);
-    if (next !== cur) out.push(i); // last bar of its month
+    const cur = keyOf(bars[i]!);
+    const next = bars[i + 1] ? keyOf(bars[i + 1]!) : null;
+    if (next !== cur) out.push(i);
   }
   return out;
 }
@@ -91,14 +109,74 @@ export function signalFor(strategy: string, threshold: number): SignalFn {
   };
 }
 
+// ---- Signal families + precomputed matrix (for the 50-run Strategi Lab) ----
+export type FamilyKey = 'score' | 'ma200' | 'golden' | 'score_ma200' | 'always';
+
+export interface MatrixCell { ok: boolean; rank: number }
+/** code -> rebalance-date -> cell. `rank` dipakai untuk top-K & ambang numerik. */
+export type SignalMatrix = Map<string, Map<string, MatrixCell>>;
+
+/**
+ * Evaluasi satu keluarga sinyal pada potongan bars ≤ t.
+ * `ok` = kondisi dasar TANPA ambang numerik (threshold diterapkan terpisah);
+ * `rank` = metrik pemeringkat (skor / % di atas MA200 / spread MA).
+ * Null berarti data tak memadai → saham tidak bisa dipilih pada tanggal itu.
+ */
+export function evaluateFamily(family: FamilyKey, bars: Bar[]): MatrixCell | null {
+  if (family === 'always') return { ok: true, rank: 0 };
+  if (family === 'ma200') {
+    if (bars.length < 200) return null;
+    const n = bars.length;
+    let s = 0;
+    for (let i = n - 200; i < n; i++) s += bars[i]!.close;
+    const ma = s / 200;
+    const price = bars[n - 1]!.close;
+    return ma > 0 ? { ok: price > ma, rank: ((price / ma) - 1) * 100 } : null;
+  }
+  if (family === 'golden') {
+    if (bars.length < 200) return null;
+    const n = bars.length;
+    let s50 = 0;
+    let s200 = 0;
+    for (let i = n - 50; i < n; i++) s50 += bars[i]!.close;
+    for (let i = n - 200; i < n; i++) s200 += bars[i]!.close;
+    const ma50 = s50 / 50;
+    const ma200v = s200 / 200;
+    return ma200v > 0 ? { ok: ma50 > ma200v, rank: ((ma50 / ma200v) - 1) * 100 } : null;
+  }
+  // score & score_ma200
+  const t = analyzeTechnical(bars);
+  if (!t) return null;
+  if (family === 'score_ma200') {
+    const above = t.sma200 != null && t.price > t.sma200;
+    return { ok: above, rank: t.score };
+  }
+  return { ok: true, rank: t.score };
+}
+
+export interface RunOptions {
+  costPct?: number;
+  cadence?: Cadence;
+  /** Batasi jumlah nama dipilih per rebalance — top-K by `rank` desc. */
+  maxNames?: number | null;
+  /** Ambang numerik di atas `rank` (untuk matrix path). */
+  minRank?: number | null;
+  /** Matrix prakomputasi — mengesampingkan `signal` saat diberikan. */
+  signals?: SignalMatrix;
+}
+
 export function runBacktest(
   barsBySymbol: Map<string, DailyBar[]>,
   ihsgBars: DailyBar[],
   signal: SignalFn,
-  opts: { costPct?: number } = {}
+  opts: RunOptions = {}
 ): BacktestResult | null {
   if (ihsgBars.length < 260) return null;
   const cost = opts.costPct ?? 0.15; // % of turnover per rebalance
+  const cadence = opts.cadence ?? 'monthly';
+  const maxNames = opts.maxNames ?? null;
+  const minRank = opts.minRank ?? null;
+  const matrix = opts.signals ?? null;
 
   const timeline = ihsgBars.map((b) => b.date);
   const ihsgClose = new Map(ihsgBars.map((b) => [b.date, b.close]));
@@ -109,9 +187,9 @@ export function runBacktest(
     idxMaps.set(sym, new Map(bars.map((b, i) => [b.date, i])));
   }
 
-  // Rebalance points: month-ends where IHSG has >=200 prior bars (MA200 warm-up)
-  const allMonthEnds = monthEndIndices(ihsgBars);
-  const rebal = allMonthEnds.filter((i) => i >= 200);
+  // Rebalance points: period-ends where IHSG has >=200 prior bars (MA200 warm-up)
+  const allEnds = rebalanceIndices(ihsgBars, cadence);
+  const rebal = allEnds.filter((i) => i >= 200);
   if (rebal.length < 6) return null;
 
   let equity = 100;
@@ -128,22 +206,38 @@ export function runBacktest(
     const dateT = timeline[t]!;
     const dateNext = timeline[tNext]!;
 
-    const selected: { sym: string; ret: number }[] = [];
+    const candidates: { sym: string; ret: number; rank: number }[] = [];
     for (const [sym, bars] of barsBySymbol) {
       const im = idxMaps.get(sym)!;
       const idx = im.get(dateT);
       const idxNext = im.get(dateNext);
       if (idx == null || idxNext == null || idx < 30) continue;
-      if (signal(bars.slice(0, idx + 1))) {
-        selected.push({ sym, ret: bars[idxNext]!.close / bars[idx]!.close - 1 });
+      let pass: boolean;
+      let rank = 0;
+      if (matrix) {
+        const cell = matrix.get(sym)?.get(dateT);
+        if (!cell || !cell.ok) continue;
+        pass = true;
+        rank = cell.rank;
+        if (minRank != null && rank < minRank) continue;
+      } else {
+        pass = signal(bars.slice(0, idx + 1));
       }
+      if (!pass) continue;
+      candidates.push({ sym, ret: bars[idxNext]!.close / bars[idx]!.close - 1, rank });
     }
 
-    const holdings = new Set(selected.map((s) => s.sym));
+    // Top-K by rank (stable: ties keep insertion order)
+    let chosen = candidates;
+    if (maxNames != null && candidates.length > maxNames) {
+      chosen = [...candidates].sort((a, b) => b.rank - a.rank).slice(0, maxNames);
+    }
+
+    const holdings = new Set(chosen.map((s) => s.sym));
     holdingsCount.push(holdings.size);
 
     // Equal-weight portfolio return (cash = 0% when nothing selected)
-    let pr = selected.length ? mean(selected.map((s) => s.ret)) : 0;
+    let pr = chosen.length ? mean(chosen.map((s) => s.ret)) : 0;
 
     // Turnover cost: fraction of names that changed vs previous holdings
     const union = new Set([...prev, ...holdings]);
@@ -163,16 +257,18 @@ export function runBacktest(
     ihsgCurve.push(ihsgEq);
   }
 
-  const months = monthlyRets.length;
-  const years = months / 12;
+  const periods = monthlyRets.length;
+  const perYear = cadence === 'weekly' ? 52 : 12;
+  const annFactor = Math.sqrt(perYear);
+  const years = periods / perYear;
   const totalReturn = equity / 100 - 1;
   const cagr = years > 0 ? Math.pow(equity / 100, 1 / years) - 1 : 0;
-  const winRate = months ? monthlyRets.filter((r) => r > 0).length / months : 0;
+  const winRate = periods ? monthlyRets.filter((r) => r > 0).length / periods : 0;
   const mMean = mean(monthlyRets);
   const mStd = std(monthlyRets);
   const downside = std(monthlyRets.filter((r) => r < 0).map((r) => r));
-  const sharpe = mStd > 0 ? (mMean / mStd) * Math.sqrt(12) : 0;
-  const sortino = downside > 0 ? (mMean / downside) * Math.sqrt(12) : 0;
+  const sharpe = mStd > 0 ? (mMean / mStd) * annFactor : 0;
+  const sortino = downside > 0 ? (mMean / downside) * annFactor : 0;
 
   const ihsgTotal = ihsgEq / 100 - 1;
   const ihsgCagr = years > 0 ? Math.pow(ihsgEq / 100, 1 / years) - 1 : 0;
@@ -188,7 +284,8 @@ export function runBacktest(
   return {
     start: curveDates[0]!,
     end: curveDates[curveDates.length - 1]!,
-    months,
+    months: periods,
+    cadence,
     equity: equityPoints,
     metrics: {
       totalReturnPct: r2(totalReturn * 100),

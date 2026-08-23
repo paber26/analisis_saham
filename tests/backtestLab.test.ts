@@ -116,14 +116,13 @@ describe('backtestHistory — round-trip & kapasitas', () => {
   let dir: string;
   let H: typeof import('../server/utils/backtestHistory');
   let firstSweepId = '';
+  const O = () => ({ dir }); // isolasi eksplisit — TIDAK menyentuh store produksi
 
   beforeAll(async () => {
     dir = await fs.mkdtemp(path.join(tmpdir(), 'lab-hist-'));
-    process.env.DATA_STORE_DIR = dir;
     H = await import('../server/utils/backtestHistory');
   });
   afterAll(async () => {
-    delete process.env.DATA_STORE_DIR;
     await fs.rm(dir, { recursive: true, force: true });
   });
 
@@ -149,19 +148,19 @@ describe('backtestHistory — round-trip & kapasitas', () => {
 
   it('simpan → baca kembali utuh; urut terbaru dulu', async () => {
     const s1 = H.sweepFromSummary(fakeSummary(-22));
-    await H.saveSweep(s1);
-    const got = await H.getSweep(s1.id);
+    await H.saveSweep(s1, O());
+    const got = await H.getSweep(s1.id, O());
     expect(got).not.toBeNull();
     expect(got!.bestAlphaPct).toBe(-22);
     expect(got!.runs[0]!.bench.alphaCagrPct).toBe(-22);
     expect(got!.ihsgCagrPct).toBe(-1.37);
 
     const s2 = H.sweepFromSummary(fakeSummary(3.5));
-    await H.saveSweep(s2);
-    const latest = await H.getLatestSweep();
+    await H.saveSweep(s2, O());
+    const latest = await H.getLatestSweep(O());
     expect(latest!.id).toBe(s2.id);
 
-    const summaries = await H.listSweepSummaries();
+    const summaries = await H.listSweepSummaries(O());
     expect(summaries.map((x) => x.id)).toEqual([s2.id, s1.id]);
     firstSweepId = s1.id;
   });
@@ -169,9 +168,9 @@ describe('backtestHistory — round-trip & kapasitas', () => {
   it('kapasitas maksimum 20 sweep terakhir', async () => {
     // push total 21x tambahan (mulai dari 2 yang ada) → dipangkas ke 20
     for (let i = 0; i < 21; i++) {
-      await H.saveSweep(H.sweepFromSummary(fakeSummary(i)));
+      await H.saveSweep(H.sweepFromSummary(fakeSummary(i)), O());
     }
-    const list = await H.listSweepSummaries();
+    const list = await H.listSweepSummaries(O());
     expect(list.length).toBe(20);
     const raw = JSON.parse(await fs.readFile(path.join(dir, 'backtest-lab.json'), 'utf-8')) as LabHistory;
     expect(raw.sweeps.length).toBe(20);

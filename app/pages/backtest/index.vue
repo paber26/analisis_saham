@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 
 useHead({
   title: 'Backtest Strategi — Validasi vs IHSG',
@@ -8,6 +8,7 @@ useHead({
 
 const route = useRoute();
 const router = useRouter();
+const { token, authHeaders } = useAppToken();
 const strategy = ref((route.query.strategy as string) || 'score');
 const threshold = ref(parseInt((route.query.threshold as string) || '70', 10) || 70);
 
@@ -31,6 +32,78 @@ const bench = computed(() => data.value?.benchmark || null);
 const beatsIhsg = computed(() => bench.value && bench.value.alphaCagrPct > 0);
 
 const fmtPct = (n: number | null | undefined) => (n == null ? '—' : (n >= 0 ? '+' : '') + n + '%');
+
+// ---- Strategi Lab: 50 kombinasi parameter + histori sweep ----
+interface LabRun {
+  id: string; cadence: 'monthly' | 'weekly'; family: string;
+  threshold: number | null; maxNames: number | null; label: string;
+  metrics: { totalReturnPct: number; cagrPct: number; winRatePct: number; maxDrawdownPct: number; sharpe: number; sortino: number; avgHoldings: number };
+  bench: { totalReturnPct: number; cagrPct: number; maxDrawdownPct: number; alphaCagrPct: number };
+}
+interface LabSweep {
+  id: string; createdAt: string; periodStart: string | null; periodEnd: string | null;
+  universeSize: number; executed: number; failed: number; beatsCount: number;
+  bestAlphaPct: number | null; medianAlphaPct: number | null; ihsgCagrPct: number | null;
+  runs: LabRun[];
+}
+const labRunning = ref(false);
+const labError = ref('');
+const labSweep = ref<LabSweep | null>(null);
+const labSweeps = ref<{ id: string; createdAt: string; periodStart: string | null; bestAlphaPct: number | null; beatsCount: number }[]>([]);
+
+async function loadLabHistory() {
+  try {
+    const d = await $fetch<any>('/api/backtest-lab');
+    labSweep.value = d.latest ?? null;
+    labSweeps.value = d.sweeps ?? [];
+  } catch { /* belum ada histori */ }
+}
+
+async function runLab() {
+  labRunning.value = true;
+  labError.value = '';
+  try {
+    const d = await $fetch<any>('/api/backtest-lab/execute', { headers: authHeaders.value, timeout: 300_000 });
+    labSweep.value = d.sweep;
+    await loadLabHistory();
+  } catch (e: any) {
+    labError.value = e?.statusMessage || e?.data?.statusMessage || (e?.statusCode === 401
+      ? 'Jalankan lab memerlukan login / token akses.'
+      : 'Gagal menjalankan sweep.');
+  } finally {
+    labRunning.value = false;
+  }
+}
+
+function selectSweep(id: string) {
+  if (!id) return;
+  $fetch<any>('/api/backtest-lab', { params: { sweep: id } })
+    .then((d) => { labSweep.value = d.sweep; })
+    .catch(() => {});
+}
+
+const labSortedRuns = computed<LabRun[]>(() =>
+  [...(labSweep.value?.runs ?? [])].sort((a, b) => b.bench.alphaCagrPct - a.bench.alphaCagrPct)
+);
+const famLabel = (f: string) => ({ score: 'Skor', score_ma200: 'Skor+MA200', ma200: 'MA200', golden: 'Golden', always: 'Baseline' } as Record<string, string>)[f] || f;
+
+/** Klik baris → muat konfigurasi ke panel utama (hanya family yang didukung panel). */
+function applyRunToMain(r: LabRun) {
+  if (r.family === 'score') {
+    strategy.value = 'score';
+    threshold.value = r.threshold ?? 70;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (r.family === 'ma200') {
+    strategy.value = 'ma200';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else if (r.family === 'golden') {
+    strategy.value = 'golden';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+}
+const isMainLoadable = (r: LabRun) => ['score', 'ma200', 'golden'].includes(r.family);
+
+onMounted(loadLabHistory);
 
 // ---- Event study: forward returns after a signal, vs baseline ----
 const evSignal = ref('golden');
@@ -142,6 +215,113 @@ const chartOption = computed(() => {
           </p>
         </footer>
       </template>
+
+      <!-- ================= STRATEGI LAB (50 KOMBINASI) ================= -->
+      <section class="glow-card rounded-2xl p-6 space-y-4">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold text-slate-50">🧪 Strategi Lab — 50 Kombinasi Parameter</h2>
+            <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
+              Sweep sistematis: strategi × ambang × top-K × kadensi bulanan/mingguan pada data yang sama,
+              tanpa look-ahead, biaya transaksi terpotong. Setiap sweep tersimpan ke
+              <strong class="text-slate-300">histori</strong> agar bisa dicek: apakah "juara" dulu tetap juara?
+            </p>
+          </div>
+          <div class="flex flex-col items-end gap-2">
+            <button type="button" :disabled="labRunning"
+              class="px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:opacity-40 text-slate-950 text-xs font-bold transition-colors"
+              @click="runLab">
+              {{ labRunning ? '⏳ Menjalankan 50 percobaan…' : '▶ Jalankan 50 percobaan' }}
+            </button>
+            <select v-if="labSweeps.length" class="bg-slate-950 border border-slate-800 rounded-lg px-2 py-1.5 text-[11px] text-slate-300 max-w-[260px]"
+              @change="selectSweep(($event.target as HTMLSelectElement).value)">
+              <option value="">📚 Histori sweep ({{ labSweeps.length }})…</option>
+              <option v-for="s in labSweeps" :key="s.id" :value="s.id">
+                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/50 menang
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <p v-if="labError" class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-xl px-3 py-2">{{ labError }}</p>
+
+        <template v-if="labSweep">
+          <!-- Ringkasan -->
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
+              <p class="text-[10px] text-slate-500 uppercase font-bold">Mengungguli IHSG</p>
+              <p class="text-xl font-extrabold mt-0.5" :class="labSweep.beatsCount > 0 ? 'text-emerald-400' : 'text-slate-300'">{{ labSweep.beatsCount }}<span class="text-sm text-slate-500">/50</span></p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
+              <p class="text-[10px] text-slate-500 uppercase font-bold">Alpha Terbaik</p>
+              <p class="text-xl font-extrabold mt-0.5" :class="(labSweep.bestAlphaPct ?? 0) > 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(labSweep.bestAlphaPct) }}</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
+              <p class="text-[10px] text-slate-500 uppercase font-bold">Median Alpha</p>
+              <p class="text-xl font-extrabold mt-0.5" :class="(labSweep.medianAlphaPct ?? 0) > 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(labSweep.medianAlphaPct) }}</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">
+              <p class="text-[10px] text-slate-500 uppercase font-bold">Periode</p>
+              <p class="text-[11px] font-bold mt-1 text-slate-200">{{ labSweep.periodStart }} → {{ labSweep.periodEnd }}</p>
+              <p class="text-[10px] text-slate-500">{{ labSweep.universeSize }} saham · IHSG {{ fmtPct(labSweep.ihsgCagrPct) }}/thn</p>
+            </div>
+          </div>
+
+          <!-- Leaderboard -->
+          <div class="overflow-x-auto rounded-xl border border-slate-800">
+            <table class="w-full text-xs min-w-[820px]">
+              <thead>
+                <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800 bg-slate-900/70">
+                  <th class="px-3 py-2.5 font-semibold">#</th>
+                  <th class="px-3 py-2.5 font-semibold">Strategi</th>
+                  <th class="px-3 py-2.5 text-center">Kadensi</th>
+                  <th class="px-3 py-2.5 text-right">CAGR</th>
+                  <th class="px-3 py-2.5 text-right">Alpha/thn</th>
+                  <th class="px-3 py-2.5 text-right">Max DD</th>
+                  <th class="px-3 py-2.5 text-right">Sharpe</th>
+                  <th class="px-3 py-2.5 text-right">Win bln</th>
+                  <th class="px-3 py-2.5 text-right">Rata² hold</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(r, i) in labSortedRuns" :key="r.id"
+                  class="border-b border-slate-900/70"
+                  :class="[r.bench.alphaCagrPct > 0 ? 'bg-emerald-500/[0.05]' : '', isMainLoadable(r) ? 'cursor-pointer hover:bg-slate-900/60' : '']"
+                  :title="isMainLoadable(r) ? 'Klik untuk memuat konfigurasi ini ke panel utama' : ''"
+                  @click="isMainLoadable(r) && applyRunToMain(r)">
+                  <td class="px-3 py-2.5 tabular-nums" :class="i === 0 ? 'text-amber-300 font-extrabold' : i < 3 ? 'text-slate-200 font-bold' : 'text-slate-500'">{{ i + 1 }}</td>
+                  <td class="px-3 py-2.5">
+                    <span class="font-semibold text-slate-100">{{ famLabel(r.family) }}</span>
+                    <span v-if="r.threshold != null" class="text-slate-400 ml-1">≥{{ r.threshold }}</span>
+                    <span class="text-slate-500 ml-1.5">{{ r.maxNames != null ? `Top${r.maxNames}` : 'semua' }}</span>
+                    <span v-if="r.family === 'always'" class="ml-1.5 text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">baseline</span>
+                  </td>
+                  <td class="px-3 py-2.5 text-center">
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="r.cadence === 'weekly' ? 'text-violet-300 bg-violet-500/10 border-violet-500/25' : 'text-sky-300 bg-sky-500/10 border-sky-500/25'">{{ r.cadence === 'weekly' ? 'Mingguan' : 'Bulanan' }}</span>
+                  </td>
+                  <td class="px-3 py-2.5 text-right font-bold tabular-nums" :class="r.metrics.cagrPct >= 0 ? 'text-emerald-300' : 'text-rose-300'">{{ fmtPct(r.metrics.cagrPct) }}</td>
+                  <td class="px-3 py-2.5 text-right font-extrabold tabular-nums" :class="r.bench.alphaCagrPct > 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(r.bench.alphaCagrPct) }}</td>
+                  <td class="px-3 py-2.5 text-right tabular-nums text-slate-400">−{{ r.metrics.maxDrawdownPct }}%</td>
+                  <td class="px-3 py-2.5 text-right tabular-nums" :class="r.metrics.sharpe >= 1 ? 'text-emerald-300' : 'text-slate-300'">{{ r.metrics.sharpe }}</td>
+                  <td class="px-3 py-2.5 text-right tabular-nums text-slate-300">{{ r.metrics.winRatePct }}%</td>
+                  <td class="px-3 py-2.5 text-right tabular-nums text-slate-500">{{ r.metrics.avgHoldings }}</td>
+                </tr>
+                <tr v-if="!labSortedRuns.length"><td colspan="9" class="py-8 text-center text-slate-500">Run gagal dihitung.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="text-[11px] text-slate-500 leading-relaxed">
+            ⚠ <strong class="text-slate-300">Kejujuran metodologi:</strong> memilih konfigurasi terbaik dari 50 percobaan
+            <strong class="text-slate-300">rawan overfitting</strong> — sebagian "menang" karena kebetulan periode ini.
+            Gunakan leaderboard sebagai eksplorasi karakter strategi (mis. top-K vs semua, mingguan vs bulanan),
+            lalu validasi konfigurasi favorit di sweep berikutnya via histori.
+          </p>
+        </template>
+        <p v-else-if="!labRunning" class="text-xs text-slate-500">
+          Belum ada sweep tersimpan. Tekan <span class="text-emerald-400 font-semibold">▶ Jalankan 50 percobaan</span> — hasilnya otomatis masuk histori.
+        </p>
+      </section>
 
       <!-- ================= EVENT STUDY ================= -->
       <section class="glow-card rounded-2xl p-6 space-y-4">

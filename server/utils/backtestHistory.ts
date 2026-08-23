@@ -3,8 +3,8 @@
 // time — did the "winner" stay a winner? File-store pattern (atomic tmp+rename),
 // same philosophy as alerts/watchlist; capacity capped at the latest 20 sweeps.
 //
-// NOTE: DATA_STORE_DIR dibaca per-panggilan (bukan di module load) supaya
-// test dapat mengarahkan store ke direktori sementara.
+// Semua fungsi menerima { dir } opsional — test memakai dir eksplisit agar
+// TERISOLASI penuh dari store produksi (tidak bergantung pada env-var).
 
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -40,27 +40,28 @@ export interface LabHistory { sweeps: LabSweep[] }
 
 const CAP = 20;
 
-function dataDir(): string {
-  return process.env.DATA_STORE_DIR || './.data-store';
-}
-function filePath(): string {
-  return path.join(dataDir(), 'backtest-lab.json');
+export interface HistoryOpts { dir?: string }
+
+function fileIn(opts: HistoryOpts | undefined): string {
+  const dir = opts?.dir || process.env.DATA_STORE_DIR || './.data-store';
+  return path.join(dir, 'backtest-lab.json');
 }
 
-async function readHistory(): Promise<LabHistory> {
+async function readHistory(opts?: HistoryOpts): Promise<LabHistory> {
   try {
-    const j = JSON.parse(await fs.readFile(filePath(), 'utf-8')) as LabHistory;
+    const j = JSON.parse(await fs.readFile(fileIn(opts), 'utf-8')) as LabHistory;
     return { sweeps: Array.isArray(j.sweeps) ? j.sweeps : [] };
   } catch {
     return { sweeps: [] };
   }
 }
 
-async function writeHistory(h: LabHistory): Promise<void> {
-  await fs.mkdir(dataDir(), { recursive: true });
-  const tmp = filePath() + '.tmp';
+async function writeHistory(h: LabHistory, opts?: HistoryOpts): Promise<void> {
+  const target = fileIn(opts);
+  await fs.mkdir(path.dirname(target), { recursive: true });
+  const tmp = target + '.tmp';
   await fs.writeFile(tmp, JSON.stringify(h), 'utf-8');
-  await fs.rename(tmp, filePath());
+  await fs.rename(tmp, target);
 }
 
 /** Ubah hasil runner menjadi record ringkas utk disimpan (runs urut alpha desc). */
@@ -94,16 +95,18 @@ export function sweepFromSummary(summary: SweepSummary): LabSweep {
   };
 }
 
-export async function saveSweep(sweep: LabSweep): Promise<void> {
-  const h = await readHistory();
+export async function saveSweep(sweep: LabSweep, opts?: HistoryOpts): Promise<void> {
+  const h = await readHistory(opts);
   h.sweeps.unshift(sweep);
   h.sweeps = h.sweeps.slice(0, CAP);
-  await writeHistory(h);
+  await writeHistory(h, opts);
 }
 
 /** Daftar ringkas semua sweep tersimpan (terbaru dulu) — untuk dropdown UI. */
-export async function listSweepSummaries(): Promise<Pick<LabSweep, 'id' | 'createdAt' | 'periodStart' | 'periodEnd' | 'beatsCount' | 'bestAlphaPct' | 'executed'>[]> {
-  const h = await readHistory();
+export type SweepListItem = Pick<LabSweep, 'id' | 'createdAt' | 'periodStart' | 'periodEnd' | 'beatsCount' | 'bestAlphaPct' | 'executed'>;
+
+export async function listSweepSummaries(opts?: HistoryOpts): Promise<SweepListItem[]> {
+  const h = await readHistory(opts);
   return h.sweeps.map((s) => ({
     id: s.id, createdAt: s.createdAt, periodStart: s.periodStart,
     periodEnd: s.periodEnd, beatsCount: s.beatsCount, bestAlphaPct: s.bestAlphaPct,
@@ -111,12 +114,12 @@ export async function listSweepSummaries(): Promise<Pick<LabSweep, 'id' | 'creat
   }));
 }
 
-export async function getSweep(id: string): Promise<LabSweep | null> {
-  const h = await readHistory();
+export async function getSweep(id: string, opts?: HistoryOpts): Promise<LabSweep | null> {
+  const h = await readHistory(opts);
   return h.sweeps.find((s) => s.id === id) ?? null;
 }
 
-export async function getLatestSweep(): Promise<LabSweep | null> {
-  const h = await readHistory();
+export async function getLatestSweep(opts?: HistoryOpts): Promise<LabSweep | null> {
+  const h = await readHistory(opts);
   return h.sweeps[0] ?? null;
 }

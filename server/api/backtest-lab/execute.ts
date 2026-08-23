@@ -1,4 +1,5 @@
-import { getQuery, createError, getSessionUser } from 'h3';
+import { getQuery, createError } from 'h3';
+import { getSessionUser } from '../../utils/auth';
 import { fetchLabBars, runSweep } from '../../utils/backtestLab';
 import { sweepFromSummary, saveSweep } from '../../utils/backtestHistory';
 import { tradingDay } from '../../utils/cacheKey';

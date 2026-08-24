@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 
 // Compact screening list for the right rail on emiten-analysis pages, so the
 // user can switch stocks without going back to /screening. Clicking a row keeps
@@ -14,6 +14,57 @@ const rows = computed<any[]>(() => data.value?.results || []);
 const search = ref('');
 const sortBy = ref<'score' | 'qvm' | 'watchlist' | 'skip'>('score');
 const valSort = ref<'' | 'per_asc' | 'per_desc' | 'pbv_asc' | 'pbv_desc' | 'cap_desc'>('');
+
+// ---- Filter proyeksi batch (dipindah dari halaman /forecast ke rail ini) ----
+// Dua dimensi yang bisa digabung AND: Arah (up/down/flat) × Sinyal (edge/prob/upside).
+// Data di-fetch LAZY — hanya saat user pertama kali memakai filter, karena batch
+// scan 800+ model itu berat; server meng-cache per hari per-horizon.
+const proyeksiArah = ref<'' | 'up' | 'down' | 'flat'>('');
+const proyeksiSinyal = ref<'' | 'edge_pos' | 'edge_neg' | 'prob_high' | 'upside_5'>('');
+const fcRows = ref<any[] | null>(null);
+const fcLoading = ref(false);
+const fcError = ref('');
+const fcHorizon = computed(() => {
+  const h = parseInt((route.query.horizon as string) || '14', 10);
+  return Number.isFinite(h) ? Math.max(5, Math.min(60, h)) : 14;
+});
+
+async function ensureForecastData() {
+  if (fcRows.value || fcLoading.value) return;
+  fcLoading.value = true;
+  fcError.value = '';
+  try {
+    const d = await $fetch<any>('/api/forecast-screen', { params: { horizon: fcHorizon.value } });
+    fcRows.value = d?.results || [];
+  } catch (e: any) {
+    fcError.value = e?.statusMessage || e?.data?.statusMessage || 'Gagal memuat data proyeksi.';
+  } finally {
+    fcLoading.value = false;
+  }
+}
+
+watch([proyeksiArah, proyeksiSinyal], () => {
+  if (proyeksiArah.value || proyeksiSinyal.value) ensureForecastData();
+});
+// Horizon di URL berubah (halaman /forecast) → cache lokal dibuang agar refetch
+watch(fcHorizon, () => { fcRows.value = null; });
+
+const fcMap = computed<Map<string, any> | null>(() => {
+  if (!fcRows.value) return null;
+  return new Map(fcRows.value.map((r) => [r.code, r]));
+});
+const fcActive = computed(() => Boolean(proyeksiArah.value || proyeksiSinyal.value));
+
+function matchProyeksi(r: any): boolean {
+  const fc = fcMap.value?.get(r.code);
+  if (!fc) return false; // tanpa data proyeksi → disembunyikan saat filter aktif
+  if (proyeksiArah.value && fc.direction !== proyeksiArah.value) return false;
+  if (proyeksiSinyal.value === 'edge_pos' && fc.edge !== 'positif') return false;
+  if (proyeksiSinyal.value === 'edge_neg' && fc.edge !== 'negatif') return false;
+  if (proyeksiSinyal.value === 'prob_high' && !(fc.probUp >= 60)) return false;
+  if (proyeksiSinyal.value === 'upside_5' && !(fc.upsidePct >= 5)) return false;
+  return true;
+}
 
 const filtered = computed(() => {
   const q = search.value.trim().toUpperCase();
@@ -65,6 +116,7 @@ const filtered = computed(() => {
     r = [...r].sort((a, b) => (b.marketCap ?? -1) - (a.marketCap ?? -1));
   } else if (sortBy.value === 'qvm') r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
   else if (sortBy.value === 'score') r = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
+  if (fcActive.value && fcMap.value) r = r.filter(matchProyeksi);
   return r;
 });
 
@@ -158,6 +210,39 @@ const valTip = (row: any) => {
           <option value="cap_desc">Market cap terbesar → terkecil</option>
         </select>
       </div>
+      <div class="mt-1.5 flex items-center gap-2">
+        <span class="text-[10px] text-slate-500 font-semibold shrink-0">Arah:</span>
+        <select v-model="proyeksiArah" class="flex-1 bg-slate-900 border rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500" :class="proyeksiArah ? 'border-emerald-500/30 text-emerald-300' : 'border-slate-800 text-slate-300'">
+          <option value="">Semua arah</option>
+          <option value="up">📈 Proyeksi &gt; Aktual</option>
+          <option value="down">📉 Proyeksi &lt; Aktual</option>
+          <option value="flat">➖ Proyeksi = Aktual</option>
+        </select>
+      </div>
+      <div class="mt-1 flex items-center gap-2">
+        <span class="text-[10px] text-slate-500 font-semibold shrink-0">Sinyal:</span>
+        <select v-model="proyeksiSinyal" class="flex-1 bg-slate-900 border rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500" :class="proyeksiSinyal ? 'border-emerald-500/30 text-emerald-300' : 'border-slate-800 text-slate-300'">
+          <option value="">Semua sinyal</option>
+          <option value="edge_pos">✅ Edge positif</option>
+          <option value="edge_neg">⚠️ Edge negatif</option>
+          <option value="prob_high">🎯 Prob naik ≥60%</option>
+          <option value="upside_5">🚀 Upside ≥5%</option>
+        </select>
+      </div>
+      <p v-if="fcActive" class="text-[10px] mt-1.5 leading-snug">
+        <template v-if="fcLoading">
+          <span class="text-amber-300/80">⏳ Memindai proyeksi {{ fcHorizon }}h (batch 800+ saham, sekali per hari)…</span>
+        </template>
+        <template v-else-if="fcError">
+          <span class="text-rose-300">{{ fcError }}</span>
+        </template>
+        <template v-else>
+          <span class="text-slate-500">
+            Menampilkan <strong class="text-emerald-300">{{ filtered.length }}</strong> dgn filter proyeksi
+            (horizon {{ fcHorizon }}h<span v-if="fcMap"> · {{ fcMap.size }} saham ter-scan</span>)
+          </span>
+        </template>
+      </p>
     </div>
 
     <!-- List -->

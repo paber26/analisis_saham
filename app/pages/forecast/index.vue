@@ -38,8 +38,8 @@ const { data, pending, error } = await useFetch<any>(() => '/api/forecast', {
   watch: [activeSymbol, horizon]
 });
 
-// Filter: saham dengan proyeksi (prediksi forward) > harga aktual, dari batch
-// scan server-side (semua saham snapshot screening). Di-cache 1 hari.
+// Filter: batch scan server-side (semua saham snapshot screening). Di-cache 1 hari.
+// Multi-kategori: arah proyeksi + edge + prob + upside — digabung AND di client.
 const { data: filterData, pending: filterPending, refresh: refreshFilter } = await useFetch<any>(
   () => '/api/forecast-screen',
   { params: { horizon } }
@@ -47,6 +47,44 @@ const { data: filterData, pending: filterPending, refresh: refreshFilter } = awa
 const filterRows = computed<any[]>(() => filterData.value?.results || []);
 const filterCount = computed(() => filterData.value?.count ?? filterRows.value.length);
 const filterScanned = computed(() => filterData.value?.scanned ?? 0);
+
+// ---- Multi-category filter (default: Proyeksi > Aktual, perilaku lama) ----
+const activeFilters = ref<Set<string>>(new Set(['up']));
+
+function toggleFilter(key: string) {
+  const s = new Set(activeFilters.value);
+  s.has(key) ? s.delete(key) : s.add(key);
+  activeFilters.value = s;
+}
+function resetFilters() {
+  activeFilters.value = new Set(['up']);
+}
+function clearFilters() {
+  activeFilters.value = new Set();
+}
+
+const FILTER_CHIPS: { key: string; label: string; test: (r: any) => boolean }[] = [
+  { key: 'up', label: '📈 Proyeksi > Aktual', test: (r) => r.direction === 'up' },
+  { key: 'down', label: '📉 Proyeksi < Aktual', test: (r) => r.direction === 'down' },
+  { key: 'flat', label: '➖ Proyeksi = Aktual', test: (r) => r.direction === 'flat' },
+  { key: 'edge_pos', label: '✅ Edge Positif', test: (r) => r.edge === 'positif' },
+  { key: 'edge_neg', label: '⚠️ Edge Negatif', test: (r) => r.edge === 'negatif' },
+  { key: 'prob_high', label: '🎯 Prob ≥60%', test: (r) => r.probUp >= 60 },
+  { key: 'prob_low', label: '🎲 Prob <45%', test: (r) => r.probUp < 45 },
+  { key: 'upside_5', label: '🚀 Upside ≥5%', test: (r) => r.upsidePct >= 5 }
+];
+
+const filteredRows = computed<any[]>(() => {
+  const rows = filterRows.value;
+  if (!activeFilters.value.size) return rows;
+  const active = FILTER_CHIPS.filter((c) => activeFilters.value.has(c.key));
+  return rows.filter((r) => active.every((c) => c.test(r)));
+});
+const filterPage = ref(1);
+const FILTER_PAGE_SIZE = 50;
+const filteredPaged = computed(() => filteredRows.value.slice(0, filterPage.value * FILTER_PAGE_SIZE));
+watch([filteredRows, horizon], () => { filterPage.value = 1; });
+const allFiltersActive = computed(() => activeFilters.value.size >= FILTER_CHIPS.length);
 
 // ---- Candlestick API (merged from /saham) ----
 const selectedRange = ref<'1m' | '3m' | '6m' | '1y'>('6m');
@@ -816,13 +854,13 @@ const forecastChartOption = computed(() => {
         </section>
       </template>
 
-      <!-- Filter: proyeksi > aktual (batch scan seluruh saham IDX) -->
+      <!-- Filter batch scan: multi-kategori (arah proyeksi + edge + prob + upside) -->
       <section class="glow-card rounded-2xl p-6">
         <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
           <div>
-            <h2 class="text-lg font-bold text-slate-50">📈 Filter: Proyeksi > Aktual</h2>
+            <h2 class="text-lg font-bold text-slate-50">📈 Filter Proyeksi Batch (Multi-Kategori)</h2>
             <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
-              Saham di mana <strong class="text-slate-300">proyeksi harga akhir horizon lebih tinggi dari harga aktual</strong> saat ini.
+              Gabungkan beberapa kategori sekaligus (logika <strong class="text-slate-300">AND</strong>).
               Dibuat dari batch scan server-side atas {{ filterScanned }} saham snapshot screening ({{ filterData?.date || '—' }}).
             </p>
           </div>
@@ -836,17 +874,41 @@ const forecastChartOption = computed(() => {
           </button>
         </div>
 
+        <!-- Chips multi-select -->
+        <div class="flex flex-wrap gap-1.5 mt-3">
+          <button
+            v-for="chip in FILTER_CHIPS"
+            :key="chip.key"
+            type="button"
+            class="px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors"
+            :class="activeFilters.has(chip.key)
+              ? 'bg-emerald-500 text-slate-950 border-emerald-500'
+              : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200 hover:border-slate-600'"
+            @click="toggleFilter(chip.key)"
+          >{{ chip.label }}</button>
+          <span class="w-px bg-slate-800 mx-1" aria-hidden="true"></span>
+          <button type="button" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 border border-slate-800 text-sky-300 hover:text-sky-200 transition-colors" @click="resetFilters">↺ Default (&gt; Aktual)</button>
+          <button type="button" :disabled="allFiltersActive" class="px-3 py-1.5 rounded-lg text-[11px] font-semibold bg-slate-900 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors disabled:opacity-40" @click="clearFilters">✕ Bersihkan semua</button>
+        </div>
+
+        <p class="text-[11px] text-slate-500 mt-2">
+          Menampilkan <strong class="text-slate-300">{{ filteredRows.length }}</strong> dari {{ filterCount }} saham ter-scan
+          <span v-if="filterData?.counts" class="text-slate-600">(↑ {{ filterData.counts.up }} · ↓ {{ filterData.counts.down }} · = {{ filterData.counts.flat }})</span>
+          <span v-if="activeFilters.size" class="text-emerald-400/80"> · {{ activeFilters.size }} kategori aktif (AND)</span>
+        </p>
+
         <div v-if="filterPending" class="py-8 flex items-center justify-center gap-3 text-sm text-slate-400">
           <div class="w-6 h-6 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
           Memindai {{ filterScanned }} saham (fetch 5y + fit 5 model/saham)…
         </div>
 
-        <div v-else-if="filterRows.length" class="overflow-x-auto mt-3">
+        <div v-else-if="filteredRows.length" class="overflow-x-auto mt-3">
           <table class="w-full text-sm min-w-[680px]">
             <thead>
               <tr class="text-left text-[11px] uppercase tracking-wider text-slate-500 border-b border-slate-800">
                 <th class="px-3 py-2 font-semibold">#</th>
                 <th class="px-3 py-2 font-semibold">Saham</th>
+                <th class="px-3 py-2 text-center font-semibold">Arah</th>
                 <th class="px-3 py-2 font-semibold text-right">Aktual</th>
                 <th class="px-3 py-2 font-semibold text-right">Proyeksi {{ horizon }}h</th>
                 <th class="px-3 py-2 font-semibold text-right">Upside</th>
@@ -856,15 +918,22 @@ const forecastChartOption = computed(() => {
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(r, i) in filterRows.slice(0, 50)" :key="r.code" class="border-b border-slate-900/70 hover:bg-slate-900/40">
+              <tr v-for="(r, i) in filteredPaged" :key="r.code" class="border-b border-slate-900/70 hover:bg-slate-900/40">
                 <td class="px-3 py-2.5 text-xs text-slate-500">{{ i + 1 }}</td>
                 <td class="px-3 py-2.5">
                   <NuxtLink :to="`/forecast?symbol=${r.code}`" class="font-bold text-emerald-300 hover:text-emerald-200">{{ r.code }}</NuxtLink>
                   <p class="text-[10px] text-slate-500 truncate max-w-[220px]">{{ r.name }}</p>
                 </td>
+                <td class="px-3 py-2.5 text-center">
+                  <span class="text-xs font-bold" :class="r.direction === 'up' ? 'text-emerald-400' : r.direction === 'down' ? 'text-rose-400' : 'text-slate-500'">
+                    {{ r.direction === 'up' ? '↑' : r.direction === 'down' ? '↓' : '—' }}
+                  </span>
+                </td>
                 <td class="px-3 py-2.5 text-right font-mono text-slate-300">{{ fmt(r.price) }}</td>
                 <td class="px-3 py-2.5 text-right font-mono text-sky-300">{{ fmt(r.projPrice) }}</td>
-                <td class="px-3 py-2.5 text-right font-mono font-bold text-emerald-400">+{{ r.upsidePct }}%</td>
+                <td class="px-3 py-2.5 text-right font-mono font-bold" :class="r.upsidePct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
+                  {{ r.upsidePct >= 0 ? '+' : '' }}{{ r.upsidePct }}%
+                </td>
                 <td class="px-3 py-2.5 text-right font-mono" :class="r.expectedReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">
                   {{ r.expectedReturnPct >= 0 ? '+' : '' }}{{ r.expectedReturnPct }}%
                 </td>
@@ -878,13 +947,26 @@ const forecastChartOption = computed(() => {
               </tr>
             </tbody>
           </table>
-          <p v-if="filterCount > 50" class="text-[11px] text-slate-500 mt-2 px-3">
-            Menampilkan 50 terbaik dari {{ filterCount }} saham dengan proyeksi > aktual.
-          </p>
+          <div class="flex items-center justify-between mt-3 px-3">
+            <p class="text-[11px] text-slate-500">
+              Menampilkan {{ filteredPaged.length }} dari {{ filteredRows.length }} hasil ter-filter.
+            </p>
+            <button
+              v-if="filteredPaged.length < filteredRows.length"
+              type="button"
+              class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-300 hover:text-slate-100 hover:border-emerald-500/50 transition-colors"
+              @click="filterPage++"
+            >
+              Muat 50 lagi ({{ filteredRows.length - filteredPaged.length }} sisa) ↓
+            </button>
+          </div>
         </div>
 
         <div v-else class="py-8 text-center text-sm text-slate-400">
-          Tidak ada saham dengan proyeksi > aktual pada horizon {{ horizon }} hari hari ini.
+          Tidak ada saham yang memenuhi kombinasi filter ini
+          <span v-if="activeFilters.size">({{ activeFilters.size }} kategori AND)</span>
+          pada horizon {{ horizon }} hari.
+          <button type="button" class="ml-2 text-emerald-400 font-bold hover:underline" @click="resetFilters">Kembali ke default</button>
         </div>
       </section>
 

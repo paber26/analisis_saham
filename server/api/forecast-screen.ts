@@ -6,9 +6,10 @@ import { loadScreenSnapshot } from '../utils/store';
 import { tradingDay } from '../utils/cacheKey';
 
 /**
- * Batch forecast filter: scan every stock in the daily screening snapshot and
- * keep only rows whose projected (forward) price at the end of the horizon is
- * HIGHER than the current actual price.
+ * Batch forecast scan: run the model for every stock in the daily screening
+ * snapshot and return ALL rows with their projection direction — the
+ * multi-category filter (arah proyeksi / edge / prob / upside) happens
+ * client-side in /forecast.
  *
  * The single-symbol /api/forecast needs ~5y of bars + full model training, so
  * doing this for all 800+ snapshot stocks from the browser is impractical —
@@ -21,6 +22,7 @@ interface ForecastFilterRow {
   name: string;
   price: number;              // last actual close (adjusted)
   projPrice: number;          // forecast mean at end of horizon
+  direction: 'up' | 'down' | 'flat'; // proyeksi vs aktual di akhir horizon
   upsidePct: number;          // (proj/price - 1) * 100
   expectedReturnPct: number;  // next-day ensemble expected return (%)
   probUp: number;             // probability next day closes up (%)
@@ -31,7 +33,8 @@ interface ForecastFilterResponse {
   date: string;
   horizon: number;
   scanned: number;
-  count: number;
+  count: number;                    // total rows returned (semua arah)
+  counts: { up: number; down: number; flat: number };
   results: ForecastFilterRow[];
 }
 
@@ -59,7 +62,9 @@ async function buildForecastRow(code: string, horizon: number): Promise<Forecast
     if (!result) return null;
 
     const last = result.forecast[result.forecast.length - 1];
-    if (!last || last.mean <= result.lastPrice) return null; // proyeksi <= aktual → skip
+    if (!last) return null;
+    const direction: ForecastFilterRow['direction'] =
+      last.mean > result.lastPrice ? 'up' : last.mean < result.lastPrice ? 'down' : 'flat';
 
     return {
       code: code.replace('.JK', ''),
@@ -67,6 +72,7 @@ async function buildForecastRow(code: string, horizon: number): Promise<Forecast
       name: resolveDisplayName(symbol, fetched.meta?.longName || fetched.meta?.shortName),
       price: result.lastPrice,
       projPrice: last.mean,
+      direction,
       upsidePct: Math.round((last.mean / result.lastPrice - 1) * 1000) / 10,
       expectedReturnPct: result.nextDay.expectedReturnPct,
       probUp: result.nextDay.probUp,
@@ -100,6 +106,11 @@ export default defineCachedEventHandler(async (event): Promise<ForecastFilterRes
     horizon,
     scanned: codes.length,
     count: results.length,
+    counts: {
+      up: results.filter((r) => r.direction === 'up').length,
+      down: results.filter((r) => r.direction === 'down').length,
+      flat: results.filter((r) => r.direction === 'flat').length
+    },
     results
   };
 }, {

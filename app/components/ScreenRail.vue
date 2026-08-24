@@ -13,6 +13,7 @@ const rows = computed<any[]>(() => data.value?.results || []);
 
 const search = ref('');
 const sortBy = ref<'score' | 'qvm' | 'watchlist' | 'skip'>('score');
+const valSort = ref<'' | 'per_asc' | 'per_desc' | 'pbv_asc' | 'pbv_desc' | 'cap_desc'>('');
 
 const filtered = computed(() => {
   const q = search.value.trim().toUpperCase();
@@ -27,9 +28,44 @@ const filtered = computed(() => {
     r = r.filter((x) => !isSkipped(x.code));
   }
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
-  if (sortBy.value === 'qvm') r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
+  // Valuasi sort mengesampingkan Skor/QVM ketika aktif
+  if (valSort.value === 'per_asc') {
+    r = [...r].sort((a, b) => {
+      const va = a.per, vb = b.per;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return va - vb;
+    });
+  } else if (valSort.value === 'per_desc') {
+    r = [...r].sort((a, b) => {
+      const va = a.per, vb = b.per;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return vb - va;
+    });
+  } else if (valSort.value === 'pbv_asc') {
+    r = [...r].sort((a, b) => {
+      const va = a.pbv, vb = b.pbv;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return va - vb;
+    });
+  } else if (valSort.value === 'pbv_desc') {
+    r = [...r].sort((a, b) => {
+      const va = a.pbv, vb = b.pbv;
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      return vb - va;
+    });
+  } else if (valSort.value === 'cap_desc') {
+    r = [...r].sort((a, b) => (b.marketCap ?? -1) - (a.marketCap ?? -1));
+  } else if (sortBy.value === 'qvm') r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
   else if (sortBy.value === 'score') r = [...r].sort((a, b) => (b.score ?? -1) - (a.score ?? -1));
-  return r.slice(0, 120);
+  return r;
 });
 
 // Active symbol (params on /analisa/[symbol]; query elsewhere)
@@ -53,6 +89,15 @@ function scoreBarClass(score: number) {
   return 'bg-rose-500';
 }
 const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID'));
+const fmtVal = (n: number | null | undefined) => n == null || !isFinite(n) ? '—' : (n >= 100 ? Math.round(n).toString() : n.toFixed(1));
+const valTip = (row: any) => {
+  const parts: string[] = [];
+  parts.push(`PER ${row.per != null ? row.per.toFixed(1) + 'x' : '—'}`);
+  parts.push(`PBV ${row.pbv != null ? row.pbv.toFixed(1) + 'x' : '—'}`);
+  if (row.dividendYield != null) parts.push(`Div ${row.dividendYield.toFixed(1)}%`);
+  if (row.marketCap != null) parts.push(`Cap Rp ${(row.marketCap / 1e12).toFixed(2)}T`);
+  return parts.join(' · ');
+};
 </script>
 
 <template>
@@ -101,6 +146,17 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
         >
           <span>🙈</span> Skip <span class="text-[9px] font-mono">({{ skipCodes.length }})</span>
         </button>
+      </div>
+      <div class="mt-1.5 flex items-center gap-2">
+        <span class="text-[10px] text-slate-500 font-semibold shrink-0">Valuasi:</span>
+        <select v-model="valSort" class="flex-1 bg-slate-900 border rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500" :class="valSort ? 'border-emerald-500/30 text-emerald-300' : 'border-slate-800 text-slate-300'">
+          <option value="">— Ikut urutan tab</option>
+          <option value="per_asc">PER terendah → tertinggi (murah)</option>
+          <option value="per_desc">PER tertinggi → terendah (mahal)</option>
+          <option value="pbv_asc">PBV terendah → tertinggi</option>
+          <option value="pbv_desc">PBV tertinggi → terendah</option>
+          <option value="cap_desc">Market cap terbesar → terkecil</option>
+        </select>
       </div>
     </div>
 
@@ -151,7 +207,9 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
             <div class="h-full rounded-full" :class="scoreBarClass(row.score)" :style="{ width: row.score + '%' }"></div>
           </div>
           <span class="text-[10px] font-bold text-slate-400 w-6 text-right">{{ row.score }}</span>
-          <span v-if="row.qvm != null" class="text-[9px] font-bold text-sky-300/80 w-9 text-right" title="QVM">Q{{ Math.round(row.qvm) }}</span>
+          <span v-if="row.qvm != null" class="text-[9px] font-bold text-sky-300/80 w-7 text-right" title="QVM">Q{{ Math.round(row.qvm) }}</span>
+          <span class="text-[9px] font-bold w-8 text-right" :class="row.per != null ? 'text-amber-300/80' : 'text-slate-600'" :title="valTip(row)">P{{ fmtVal(row.per) }}</span>
+          <span class="text-[9px] font-bold w-8 text-right" :class="row.pbv != null ? 'text-violet-300/80' : 'text-slate-600'" :title="valTip(row)">B{{ fmtVal(row.pbv) }}</span>
         </div>
       </NuxtLink>
       <p v-if="!filtered.length" class="px-3 py-6 text-center text-[11px] text-slate-500">

@@ -94,17 +94,6 @@
               </NuxtLink>
 
               <NuxtLink
-                :to="`/saham?symbol=${lastSymbol}`"
-                @click="isMobileOpen = false"
-                class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
-                :class="[route.path.startsWith('/saham') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shadow-sm' : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60']"
-                :title="isCollapsed ? 'Chart & Keuangan' : ''"
-              >
-                <span class="text-sm shrink-0">📈</span>
-                <span v-if="!isCollapsed" class="truncate">Chart &amp; Keuangan</span>
-              </NuxtLink>
-
-              <NuxtLink
                 :to="`/forecast?symbol=${lastSymbol}`"
                 @click="isMobileOpen = false"
                 class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold transition-all group relative"
@@ -360,7 +349,7 @@ async function onLogout() {
 
 // Emiten-analysis pages get a screening list in the right rail (desktop) so the
 // user can switch stocks without going back to /screening.
-const RAIL_PREFIXES = ['/analisa', '/saham', '/forecast', '/seasonal', '/profil-saham'];
+const RAIL_PREFIXES = ['/analisa', '/forecast', '/seasonal', '/profil-saham'];
 const showRail = computed(() => RAIL_PREFIXES.some((p) => route.path.startsWith(p)));
 
 const { last: lastSymbol, hydrate } = useLastSymbol();
@@ -375,7 +364,6 @@ const currentPageTitle = computed(() => {
   if (p.startsWith('/backtest')) return 'Backtest Strategi';
   if (p.startsWith('/simulasi')) return 'Simulasi Mesin Waktu';
   if (p.startsWith('/seasonal')) return 'Pola Musiman';
-  if (p.startsWith('/saham')) return 'Chart & Keuangan';
   if (p.startsWith('/profil-saham')) return 'Profil Emiten';
   if (p.startsWith('/watchlist')) return 'Watchlist';
   if (p.startsWith('/portofolio')) return 'Portofolio';

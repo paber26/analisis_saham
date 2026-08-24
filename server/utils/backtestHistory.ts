@@ -12,7 +12,7 @@ import type { SweepSummary } from './backtestLab';
 
 export interface LabRunRecord {
   id: string;
-  cadence: 'monthly' | 'weekly';
+  cadence: 'monthly' | 'weekly' | 'biweekly';
   family: string;
   threshold: number | null;
   maxNames: number | null;

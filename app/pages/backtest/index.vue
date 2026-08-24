@@ -49,7 +49,7 @@ interface LabSweep {
 const labRunning = ref(false);
 const labError = ref('');
 const labSweep = ref<LabSweep | null>(null);
-const labSweeps = ref<{ id: string; createdAt: string; periodStart: string | null; bestAlphaPct: number | null; beatsCount: number }[]>([]);
+const labSweeps = ref<{ id: string; createdAt: string; periodStart: string | null; bestAlphaPct: number | null; beatsCount: number; executed?: number }[]>([]);
 
 async function loadLabHistory() {
   try {

@@ -17,9 +17,9 @@ data dari Yahoo Finance dengan cache disk per-hari.
 - **/pasar** — market breadth (% di atas MA200/MA50, RSI rata-rata, regime
   risk-on/off) + rotasi sektor
 - **/forecast** — ensemble Naive/Drift/AR/Holt/Regresi pada log-return,
-  walk-forward backtest, probabilitas naik, pita volatilitas EWMA
+  walk-forward backtest, probabilitas naik, pita volatilitas EWMA,
+  chart candlestick ala TradingView + rasio keuangan live (PER/PBV/ROE/Div)
 - **/seasonal** — pola musiman bulanan/kuartalan + uji signifikansi t-stat
-- **/saham** — chart candlestick ala TradingView + rasio keuangan live
 - **/profil-saham** — profil emiten
 
 ### Pengelolaan uang

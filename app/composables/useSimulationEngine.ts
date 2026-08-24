@@ -678,10 +678,10 @@ export function createSimulationEngine(ui: SimUi) {
     // screening step
     screenRows, selected, loadingScreen, errorMsg, loadScreening,
     filterQuery, filterRating, filterRS3M, filterRSI, filterDariHigh, applyPreset,
-    sortKey, sortOrder, sortBy, filteredScreenRows, toggle, ratingCounts,
+    sortKey, sortOrder, sortBy, filteredScreenRows, filteredMidScreenRows, toggle, ratingCounts,
     showIndicatorHelp, showRecommendation, recommendations,
     // basket
-    basket, buildBasket, recomputeLots, totalWeight, equalizeWeights,
+    basket, buildBasket, recomputeLots, totalWeight, equalizeWeights, startSimulation,
     // playback
     closesByCode, timeline, cursor, playing, speed, positions, cash, decisions, equityCurve, loadingPrices,
     play, pause, stepOnce, priceAt, currentValue, currentReturnPct, currentIhsgReturnPct, currentAlphaPct,

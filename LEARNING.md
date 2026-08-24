@@ -83,7 +83,7 @@ rumusnya agar berguna sebagai template belajar ujian.
 
 Tiap lesson: `materialId?` (pakai ulang prosa materi) **atau** `content` inline,
 plus `practice` (deep-link ke tool: `/screening`, `/analisa/{symbol}`,
-`/saham`, `/seasonal`, `/portofolio`, `/pasar`, `/forecast`, `/backtest`) dan
+`/forecast`, `/seasonal`, `/portofolio`, `/pasar`, `/backtest`) dan
 `quiz[]` opsional. `{symbol}` diganti last-symbol di klien.
 
 **Progres (file-store)**:

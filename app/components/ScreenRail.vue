@@ -107,7 +107,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
     <!-- List -->
     <div class="flex-1 overflow-y-auto scrollbar-thin">
       <NuxtLink
-        v-for="row in filtered"
+        v-for="(row, i) in filtered"
         :key="row.symbol"
         :to="linkFor(row.code)"
         class="block px-3 py-2 border-b border-slate-900/60 transition-colors group relative"
@@ -115,6 +115,7 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
       >
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1.5 min-w-0">
+            <span class="w-5 shrink-0 text-right text-[10px] font-semibold tabular-nums" :class="row.code === activeCode ? 'text-emerald-300' : 'text-slate-600'">{{ i + 1 }}</span>
             <!-- Star toggle button -->
             <button
               type="button"
@@ -144,8 +145,8 @@ const fmt = (n: number | null) => (n == null ? '—' : n.toLocaleString('id-ID')
             </div>
           </div>
         </div>
-        <p class="text-[10px] text-slate-500 truncate mt-0.5 pl-5">{{ row.name }}</p>
-        <div class="flex items-center gap-1.5 mt-1 pl-5">
+        <p class="text-[10px] text-slate-500 truncate mt-0.5 pl-10">{{ row.name }}</p>
+        <div class="flex items-center gap-1.5 mt-1 pl-10">
           <div class="flex-grow h-1 bg-slate-800 rounded-full overflow-hidden">
             <div class="h-full rounded-full" :class="scoreBarClass(row.score)" :style="{ width: row.score + '%' }"></div>
           </div>

@@ -526,7 +526,7 @@ const activeModule = ref<number>(1);
       <div class="bg-slate-900/90 rounded-2xl p-6 border border-slate-800 space-y-4">
         <h2 class="text-xl font-bold text-slate-100 border-b border-slate-800 pb-3 flex items-center justify-between">
           <span>🚀 Panduan Deployment Server (DEPLOY.md)</span>
-          <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full">saham.kuydinas.id</span>
+          <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-full">cuan.bernaldo.id</span>
         </h2>
 
         <div class="prose prose-invert max-w-none text-xs text-slate-300 space-y-4 leading-relaxed">
@@ -536,8 +536,8 @@ Cloudflare (SSL Edge, HTTPS :443)
     │
     ▼
 Nginx Reverse Proxy (Origin Server) ──► Node / Nitro :3200 (PM2 app: "saham")
-  vhost: /www/server/panel/vhost/nginx/saham.kuydinas.id.conf
-  root : /www/wwwroot/saham.kuydinas.id/.output
+  vhost: /www/server/panel/vhost/nginx/cuan.bernaldo.id.conf
+  root : /www/wwwroot/cuan.bernaldo.id/.output
 </pre>
           </div>
 

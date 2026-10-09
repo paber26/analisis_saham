@@ -1,4 +1,4 @@
-# Deploy — saham.kuydinas.id
+# Deploy — cuan.bernaldo.id
 
 Aplikasi ini **Nuxt 4 SSR** (butuh Node server Nitro yang jalan), bukan situs
 statis, karena punya server API (`/api/*`) yang mem-proxy Yahoo Finance.
@@ -9,10 +9,10 @@ statis, karena punya server API (`/api/*`) yang mem-proxy Yahoo Finance.
 Cloudflare (SSL edge, proxy)
     │  HTTPS :443
     ▼
-nginx (origin 103.23.199.164)  ──reverse proxy──►  Node/Nitro :3200  (PM2: "saham")
-  vhost: /www/server/panel/vhost/nginx/saham.kuydinas.id.conf
-  cert : /www/server/panel/vhost/cert/saham.kuydinas.id/
-  app  : /www/wwwroot/saham.kuydinas.id/.output
+nginx (origin 203.145.35.13)  ──reverse proxy──►  Node/Nitro :3200  (PM2: "saham")
+  vhost: /www/server/panel/vhost/nginx/cuan.bernaldo.id.conf
+  cert : /www/server/panel/vhost/cert/cuan.bernaldo.id/
+  app  : /www/wwwroot/cuan.bernaldo.id/.output
 ```
 
 - Server: Ubuntu 24.04 + aaPanel, Node 18, nginx 1.24, PM2.
@@ -71,21 +71,21 @@ terpenuhi, maksimal **sekali per rule per hari** (dedupe via `lastTriggeredAt`).
 - Email otomatis ikut terkirim bila SMTP terkonfigurasi.
 - Histori trigger tersimpan di `.data-store/alerts.json` (maks 100 entri).
 
-## Setup awal server (sudah dilakukan — untuk referensi/recovery)
+## Setup awal server (wajib dijalankan di server baru 203.145.35.13)
 
 ```bash
 # 1. Folder app milik user deploy
-sudo chown -R kuydinas:kuydinas /www/wwwroot/saham.kuydinas.id
+sudo chown -R kuydinas:kuydinas /www/wwwroot/cuan.bernaldo.id
 
 # 2. PM2 global + auto-boot
 sudo npm install -g pm2
-cd /www/wwwroot/saham.kuydinas.id
+cd /www/wwwroot/cuan.bernaldo.id
 PORT=3200 HOST=127.0.0.1 pm2 start .output/server/index.mjs --name saham --update-env
 pm2 save
 sudo env PATH=$PATH pm2 startup systemd -u kuydinas --hp /home/kuydinas
 
 # 3. nginx vhost (reverse proxy + SSL) — file:
-#    /www/server/panel/vhost/nginx/saham.kuydinas.id.conf
+#    /www/server/panel/vhost/nginx/cuan.bernaldo.id.conf
 sudo nginx -t && sudo nginx -s reload
 ```
 
@@ -95,10 +95,10 @@ Isi vhost nginx (port 80 + 443 SSL, proxy ke :3200):
 server {
     listen 80;
     listen 443 ssl http2;
-    server_name saham.kuydinas.id;
+    server_name cuan.bernaldo.id;
 
-    ssl_certificate        /www/server/panel/vhost/cert/saham.kuydinas.id/fullchain.pem;
-    ssl_certificate_key    /www/server/panel/vhost/cert/saham.kuydinas.id/privkey.pem;
+    ssl_certificate        /www/server/panel/vhost/cert/cuan.bernaldo.id/fullchain.pem;
+    ssl_certificate_key    /www/server/panel/vhost/cert/cuan.bernaldo.id/privkey.pem;
     ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
     error_page 497 https://$host$request_uri;
 
@@ -114,8 +114,8 @@ server {
         proxy_read_timeout 60s;
     }
 
-    access_log /www/wwwlogs/saham.kuydinas.id.log;
-    error_log  /www/wwwlogs/saham.kuydinas.id.error.log;
+    access_log /www/wwwlogs/cuan.bernaldo.id.log;
+    error_log  /www/wwwlogs/cuan.bernaldo.id.error.log;
 }
 ```
 

@@ -53,7 +53,7 @@ export default defineEventHandler(async (event) => {
       telegram = await sendTelegram(
         `🔔 Alert Saham (${snap.date})\n\n` +
           triggers.map((t) => `• ${t.message}`).join('\n') +
-          `\n\n— saham.kuydinas.id`
+          `\n\n— cuan.bernaldo.id`
       );
     }
     if (isMailConfigured()) {
@@ -64,7 +64,7 @@ export default defineEventHandler(async (event) => {
           `<div style="font-family:sans-serif;font-size:14px">` +
           `<h3>🔔 Alert Saham ${snap.date}</h3><ul>` +
           triggers.map((t) => `<li>${t.message}</li>`).join('') +
-          `</ul><p style="color:#888">saham.kuydinas.id</p></div>`
+          `</ul><p style="color:#888">cuan.bernaldo.id</p></div>`
       });
     }
   }

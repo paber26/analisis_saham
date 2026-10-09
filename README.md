@@ -1,7 +1,7 @@
 # Analisis Saham IDX
 
 Aplikasi analisis saham Bursa Efek Indonesia (personal) — live di
-**https://saham.kuydinas.id**. Dibangun dengan Nuxt 4 SSR + Tailwind + ECharts;
+**https://cuan.bernaldo.id**. Dibangun dengan Nuxt 4 SSR + Tailwind + ECharts;
 data dari Yahoo Finance dengan cache disk per-hari.
 
 ## Fitur

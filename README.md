@@ -59,5 +59,8 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
+Atau dengan Docker (produksi): `cp .env.example .env && docker compose up -d --build`
+→ http://127.0.0.1:3200. Lihat [DEPLOY.md](DEPLOY.md).
+
 Detail desain: [ARCHITECTURE.md](ARCHITECTURE.md) · Rencana pengembangan:
 [pengembangan/](pengembangan/) · Cara deploy: [DEPLOY.md](DEPLOY.md)

@@ -19,7 +19,35 @@ nginx (origin 203.145.35.13)  ──reverse proxy──►  Node/Nitro :3200  (P
 - Domain di belakang **Cloudflare** → origin harus melayani **port 443 (SSL)**,
   bukan cuma 80. (Kalau hanya 80, request 443 jatuh ke vhost default = halaman Laravel.)
 
-## Update rutin (sekali perintah)
+## Jalankan dengan Docker (direkomendasikan untuk server baru)
+
+Repo menyertakan `Dockerfile` (multi-stage, Node 22) dan `docker-compose.yml`.
+Container mendengarkan di **`127.0.0.1:3200`** (sama dengan setup PM2), jadi
+vhost nginx dan cron di bawah tidak perlu diubah.
+
+```bash
+git clone https://github.com/paber26/analisis_saham && cd analisis_saham
+cp .env.example .env          # isi SYNC_TOKEN, APP_TOKEN, SMTP_*, TELEGRAM_*, dst.
+docker compose up -d --build  # build + jalan (restart otomatis)
+
+# update rutin
+git pull && docker compose up -d --build
+
+docker compose logs -f        # log
+docker compose ps             # status + healthcheck
+```
+
+- Data persisten ada di volume `saham-data` → `/data` di container:
+  `/data/store` (watchlist, alert, simulasi, histori — `DATA_STORE_DIR`) dan
+  `/data/cache` (cache API Nitro). Aman saat rebuild/`down`; hilang hanya
+  dengan `docker compose down -v`.
+- Pindah data dari server lama: salin isi `.data-store/` lama ke volume,
+  misalnya `docker compose cp ./.data-store/. app:/data/store/` lalu
+  `docker compose exec -u root app chown -R node:node /data`.
+- Jika memakai Docker, PM2 + `deploy.sh` tidak dipakai (hentikan `pm2 delete saham`
+  agar port 3200 tidak bentrok).
+
+## Update rutin dengan PM2 (tanpa Docker)
 
 ```bash
 cp .deploy.env.example .deploy.env   # sekali saja, lalu isi nilainya

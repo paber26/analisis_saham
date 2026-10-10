@@ -45,6 +45,12 @@ export interface TechResult {
   bbBandwidth: number | null;
   atrPct: number | null;
   volRatio: number | null;
+  /** Average daily traded value over the last 20 sessions (Rp = close × volume). */
+  avgValue20: number | null;
+  /** Sessions with zero volume among the last 20 (no trades). */
+  zeroVolDays20: number;
+  /** Execution liquidity tier — see liquidityTier(). */
+  liquidity: LiquidityTier | null;
   high52: number;
   low52: number;
   pctFromHigh: number;
@@ -57,6 +63,36 @@ export interface TechResult {
 }
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
+
+export type LiquidityTier = 'likuid' | 'sedang' | 'tipis';
+/** Minimum average daily value (Rp) per tier. */
+export const LIQUIDITY_MIN_SEDANG = 1e9;  // Rp 1 miliar/hari
+export const LIQUIDITY_MIN_LIKUID = 5e9;  // Rp 5 miliar/hari
+
+/**
+ * Can a signal on this stock realistically be executed near the quoted price?
+ * 'tipis' when it trades < Rp1 M/day OR has ≥ 3 no-trade sessions in 20 days
+ * (signals there are mostly noise / unfillable); 'likuid' from Rp5 M/day.
+ */
+export function liquidityTier(avgValue20: number | null, zeroVolDays20: number): LiquidityTier | null {
+  if (avgValue20 == null || !isFinite(avgValue20)) return null;
+  if (avgValue20 < LIQUIDITY_MIN_SEDANG || zeroVolDays20 >= 3) return 'tipis';
+  return avgValue20 >= LIQUIDITY_MIN_LIKUID ? 'likuid' : 'sedang';
+}
+
+/** Average traded value & zero-volume sessions over the last `window` bars. */
+export function tradedValueStats(bars: Bar[], window = 20): { avgValue: number | null; zeroDays: number } {
+  const last = bars.slice(-window);
+  if (last.length < Math.min(window, 10)) return { avgValue: null, zeroDays: 0 };
+  let sum = 0;
+  let zeroDays = 0;
+  for (const b of last) {
+    const v = b.volume > 0 && b.close > 0 ? b.close * b.volume : 0;
+    if (v === 0) zeroDays++;
+    sum += v;
+  }
+  return { avgValue: Math.round(sum / last.length), zeroDays };
+}
 
 function smaAt(v: number[], period: number, end: number): number | null {
   if (end < period - 1) return null;
@@ -223,6 +259,7 @@ export function analyzeTechnical(bars: Bar[]): TechResult | null {
 
   const price = closes[n - 1]!;
   const prevClose = closes[n - 2]!;
+  const liq = tradedValueStats(bars);
   const changePct = prevClose > 0 ? round2(((price - prevClose) / prevClose) * 100) : 0;
 
   const sma20 = sma(closes, 20);
@@ -404,6 +441,9 @@ export function analyzeTechnical(bars: Bar[]): TechResult | null {
     bbBandwidth: bb ? round2(bb.bandwidth) : null,
     atrPct: atrVal != null && price > 0 ? round2((atrVal / price) * 100) : null,
     volRatio,
+    avgValue20: liq.avgValue,
+    zeroVolDays20: liq.zeroDays,
+    liquidity: liquidityTier(liq.avgValue, liq.zeroDays),
     high52: round2(high52),
     low52: round2(low52),
     pctFromHigh,

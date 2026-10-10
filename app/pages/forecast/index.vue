@@ -7,7 +7,7 @@ useHead({
   meta: [
     {
       name: 'description',
-      content: 'Grafik harga saham interaktif ala TradingView (candlestick + volume + moving average) dan forecasting saham IDX: ensemble Naive/Drift/AR/Holt/Regresi pada log-return, walk-forward 3 fold, volatilitas EWMA, probabilitas naik, dan proyeksi dengan pita ketidakpastian.'
+      content: 'Grafik harga saham interaktif ala TradingView (candlestick + volume + moving average) dan forecasting saham IDX: ensemble Naive/Drift/AR/Holt/Regresi pada log-return, walk-forward 3 fold, volatilitas GARCH(1,1)-t, pita terkalibrasi, probabilitas naik, dan proyeksi dengan pita ketidakpastian.'
     }
   ]
 });
@@ -299,6 +299,15 @@ const volLabel = computed(() => {
 const volClass = computed(() => {
   const r = data.value?.vol?.regime;
   return r === 'tinggi' ? 'text-rose-400' : r === 'rendah' ? 'text-emerald-400' : 'text-sky-400';
+});
+
+const volModelTip = computed(() => {
+  const v = data.value?.vol;
+  if (!v) return '';
+  const parts: string[] = [];
+  if (v.garch) parts.push(`α ${v.garch.alpha} · β ${v.garch.beta} · ν ${v.garch.nu} (ekor tebal bila kecil) · paruh-waktu guncangan ${v.garch.halfLifeDays ?? '–'} hari`);
+  if (v.calibration) parts.push(`Cakupan = % hasil aktual ${data.value.horizon} hari yang jatuh di dalam pita 80%, diuji walk-forward pada ${v.calibration.windowSize} titik (paruh kedua, out-of-sample). Ideal ≈ 80%.`);
+  return parts.join('\n');
 });
 
 const rangeEnd = computed(() => {
@@ -620,8 +629,9 @@ const forecastChartOption = computed(() => {
         <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
           Model pada <strong class="text-slate-300">log-return</strong>: Naive, Drift, AR(p) (orde otomatis via AIC), Holt,
           Regresi teknikal, dan <strong class="text-slate-300">Ensemble</strong> berbobot untuk model yang mengalahkan naive.
-          Evaluasi <em>walk-forward</em> 3 fold tanpa look-ahead. Pita proyeksi ≈80% dari
-          <strong class="text-slate-300">volatilitas EWMA</strong> terkini.
+          Evaluasi <em>walk-forward</em> 3 fold tanpa look-ahead. Volatilitas dari
+          <strong class="text-slate-300">GARCH(1,1) Student-t</strong> (cadangan: EWMA); pita 80%
+          <strong class="text-slate-300">dikalibrasi</strong> ke cakupan historis.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-5 items-end">
           <div class="lg:col-span-2">
@@ -868,6 +878,10 @@ const forecastChartOption = computed(() => {
             <p class="text-[11px] text-slate-500 mt-1">
               ≈ {{ data.vol.annualPct }}%/tahun ·
               <span v-if="rangeEnd">rentang {{ data.horizon }}h: {{ fmt(rangeEnd.lower) }}–{{ fmt(rangeEnd.upper) }}</span>
+            </p>
+            <p class="text-[10px] text-slate-500 mt-1.5 leading-relaxed" :title="volModelTip">
+              {{ data.vol.model }}<span v-if="data.vol.calibration?.calibratedCoverage != null"> · pita 80% teruji: cakupan
+                <strong class="text-slate-300">{{ data.vol.calibration.calibratedCoverage }}%</strong></span><span v-if="data.vol.calibration?.ewmaCoverage != null"> (EWMA polos {{ data.vol.calibration.ewmaCoverage }}%)</span>
             </p>
           </div>
         </section>

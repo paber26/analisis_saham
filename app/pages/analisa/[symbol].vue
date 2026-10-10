@@ -68,6 +68,18 @@ const { data: hist } = await useFetch<any>(() => '/api/history', {
 const t = computed(() => an.value?.technical || null);
 const lv = computed(() => an.value?.levels || null);
 const liveFund = computed(() => (fund.value?.available ? fund.value : null));
+const piotroskiTip = computed(() => {
+  const p = liveFund.value?.piotroski;
+  if (!p) return '';
+  const lines = p.signals.map((sg: any) => `${sg.pass == null ? '–' : sg.pass ? '✓' : '✗'} ${sg.label}`);
+  return `Piotroski F-Score (tahun buku ${p.fiscalYear.slice(0, 4)}): ${p.score} dari ${p.max} sinyal terpenuhi\n${lines.join('\n')}\n(– = tidak dapat dinilai)`;
+});
+const piotroskiCls = computed(() => {
+  const p = liveFund.value?.piotroski;
+  if (!p || !p.max) return 'text-slate-100';
+  const r = p.score / p.max;
+  return r >= 0.7 ? 'text-emerald-400' : r <= 0.35 ? 'text-rose-400' : 'text-slate-100';
+});
 
 // Score trend (backfilled) → inline SVG sparkline
 const scoreTrend = computed<{ date: string; score: number }[]>(() => hist.value?.trend || []);
@@ -397,6 +409,10 @@ const verdict = computed(() => {
             <span v-if="liveFund.debtToEquity != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">DER <strong :class="liveFund.debtToEquity <= 1 ? 'text-emerald-400' : liveFund.debtToEquity <= 2 ? 'text-slate-100' : 'text-amber-400'">{{ liveFund.debtToEquity }}×</strong></span>
             <span v-if="liveFund.pegRatio != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300">PEG <strong class="text-slate-100">{{ liveFund.pegRatio }}</strong></span>
             <span v-if="liveFund.grahamFair != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300" title="Estimasi nilai wajar Graham">Wajar <strong :class="t.price < liveFund.grahamFair ? 'text-emerald-400' : 'text-amber-400'">{{ fmt(liveFund.grahamFair) }}</strong></span>
+            <span v-if="liveFund.evEbitda != null" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300" title="Enterprise value / EBITDA — valuasi yang memperhitungkan utang & kas">EV/EBITDA <strong class="text-slate-100">{{ liveFund.evEbitda }}×</strong></span>
+            <span v-if="liveFund.piotroski" class="text-[11px] px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 cursor-help" :title="piotroskiTip">
+              F-Score <strong :class="piotroskiCls">{{ liveFund.piotroski.score }}/{{ liveFund.piotroski.max }}</strong>
+            </span>
           </div>
 
           <div class="flex flex-wrap gap-3 mt-4 text-[11px]">

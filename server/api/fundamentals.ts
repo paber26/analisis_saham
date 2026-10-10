@@ -1,11 +1,15 @@
 import { getQuery } from 'h3';
 import { normalizeSymbol } from '../utils/symbol';
-import { fetchFundamentals } from '../utils/fundamentals';
+import { fetchFundamentals, fetchPiotroski } from '../utils/fundamentals';
 import { tradingDay } from '../utils/cacheKey';
 
-// Live fundamentals for a single symbol (thin wrapper over the shared util).
+// Live fundamentals for a single symbol (thin wrapper over the shared util),
+// plus the Piotroski F-Score from annual statements.
 export default defineCachedEventHandler(async (event) => {
-  return fetchFundamentals(getQuery(event).symbol as string);
+  const symbol = getQuery(event).symbol as string;
+  const f = await fetchFundamentals(symbol);
+  const piotroski = await fetchPiotroski(symbol, f.sector === 'Financial Services').catch(() => null);
+  return { ...f, piotroski };
 }, {
   maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,

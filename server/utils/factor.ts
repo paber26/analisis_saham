@@ -10,8 +10,8 @@
 // qvmRank skips 'tipis' (illiquid) stocks: their signals can't be executed.
 //
 // Derived entirely from fields already present on ScreenRow (no new fetches):
-//   Value    ← PER (low), PBV (low), Dividend Yield (high)
-//   Quality  ← ROE (high), DER (low), Earnings Growth (high)
+//   Value    ← PER (low), PBV (low), Dividend Yield (high), EV/EBITDA (low)
+//   Quality  ← ROE (high), DER (low), Earnings Growth (high), Piotroski F-Score (high)
 //   Momentum ← RS 3m vs IHSG (high), technical score (high)
 
 import type { ScreenRow } from './store';
@@ -91,20 +91,23 @@ export function computeFactors(rows: ScreenRow[]): ScoredRow[] {
   const perP = sectorPercentile(rows.map((r) => (r.per != null && r.per > 0 ? r.per : null)), sectors, 'low');
   const pbvP = sectorPercentile(rows.map((r) => (r.pbv != null && r.pbv > 0 ? r.pbv : null)), sectors, 'low');
   const dyP = sectorPercentile(rows.map((r) => r.dividendYield), sectors, 'high');
+  const evP = sectorPercentile(rows.map((r) => (r.evEbitda != null && r.evEbitda > 0 ? r.evEbitda : null)), sectors, 'low');
 
   // Quality inputs
   const roeP = sectorPercentile(rows.map((r) => r.roe), sectors, 'high');
   const derP = sectorPercentile(rows.map((r) => (r.debtToEquity != null && r.debtToEquity >= 0 ? r.debtToEquity : null)), sectors, 'low');
   const egP = sectorPercentile(rows.map((r) => r.earningsGrowth), sectors, 'high');
+  // F-Score as a fraction of evaluable signals (banks are scored out of fewer).
+  const fsP = sectorPercentile(rows.map((r) => (r.fScore != null && r.fScoreMax ? r.fScore / r.fScoreMax : null)), sectors, 'high');
 
   // Momentum inputs
   const rsP = percentile(rows.map((r) => r.rs3m), 'high');
   const scoreP = percentile(rows.map((r) => (typeof r.score === 'number' ? r.score : null)), 'high');
 
   const scored: ScoredRow[] = rows.map((r, i) => {
-    const value = avg([perP.pct[i]!, pbvP.pct[i]!, dyP.pct[i]!]);
-    const quality = avg([roeP.pct[i]!, derP.pct[i]!, egP.pct[i]!]);
-    const sectorRelative = [perP, pbvP, dyP, roeP, derP, egP].some((f) => f.relative[i]);
+    const value = avg([perP.pct[i]!, pbvP.pct[i]!, dyP.pct[i]!, evP.pct[i]!]);
+    const quality = avg([roeP.pct[i]!, derP.pct[i]!, egP.pct[i]!, fsP.pct[i]!]);
+    const sectorRelative = [perP, pbvP, dyP, evP, roeP, derP, egP, fsP].some((f) => f.relative[i]);
     const momentum = avg([rsP[i]!, scoreP[i]!]);
     const qvm = avg([value, quality, momentum]);
     return { ...r, value, quality, momentum, qvm, qvmRank: null, sectorRelative };

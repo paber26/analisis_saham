@@ -21,6 +21,9 @@ const ratingFilter = ref<'all' | 'Kuat' | 'Menarik'>('all');
 const searchQ = ref('');
 const onlyUptrend = ref(false);
 const onlyValue = ref(false); // "Murah + Uptrend": PER wajar & di atas MA200
+const liqFilter = ref<LiquidityFilter>('no_tipis'); // default: sembunyikan saham tipis
+const hasLiquidity = computed(() => rows.value.some((x) => x.liquidity != null));
+const hiddenIlliquid = computed(() => rows.value.filter((x) => !passesLiquidity(x, liqFilter.value)).length);
 const sortBy = ref<'score' | 'qvm'>('score'); // ranking column
 
 // Advanced filters
@@ -59,6 +62,7 @@ function resetAdvancedFilters() {
 const filtered = computed(() => {
   let r = rows.value;
   if (ratingFilter.value !== 'all') r = r.filter((x) => x.rating === ratingFilter.value);
+  if (liqFilter.value) r = r.filter((x) => passesLiquidity(x, liqFilter.value));
   if (onlyUptrend.value) r = r.filter((x) => x.sma200 != null && x.price > x.sma200);
   // Value + trend: profitable, reasonably cheap (0 < PER <= 15), and uptrend
   if (onlyValue.value) r = r.filter((x) => x.per != null && x.per > 0 && x.per <= 15 && x.sma200 != null && x.price > x.sma200);
@@ -196,6 +200,13 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
               >
                 {{ onlyValue ? '✓ ' : '' }}💎 Murah + Uptrend
               </button>
+              <span class="text-[10px] text-slate-500 mt-1">Likuiditas (nilai transaksi/hari)</span>
+              <div class="grid grid-cols-3 bg-slate-900 p-1 border border-slate-800 rounded-lg" :title="hasLiquidity ? 'Rata-rata nilai transaksi harian 20 hari' : 'Data likuiditas tersedia setelah sync harian berikutnya'">
+                <button type="button" class="py-1 text-[10px] font-semibold rounded-md transition-all" :class="liqFilter === '' ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:text-slate-200'" @click="liqFilter = ''">Semua</button>
+                <button type="button" class="py-1 text-[10px] font-semibold rounded-md transition-all" :class="liqFilter === 'no_tipis' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'" @click="liqFilter = 'no_tipis'">≥ Rp1 M</button>
+                <button type="button" class="py-1 text-[10px] font-semibold rounded-md transition-all" :class="liqFilter === 'likuid' ? 'bg-emerald-500 text-slate-950' : 'text-slate-400 hover:text-slate-200'" @click="liqFilter = 'likuid'">≥ Rp5 M</button>
+              </div>
+              <p v-if="hasLiquidity && hiddenIlliquid > 0" class="text-[10px] text-slate-500">{{ hiddenIlliquid }} saham disembunyikan (nilai transaksi rendah)</p>
             </div>
           </div>
           <div class="flex items-end">
@@ -306,7 +317,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 </th>
                 <th class="px-4 py-3 font-semibold text-right">RSI</th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300" @click="sortBy = 'qvm'"
-                  title="Quality–Value–Momentum: peringkat komposit lintas universe">
+                  title="Quality–Value–Momentum. Value &amp; Quality dibandingkan sesama sektor (bila ≥5 emiten), Momentum lintas pasar. Peringkat tidak menyertakan saham likuiditas tipis.">
                   QVM <span v-if="sortBy === 'qvm'" class="text-emerald-400">▼</span>
                 </th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>
@@ -328,6 +339,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                     </div>
                     <p class="text-[11px] text-slate-500 mt-1 truncate max-w-[180px]">{{ row.name }}</p>
                     <span v-if="sectorLabel(row.sector)" class="inline-block mt-1 text-[9px] text-slate-400 bg-slate-800/60 border border-slate-700/60 px-1.5 py-0.5 rounded">{{ sectorLabel(row.sector) }}</span>
+                    <span v-if="liquidityBadge(row)" class="inline-block mt-1 ml-1 text-[9px] font-semibold border px-1.5 py-0.5 rounded" :class="liquidityBadge(row)!.cls" :title="liquidityBadge(row)!.title">{{ liquidityBadge(row)!.label }} · {{ fmtTradedValue(row.avgValue20) }}</span>
                   </NuxtLink>
                 </td>
                 <td class="px-4 py-3 text-right">
@@ -358,6 +370,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                         <span class="px-1 py-0.5 rounded bg-slate-800 text-slate-300" title="Momentum">M{{ row.momentum != null ? Math.round(row.momentum) : '–' }}</span>
                       </div>
                       <span v-if="row.qvmRank != null" class="text-[10px] text-slate-500">peringkat #{{ row.qvmRank }}</span>
+                      <span v-if="row.sectorRelative" class="text-[10px] text-slate-500" title="Value & Quality dibandingkan dengan sesama sektor (≥5 emiten); Momentum lintas pasar"> · relatif sektor</span>
                     </div>
                   </div>
                   <span v-else class="text-slate-600 text-xs">—</span>

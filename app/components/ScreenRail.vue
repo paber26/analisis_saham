@@ -14,6 +14,7 @@ const rows = computed<any[]>(() => data.value?.results || []);
 const search = ref('');
 const sortBy = ref<'score' | 'qvm' | 'watchlist' | 'skip'>('score');
 const valSort = ref<'' | 'per_asc' | 'per_desc' | 'pbv_asc' | 'pbv_desc' | 'cap_desc'>('');
+const liqFilter = ref<LiquidityFilter>('');
 
 // ---- Filter proyeksi batch (dipindah dari halaman /forecast ke rail ini) ----
 // Dua dimensi yang bisa digabung AND: Arah (up/down/flat) × Sinyal (edge/prob/upside).
@@ -79,6 +80,7 @@ const filtered = computed(() => {
     r = r.filter((x) => !isSkipped(x.code));
   }
   if (q) r = r.filter((x) => x.code.includes(q) || (x.name || '').toUpperCase().includes(q));
+  if (liqFilter.value) r = r.filter((x) => passesLiquidity(x, liqFilter.value));
   // Valuasi sort mengesampingkan Skor/QVM ketika aktif
   if (valSort.value === 'per_asc') {
     r = [...r].sort((a, b) => {
@@ -211,6 +213,14 @@ const valTip = (row: any) => {
         </select>
       </div>
       <div class="mt-1.5 flex items-center gap-2">
+        <span class="text-[10px] text-slate-500 font-semibold shrink-0">Likuiditas:</span>
+        <select v-model="liqFilter" class="flex-1 bg-slate-900 border rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500" :class="liqFilter ? 'border-emerald-500/30 text-emerald-300' : 'border-slate-800 text-slate-300'" title="Rata-rata nilai transaksi harian 20 hari terakhir">
+          <option value="">Semua</option>
+          <option value="no_tipis">≥ Rp1 M/hari (sembunyikan tipis)</option>
+          <option value="likuid">≥ Rp5 M/hari (likuid)</option>
+        </select>
+      </div>
+      <div class="mt-1.5 flex items-center gap-2">
         <span class="text-[10px] text-slate-500 font-semibold shrink-0">Arah:</span>
         <select v-model="proyeksiArah" class="flex-1 bg-slate-900 border rounded-lg px-2 py-1 text-[10px] focus:outline-none focus:border-emerald-500" :class="proyeksiArah ? 'border-emerald-500/30 text-emerald-300' : 'border-slate-800 text-slate-300'">
           <option value="">Semua arah</option>
@@ -278,6 +288,7 @@ const valTip = (row: any) => {
               <span v-else class="text-slate-600 hover:text-rose-400">⊗</span>
             </button>
             <span class="text-xs font-bold truncate" :class="row.code === activeCode ? 'text-emerald-300' : 'text-slate-100'">{{ row.code }}</span>
+            <span v-if="row.liquidity === 'tipis'" class="text-[8px] font-bold px-1 rounded border text-rose-300 bg-rose-500/10 border-rose-500/30 shrink-0" :title="liquidityBadge(row)?.title">tipis</span>
           </div>
           <div class="text-right shrink-0">
             <div class="text-xs font-semibold text-slate-200">{{ fmt(row.price) }}</div>

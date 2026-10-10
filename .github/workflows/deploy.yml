@@ -1,7 +1,11 @@
 name: Deploy
 
-# Deploys main to the production VPS after CI passes (or manually from the
-# Actions tab). Inert until the DEPLOY_* secrets are set — see DEPLOY.md.
+# After CI passes on main (or manually from the Actions tab):
+#   1. build  — build the Docker image on GitHub's runner and push it to GHCR
+#               (ghcr.io/paber26/analisis_saham:<sha>). The VPS never builds.
+#   2. deploy — SSH to the VPS; scripts/deploy-server.sh pulls that image and
+#               restarts the container (rollback = previous image).
+# The deploy step is inert until the DEPLOY_* secrets are set — see DEPLOY.md.
 on:
   workflow_run:
     workflows: [CI]
@@ -13,18 +17,58 @@ concurrency:
   group: deploy-production
   cancel-in-progress: false
 
+env:
+  IMAGE: ghcr.io/paber26/analisis_saham
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
 jobs:
-  deploy:
+  build:
     if: github.event_name == 'workflow_dispatch' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push ${{ env.DEPLOY_SHA }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64
+          provenance: false
+          tags: |
+            ${{ env.IMAGE }}:${{ env.DEPLOY_SHA }}
+            ${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: read
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-      DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Cek konfigurasi
         id: cfg
@@ -49,9 +93,13 @@ jobs:
             ssh-keyscan -p "${DEPLOY_PORT:-22}" "$DEPLOY_HOST" > ~/.ssh/known_hosts
           fi
 
+      # The job's GITHUB_TOKEN (packages: read, expires when the job ends) goes
+      # over stdin so the server can pull the private image without a stored PAT.
       - name: Deploy ${{ env.DEPLOY_SHA }}
         if: steps.cfg.outputs.ready == 'true'
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
+          printf '%s\n%s\n' "$GITHUB_ACTOR" "$GHCR_TOKEN" | ssh -i ~/.ssh/deploy_key -p "${DEPLOY_PORT:-22}" \
             -o StrictHostKeyChecking=yes -o ConnectTimeout=20 -o BatchMode=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" "$DEPLOY_SHA"

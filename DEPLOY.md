@@ -30,8 +30,7 @@ git clone https://github.com/paber26/analisis_saham && cd analisis_saham
 cp .env.example .env          # isi SYNC_TOKEN, APP_TOKEN, SMTP_*, TELEGRAM_*, dst.
 docker compose up -d --build  # build + jalan (restart otomatis)
 
-# update rutin
-git pull && docker compose up -d --build
+# update rutin: otomatis lewat GitHub Actions (lihat "Deploy otomatis" di bawah)
 
 docker compose logs -f        # log
 docker compose ps             # status + healthcheck
@@ -49,13 +48,27 @@ docker compose ps             # status + healthcheck
 
 ## Deploy otomatis (GitHub Actions)
 
-Setiap push ke `main` yang CI-nya hijau → `.github/workflows/deploy.yml` SSH ke
-server → menjalankan `scripts/deploy-server.sh <commit>`:
-`git fetch` + checkout commit itu → `docker compose up -d --build` → tunggu
-healthcheck + cek `/forecast` 200. **Bila gagal, otomatis rollback** ke versi
-sebelumnya. Hanya menyentuh repo ini & container `saham`. Bisa juga dijalankan
-manual: tab **Actions → Deploy → Run workflow**. Selama secret belum diisi,
-workflow hanya menulis notice "dilewati".
+Setiap push ke `main` yang CI-nya hijau → `.github/workflows/deploy.yml`:
+
+1. **build** (di runner GitHub): `docker build` → push ke GHCR sebagai
+   `ghcr.io/paber26/analisis_saham:<commit>` (+ `:latest`). **VPS tidak pernah
+   build** — dengan 2 core / 4 GB RAM yang dipakai bersama banyak container,
+   build Nuxt di server memakan swap (pernah 16 menit) dan memperlambat Hermes.
+2. **deploy**: SSH ke server → `scripts/deploy-server.sh <commit>`: `git fetch`
+   + checkout commit itu → `docker pull` image-nya (login ghcr memakai
+   `GITHUB_TOKEN` job yang dikirim lewat stdin, kedaluwarsa saat job selesai, di
+   config Docker sementara yang langsung dihapus) → tag jadi
+   `analisis-saham:latest` → `docker compose up -d --no-build` → tunggu
+   healthcheck + cek `/forecast` 200. **Bila gagal, rollback** dengan
+   men-tag ulang image sebelumnya (tanpa build). Menyimpan 3 image terakhir,
+   membersihkan sisa image milik app ini saja.
+
+Tidak perlu login ghcr / token tambahan di server. Hanya menyentuh repo ini &
+container `saham`. Bisa juga dijalankan manual: tab **Actions → Deploy → Run
+workflow**. Selama secret belum diisi, langkah deploy hanya menulis notice
+"dilewati" (image tetap di-build & di-push).
+
+Darurat tanpa GitHub (build lokal, lambat di VPS ini): `docker compose up -d --build`.
 
 Setup sekali (di server, dari folder repo, setelah versi yang memuat
 `scripts/deploy-server.sh` sudah di-pull):

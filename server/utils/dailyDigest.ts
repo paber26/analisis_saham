@@ -40,7 +40,7 @@ export interface DigestEmail {
 
 export function buildDailyDigest(snapshot: ScreenSnapshot, opts: DigestOptions = {}): DigestEmail {
   const limit = opts.limit ?? 10;
-  const siteUrl = opts.siteUrl || 'https://saham.kuydinas.id';
+  const siteUrl = opts.siteUrl || 'https://cuan.bernaldo.id';
   const picks = pickRecommendations(snapshot.rows, limit);
 
   const dateLabel = snapshot.date;

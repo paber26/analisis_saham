@@ -1,7 +1,7 @@
 # Analisis Saham IDX
 
 Aplikasi analisis saham Bursa Efek Indonesia (personal) — live di
-**https://saham.kuydinas.id**. Dibangun dengan Nuxt 4 SSR + Tailwind + ECharts;
+**https://cuan.bernaldo.id**. Dibangun dengan Nuxt 4 SSR + Tailwind + ECharts;
 data dari Yahoo Finance dengan cache disk per-hari.
 
 ## Fitur
@@ -58,6 +58,9 @@ faktor QVM, portofolio, backtest) termasuk kasus anti look-ahead.
 npm install
 npm run dev        # http://localhost:3000
 ```
+
+Atau dengan Docker (produksi): `cp .env.example .env && docker compose up -d --build`
+→ http://127.0.0.1:3200. Lihat [DEPLOY.md](DEPLOY.md).
 
 Detail desain: [ARCHITECTURE.md](ARCHITECTURE.md) · Rencana pengembangan:
 [pengembangan/](pengembangan/) · Cara deploy: [DEPLOY.md](DEPLOY.md)

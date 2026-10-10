@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    image: analisis-saham:latest
+    container_name: saham
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    ports:
+      # Only reachable from the host (nginx reverse-proxies cuan.bernaldo.id
+      # here; host crontab hits http://127.0.0.1:3200/api/...).
+      - "127.0.0.1:3200:3000"
+    volumes:
+      - saham-data:/data
+
+volumes:
+  saham-data:

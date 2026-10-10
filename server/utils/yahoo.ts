@@ -63,3 +63,13 @@ export async function fetchDailyBars(
 
   return { bars, meta: r.meta || {} };
 }
+
+/**
+ * Previous session's close from chronological closes (oldest → newest).
+ * Do NOT use Yahoo's `meta.chartPreviousClose`: it is the close before the
+ * START of the requested range (e.g. one year ago for range=1y), not yesterday.
+ */
+export function previousCloseOf(closes: number[], fallback: number): number {
+  const prev = closes.length > 1 ? closes[closes.length - 2] : undefined;
+  return prev != null && prev > 0 ? prev : fallback;
+}

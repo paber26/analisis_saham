@@ -31,3 +31,6 @@ logs
 
 # Captured HAR (berisi token login) — JANGAN commit
 *.har
+
+# Deploy lock (scripts/deploy-server.sh)
+.deploy.lock

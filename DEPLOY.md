@@ -1,4 +1,4 @@
-# Deploy — saham.kuydinas.id
+# Deploy — cuan.bernaldo.id
 
 Aplikasi ini **Nuxt 4 SSR** (butuh Node server Nitro yang jalan), bukan situs
 statis, karena punya server API (`/api/*`) yang mem-proxy Yahoo Finance.
@@ -9,17 +9,89 @@ statis, karena punya server API (`/api/*`) yang mem-proxy Yahoo Finance.
 Cloudflare (SSL edge, proxy)
     │  HTTPS :443
     ▼
-nginx (origin 103.23.199.164)  ──reverse proxy──►  Node/Nitro :3200  (PM2: "saham")
-  vhost: /www/server/panel/vhost/nginx/saham.kuydinas.id.conf
-  cert : /www/server/panel/vhost/cert/saham.kuydinas.id/
-  app  : /www/wwwroot/saham.kuydinas.id/.output
+nginx (origin 203.145.35.13)  ──reverse proxy──►  Node/Nitro :3200  (PM2: "saham")
+  vhost: /www/server/panel/vhost/nginx/cuan.bernaldo.id.conf
+  cert : /www/server/panel/vhost/cert/cuan.bernaldo.id/
+  app  : /www/wwwroot/cuan.bernaldo.id/.output
 ```
 
 - Server: Ubuntu 24.04 + aaPanel, Node 18, nginx 1.24, PM2.
 - Domain di belakang **Cloudflare** → origin harus melayani **port 443 (SSL)**,
   bukan cuma 80. (Kalau hanya 80, request 443 jatuh ke vhost default = halaman Laravel.)
 
-## Update rutin (sekali perintah)
+## Jalankan dengan Docker (direkomendasikan untuk server baru)
+
+Repo menyertakan `Dockerfile` (multi-stage, Node 22) dan `docker-compose.yml`.
+Container mendengarkan di **`127.0.0.1:3200`** (sama dengan setup PM2), jadi
+vhost nginx dan cron di bawah tidak perlu diubah.
+
+```bash
+git clone https://github.com/paber26/analisis_saham && cd analisis_saham
+cp .env.example .env          # isi SYNC_TOKEN, APP_TOKEN, SMTP_*, TELEGRAM_*, dst.
+docker compose up -d --build  # build + jalan (restart otomatis)
+
+# update rutin
+git pull && docker compose up -d --build
+
+docker compose logs -f        # log
+docker compose ps             # status + healthcheck
+```
+
+- Data persisten ada di volume `saham-data` → `/data` di container:
+  `/data/store` (watchlist, alert, simulasi, histori — `DATA_STORE_DIR`) dan
+  `/data/cache` (cache API Nitro). Aman saat rebuild/`down`; hilang hanya
+  dengan `docker compose down -v`.
+- Pindah data dari server lama: salin isi `.data-store/` lama ke volume,
+  misalnya `docker compose cp ./.data-store/. app:/data/store/` lalu
+  `docker compose exec -u root app chown -R node:node /data`.
+- Jika memakai Docker, PM2 + `deploy.sh` tidak dipakai (hentikan `pm2 delete saham`
+  agar port 3200 tidak bentrok).
+
+## Deploy otomatis (GitHub Actions)
+
+Setiap push ke `main` yang CI-nya hijau → `.github/workflows/deploy.yml` SSH ke
+server → menjalankan `scripts/deploy-server.sh <commit>`:
+`git fetch` + checkout commit itu → `docker compose up -d --build` → tunggu
+healthcheck + cek `/forecast` 200. **Bila gagal, otomatis rollback** ke versi
+sebelumnya. Hanya menyentuh repo ini & container `saham`. Bisa juga dijalankan
+manual: tab **Actions → Deploy → Run workflow**. Selama secret belum diisi,
+workflow hanya menulis notice "dilewati".
+
+Setup sekali (di server, dari folder repo, setelah versi yang memuat
+`scripts/deploy-server.sh` sudah di-pull):
+
+```bash
+# 1. Kunci khusus deploy (dibuat DI server)
+ssh-keygen -t ed25519 -N "" -C github-deploy -f ~/gh_deploy
+
+# 2. Izinkan kunci itu HANYA menjalankan script deploy (forced command)
+echo "command=\"$(pwd)/scripts/deploy-server.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $(cat ~/gh_deploy.pub)" >> ~/.ssh/authorized_keys
+
+# 3. User ini harus bisa menjalankan docker tanpa password (lalu logout/login)
+#    Catatan: grup docker setara akses root — kunci di atas tetap dibatasi ke script deploy.
+sudo usermod -aG docker "$USER"
+
+# 4. Host key server (untuk secret DEPLOY_KNOWN_HOSTS; port ≠ 22 → "[IP]:PORT ...")
+echo "203.145.35.13 $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+
+# 5. Tampilkan private key untuk disalin ke GitHub, lalu HAPUS dari server
+cat ~/gh_deploy && rm ~/gh_deploy
+```
+
+Di GitHub: repo → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Isi |
+|---|---|
+| `DEPLOY_HOST` | `203.145.35.13` (IP langsung — Cloudflare tidak meneruskan SSH) |
+| `DEPLOY_USER` | user SSH di server (`whoami`) |
+| `DEPLOY_SSH_KEY` | isi lengkap private key dari langkah 5 (termasuk baris BEGIN/END) |
+| `DEPLOY_KNOWN_HOSTS` | output langkah 4 |
+| `DEPLOY_PORT` | (opsional) bila SSH bukan port 22 |
+
+Syarat: port SSH server bisa diakses dari internet (runner GitHub IP-nya
+berubah-ubah). Tes: **Actions → Deploy → Run workflow**.
+
+## Update rutin dengan PM2 (tanpa Docker)
 
 ```bash
 cp .deploy.env.example .deploy.env   # sekali saja, lalu isi nilainya
@@ -71,21 +143,21 @@ terpenuhi, maksimal **sekali per rule per hari** (dedupe via `lastTriggeredAt`).
 - Email otomatis ikut terkirim bila SMTP terkonfigurasi.
 - Histori trigger tersimpan di `.data-store/alerts.json` (maks 100 entri).
 
-## Setup awal server (sudah dilakukan — untuk referensi/recovery)
+## Setup awal server (wajib dijalankan di server baru 203.145.35.13)
 
 ```bash
 # 1. Folder app milik user deploy
-sudo chown -R kuydinas:kuydinas /www/wwwroot/saham.kuydinas.id
+sudo chown -R kuydinas:kuydinas /www/wwwroot/cuan.bernaldo.id
 
 # 2. PM2 global + auto-boot
 sudo npm install -g pm2
-cd /www/wwwroot/saham.kuydinas.id
+cd /www/wwwroot/cuan.bernaldo.id
 PORT=3200 HOST=127.0.0.1 pm2 start .output/server/index.mjs --name saham --update-env
 pm2 save
 sudo env PATH=$PATH pm2 startup systemd -u kuydinas --hp /home/kuydinas
 
 # 3. nginx vhost (reverse proxy + SSL) — file:
-#    /www/server/panel/vhost/nginx/saham.kuydinas.id.conf
+#    /www/server/panel/vhost/nginx/cuan.bernaldo.id.conf
 sudo nginx -t && sudo nginx -s reload
 ```
 
@@ -95,10 +167,10 @@ Isi vhost nginx (port 80 + 443 SSL, proxy ke :3200):
 server {
     listen 80;
     listen 443 ssl http2;
-    server_name saham.kuydinas.id;
+    server_name cuan.bernaldo.id;
 
-    ssl_certificate        /www/server/panel/vhost/cert/saham.kuydinas.id/fullchain.pem;
-    ssl_certificate_key    /www/server/panel/vhost/cert/saham.kuydinas.id/privkey.pem;
+    ssl_certificate        /www/server/panel/vhost/cert/cuan.bernaldo.id/fullchain.pem;
+    ssl_certificate_key    /www/server/panel/vhost/cert/cuan.bernaldo.id/privkey.pem;
     ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
     error_page 497 https://$host$request_uri;
 
@@ -114,8 +186,8 @@ server {
         proxy_read_timeout 60s;
     }
 
-    access_log /www/wwwlogs/saham.kuydinas.id.log;
-    error_log  /www/wwwlogs/saham.kuydinas.id.error.log;
+    access_log /www/wwwlogs/cuan.bernaldo.id.log;
+    error_log  /www/wwwlogs/cuan.bernaldo.id.error.log;
 }
 ```
 

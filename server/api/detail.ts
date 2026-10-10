@@ -1,5 +1,6 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName, YAHOO_HEADERS } from '../utils/symbol';
+import { previousCloseOf } from '../utils/yahoo';
 
 interface DailyPriceItem {
   date: string;
@@ -136,7 +137,7 @@ export default defineCachedEventHandler(async (event): Promise<StockDetailRespon
 
     // Map summary profile metrics
     const currentPrice = meta.regularMarketPrice || (history.length > 0 ? history[history.length - 1]!.close : 0);
-    const previousClose = meta.chartPreviousClose || (history.length > 1 ? history[history.length - 2]!.close : currentPrice);
+    const previousClose = previousCloseOf(history.map((h) => h.close), currentPrice);
     const dayHigh = meta.regularMarketDayHigh || (history.length > 0 ? history[history.length - 1]!.high : currentPrice);
     const dayLow = meta.regularMarketDayLow || (history.length > 0 ? history[history.length - 1]!.low : currentPrice);
     const fiftyTwoWeekHigh = meta.fiftyTwoWeekHigh || currentPrice;

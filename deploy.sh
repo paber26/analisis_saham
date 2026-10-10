@@ -18,7 +18,7 @@ fi
 
 DEPLOY_HOST="${DEPLOY_HOST:?set DEPLOY_HOST in .deploy.env}"
 DEPLOY_USER="${DEPLOY_USER:-kuydinas}"
-DEPLOY_PATH="${DEPLOY_PATH:-/www/wwwroot/saham.kuydinas.id}"
+DEPLOY_PATH="${DEPLOY_PATH:-/www/wwwroot/cuan.bernaldo.id}"
 DEPLOY_PORT="${DEPLOY_PORT:-3200}"
 PM2_NAME="${PM2_NAME:-saham}"
 
@@ -62,4 +62,4 @@ ENVP="SYNC_TOKEN='${SYNC_TOKEN}' APP_TOKEN='${APP_TOKEN}' APP_USERNAME='${APP_US
 "${SSH_BIN[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
   "cd ${DEPLOY_PATH} && rm -rf .cache && (${ENVP} pm2 restart ${PM2_NAME} --update-env || ${ENVP} pm2 start .output/server/index.mjs --name ${PM2_NAME} --update-env) && pm2 save >/dev/null"
 
-echo "==> Done ✅  https://saham.kuydinas.id"
+echo "==> Done ✅  https://cuan.bernaldo.id"

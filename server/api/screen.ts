@@ -3,16 +3,29 @@ import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
 import { fetchDailyBars } from '../utils/yahoo';
 import { analyzeTechnical } from '../utils/technical';
 import { SCREENING_UNIVERSE } from '../utils/universe';
-import { loadScreenSnapshot, type ScreenRow } from '../utils/store';
+import { loadScreenSnapshot, loadMlSnapshot, type ScreenRow, type MlSnapshot } from '../utils/store';
 import { computeFactors, type ScoredRow } from '../utils/factor';
 import { tradingDay, shortHash } from '../utils/cacheKey';
+
+type ScreenResult = ScoredRow & { mlScore: number | null };
 
 interface ScreenResponse {
   source: 'snapshot' | 'live';
   date?: string;
   generatedAt?: string;
   count: number;
-  results: ScoredRow[];
+  results: ScreenResult[];
+  /** Pooled ML ranking model: metadata + honest walk-forward evaluation (scores are per row). */
+  ml: Omit<MlSnapshot, 'scores'> | null;
+}
+
+async function withMl(rows: ScoredRow[]): Promise<{ results: ScreenResult[]; ml: ScreenResponse['ml'] }> {
+  const snap = await loadMlSnapshot();
+  const scores = snap?.scores || {};
+  const results = rows.map((r) => ({ ...r, mlScore: scores[r.code] ?? null }));
+  if (!snap) return { results, ml: null };
+  const { scores: _omit, ...meta } = snap;
+  return { results, ml: meta };
 }
 
 function parseSymbols(raw: string): string[] {
@@ -72,11 +85,11 @@ export default defineEventHandler(async (event): Promise<ScreenResponse> => {
   if (!symbolsParam) {
     const snap = await loadScreenSnapshot();
     if (snap && snap.rows.length) {
-      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, results: computeFactors(snap.rows) };
+      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, ...(await withMl(computeFactors(snap.rows))) };
     }
   }
 
   const codes = parseSymbols(symbolsParam);
   const results = await computeLive(codes);
-  return { source: 'live', count: results.length, results: computeFactors(results) };
+  return { source: 'live', count: results.length, ...(await withMl(computeFactors(results))) };
 });

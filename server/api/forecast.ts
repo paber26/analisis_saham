@@ -3,6 +3,7 @@ import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
 import { fetchDailyBars } from '../utils/yahoo';
 import { runForecast, type PricePoint, type ForecastResult } from '../utils/forecast';
 import { tradingDay } from '../utils/cacheKey';
+import { loadExoFor } from '../utils/exoFetch';
 
 interface ForecastResponse extends ForecastResult {
   symbol: string;
@@ -23,8 +24,9 @@ export default defineCachedEventHandler(async (event): Promise<ForecastResponse>
     throw createError({ statusCode: 404, statusMessage: `Simbol ${symbol} tidak ditemukan.` });
   }
 
-  const points: PricePoint[] = fetched.bars.map((b) => ({ date: b.date, close: b.close }));
-  const result = runForecast(points, horizon);
+  const points: PricePoint[] = fetched.bars.map((b) => ({ date: b.date, close: b.close, volume: b.volume }));
+  const exo = await loadExoFor(symbol);
+  const result = runForecast(points, horizon, exo);
   if (!result) {
     throw createError({ statusCode: 422, statusMessage: `Data ${symbol} tidak cukup untuk forecasting (butuh >150 hari).` });
   }

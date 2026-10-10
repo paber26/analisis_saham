@@ -19,6 +19,7 @@ RUN npm run build
 
 # ---- runtime ----
 FROM node:22-slim AS runtime
+LABEL org.opencontainers.image.source="https://github.com/paber26/analisis_saham"
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \

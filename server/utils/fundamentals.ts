@@ -3,6 +3,7 @@
 // daily sync job can reuse it.
 
 import { normalizeSymbol, YAHOO_HEADERS, getYahooAuth } from './symbol';
+import { TIMESERIES_TYPES, parseTimeseries, computePiotroski, type PiotroskiResult } from './piotroski';
 
 export interface FundamentalsData {
   symbol: string;
@@ -28,6 +29,7 @@ export interface FundamentalsData {
   profitMargin: number | null;   // %
   pegRatio: number | null;
   grahamFair: number | null;     // sqrt(22.5 * eps * bvps)
+  evEbitda: number | null;       // enterprise value / EBITDA (null for financials)
 }
 
 const raw = (v: any): number | null =>
@@ -43,7 +45,7 @@ export function emptyFundamentals(symbol: string): FundamentalsData {
     eps: null, bvps: null, dps: null, per: null, pbv: null,
     roe: null, dividendYield: null, payout: null, marketCap: null, sharesOutstanding: null,
     revenueGrowth: null, earningsGrowth: null, debtToEquity: null,
-    currentRatio: null, profitMargin: null, pegRatio: null, grahamFair: null
+    currentRatio: null, profitMargin: null, pegRatio: null, grahamFair: null, evEbitda: null
   };
 }
 
@@ -90,6 +92,9 @@ export async function fetchFundamentals(rawSymbol: string): Promise<Fundamentals
   const payoutFrac = raw(detail.payoutRatio);
   const derRaw = raw(fin.debtToEquity); // Yahoo gives percentage-like (e.g. 45.2)
   const graham = eps && eps > 0 && bvps && bvps > 0 ? Math.sqrt(22.5 * eps * bvps) : null;
+  // EV/EBITDA is meaningless for banks/insurers (debt is their raw material).
+  const evEbitdaRaw = raw(stats.enterpriseToEbitda);
+  const evEbitda = asset.sector !== 'Financial Services' && evEbitdaRaw != null && evEbitdaRaw > 0 && evEbitdaRaw < 200 ? evEbitdaRaw : null;
 
   return {
     symbol,
@@ -113,6 +118,30 @@ export async function fetchFundamentals(rawSymbol: string): Promise<Fundamentals
     currentRatio: round2(raw(fin.currentRatio)),
     profitMargin: pct(raw(fin.profitMargins)),
     pegRatio: round2(raw(stats.pegRatio)),
-    grahamFair: round2(graham)
+    grahamFair: round2(graham),
+    evEbitda: round2(evEbitda)
   };
+}
+
+/**
+ * Piotroski F-Score from Yahoo's annual fundamentals timeseries (≈4 fiscal
+ * years). Returns null when Yahoo has too little data.
+ */
+export async function fetchPiotroski(rawSymbol: string, isBank: boolean): Promise<PiotroskiResult | null> {
+  const symbol = normalizeSymbol(rawSymbol);
+  if (symbol.startsWith('^')) return null;
+  const auth = await getYahooAuth();
+  const now = Math.floor(Date.now() / 1000);
+  const from = now - 6 * 365 * 86400;
+  const types = Object.values(TIMESERIES_TYPES).join(',');
+  const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : '';
+  const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`
+    + `?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${from}&period2=${now}${crumbParam}`;
+  const data = await $fetch<any>(url, {
+    headers: auth ? { ...YAHOO_HEADERS, cookie: auth.cookie } : YAHOO_HEADERS
+  }).catch((err) => {
+    console.error('Yahoo timeseries fetch error:', err);
+    return null;
+  });
+  return data ? computePiotroski(parseTimeseries(data), isBank) : null;
 }

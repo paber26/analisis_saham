@@ -2,7 +2,7 @@ import { getQuery, createError } from 'h3';
 import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
 import { fetchDailyBars } from '../utils/yahoo';
 import { analyzeTechnical } from '../utils/technical';
-import { fetchFundamentals } from '../utils/fundamentals';
+import { fetchFundamentals, fetchPiotroski } from '../utils/fundamentals';
 import { rs3mOnly } from '../utils/relative';
 import { IDX_TICKERS } from '../utils/idxTickers';
 import { saveScreenSnapshot, type ScreenRow, type ScreenSnapshot } from '../utils/store';
@@ -44,12 +44,18 @@ async function buildRow(code: string, ihsgCloses: number[]): Promise<ScreenRow |
   let revenueGrowth: number | null = null;
   let earningsGrowth: number | null = null;
   let debtToEquity: number | null = null;
+  let evEbitda: number | null = null;
+  let fScore: number | null = null;
+  let fScoreMax: number | null = null;
   try {
     const f = await fetchFundamentals(symbol);
     sector = f.sector;
     if (f.available) {
       per = f.per; pbv = f.pbv; roe = f.roe; dividendYield = f.dividendYield; marketCap = f.marketCap;
       revenueGrowth = f.revenueGrowth; earningsGrowth = f.earningsGrowth; debtToEquity = f.debtToEquity;
+      evEbitda = f.evEbitda;
+      const pio = await fetchPiotroski(symbol, sector === 'Financial Services');
+      if (pio) { fScore = pio.score; fScoreMax = pio.max; }
     }
   } catch { /* ignore */ }
 
@@ -60,6 +66,7 @@ async function buildRow(code: string, ihsgCloses: number[]): Promise<ScreenRow |
     sector, rs3m,
     per, pbv, roe, dividendYield, marketCap,
     revenueGrowth, earningsGrowth, debtToEquity,
+    evEbitda, fScore, fScoreMax,
     ...tech
   };
 }

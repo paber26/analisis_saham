@@ -21,6 +21,9 @@ export interface ScreenRow extends TechResult {
   revenueGrowth: number | null;  // % YoY
   earningsGrowth: number | null; // % YoY
   debtToEquity: number | null;   // ratio
+  evEbitda?: number | null;      // EV/EBITDA (null for financials)
+  fScore?: number | null;        // Piotroski F-Score (signals passed)
+  fScoreMax?: number | null;     // signals evaluable (≤ 9)
 }
 
 export interface ScreenSnapshot {

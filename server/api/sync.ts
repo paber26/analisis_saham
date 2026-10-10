@@ -9,6 +9,7 @@ import { saveScreenSnapshot, type ScreenRow, type ScreenSnapshot } from '../util
 import { computeFactors } from '../utils/factor';
 import { appendDailyHistory, type HistoryRow } from '../utils/history';
 import { tradingDay } from '../utils/cacheKey';
+import { trainAndStoreMl } from '../utils/mlTrain';
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -101,6 +102,10 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; date: st
     rows
   };
   await saveScreenSnapshot(snapshot);
+
+  // Retrain the pooled ML ranking model in the background (not awaited —
+  // it yields to the event loop and writes ml-latest.json when done).
+  if (rows.length >= 30) void trainAndStoreMl(rows.map((r) => r.code));
 
   // Append a compact daily history record (score/RS/QVM/fundamentals) — the
   // foundation for trends & honest screener backtests over time.

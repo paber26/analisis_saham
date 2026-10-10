@@ -24,7 +24,9 @@ const onlyValue = ref(false); // "Murah + Uptrend": PER wajar & di atas MA200
 const liqFilter = ref<LiquidityFilter>('no_tipis'); // default: sembunyikan saham tipis
 const hasLiquidity = computed(() => rows.value.some((x) => x.liquidity != null));
 const hiddenIlliquid = computed(() => rows.value.filter((x) => !passesLiquidity(x, liqFilter.value)).length);
-const sortBy = ref<'score' | 'qvm'>('score'); // ranking column
+const sortBy = ref<'score' | 'qvm' | 'ml'>('score'); // ranking column
+const ml = computed<any>(() => data.value?.ml || null);
+const hasMl = computed(() => rows.value.some((x) => x.mlScore != null));
 
 // Advanced filters
 const minAdx = ref(0); // 0 = off
@@ -77,6 +79,8 @@ const filtered = computed(() => {
   }
   if (sortBy.value === 'qvm') {
     r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
+  } else if (sortBy.value === 'ml') {
+    r = [...r].sort((a, b) => (b.mlScore ?? -1) - (a.mlScore ?? -1));
   }
   return r;
 });
@@ -292,6 +296,45 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
         </div>
       </section>
 
+      <!-- Pooled ML ranking model: honest evaluation -->
+      <section v-if="!pending && !error && ml" class="glow-card rounded-2xl p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="max-w-2xl">
+            <h3 class="text-sm font-bold text-slate-100">Skor ML — peringkat return {{ ml.horizon }} hari vs IHSG</h3>
+            <p class="text-[11px] text-slate-400 mt-1 leading-relaxed">
+              Satu model <em>gradient boosting</em> dilatih dari {{ ml.nStocks }} saham sekaligus (fitur harga &amp; volume, tanpa fundamental agar tidak bocor waktu).
+              Skor 0–100 = posisi relatif saham hari ini. Diuji <em>walk-forward</em> per kuartal dengan jeda {{ ml.horizon }} hari.
+            </p>
+          </div>
+          <span class="text-[11px] font-bold px-3 py-1 rounded-full border"
+            :class="ml.evaluation?.significant ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-amber-300 bg-amber-500/10 border-amber-500/30'">
+            {{ ml.evaluation?.significant ? 'Terbukti di uji historis' : 'Belum terbukti — jangan jadi dasar keputusan' }}
+          </span>
+        </div>
+        <div v-if="ml.evaluation" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-xs">
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3" title="Korelasi peringkat (Spearman) rata-rata antara skor dan return aktual per tanggal uji. 0 = acak; 0,03–0,05 sudah berguna di pasar nyata.">
+            <p class="text-[10px] text-slate-500 uppercase">Rank IC</p>
+            <p class="text-lg font-extrabold text-slate-100">{{ ml.evaluation.meanIC }}</p>
+            <p class="text-[10px] text-slate-500">t = {{ ml.evaluation.tStat }} (n efektif {{ ml.evaluation.nEff }})</p>
+          </div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3" title="Rata-rata selisih return 20 hari (relatif IHSG) antara 20% skor tertinggi dan 20% terendah di periode uji.">
+            <p class="text-[10px] text-slate-500 uppercase">Selisih kuintil</p>
+            <p class="text-lg font-extrabold" :class="ml.evaluation.spreadPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ ml.evaluation.spreadPct >= 0 ? '+' : '' }}{{ ml.evaluation.spreadPct }}%</p>
+            <p class="text-[10px] text-slate-500">atas − bawah, per {{ ml.horizon }} hari</p>
+          </div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+            <p class="text-[10px] text-slate-500 uppercase">Kuintil atas kalahkan IHSG</p>
+            <p class="text-lg font-extrabold text-slate-100">{{ ml.evaluation.topBeatPct }}%</p>
+            <p class="text-[10px] text-slate-500">{{ ml.evaluation.nDates }} tanggal uji</p>
+          </div>
+          <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+            <p class="text-[10px] text-slate-500 uppercase">Fitur paling berpengaruh</p>
+            <p v-for="f in ml.importance.slice(0, 3)" :key="f.key" class="text-[11px] text-slate-300 truncate">{{ f.label }} <span class="text-slate-500">{{ f.weight }}%</span></p>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-3">Dilatih {{ new Date(ml.trainedAt).toLocaleString('id-ID') }} · data per {{ ml.date }} · {{ ml.nTrain.toLocaleString('id-ID') }} sampel. Bukan rekomendasi investasi.</p>
+      </section>
+
       <!-- Loading -->
       <div v-if="pending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -319,6 +362,10 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300" @click="sortBy = 'qvm'"
                   title="Quality–Value–Momentum. Value &amp; Quality dibandingkan sesama sektor (bila ≥5 emiten), Momentum lintas pasar. Peringkat tidak menyertakan saham likuiditas tipis.">
                   QVM <span v-if="sortBy === 'qvm'" class="text-emerald-400">▼</span>
+                </th>
+                <th v-if="hasMl" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300 text-right" @click="sortBy = 'ml'"
+                  title="Skor model ML gabungan (0–100): peringkat ekspektasi return 20 hari relatif IHSG">
+                  ML <span v-if="sortBy === 'ml'" class="text-emerald-400">▼</span>
                 </th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>
                 <th class="px-4 py-3 font-semibold">Tren</th>
@@ -373,6 +420,10 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                       <span v-if="row.sectorRelative" class="text-[10px] text-slate-500" title="Value & Quality dibandingkan dengan sesama sektor (≥5 emiten); Momentum lintas pasar"> · relatif sektor</span>
                     </div>
                   </div>
+                  <span v-else class="text-slate-600 text-xs">—</span>
+                </td>
+                <td v-if="hasMl" class="px-4 py-3 text-right">
+                  <span v-if="row.mlScore != null" class="text-sm font-extrabold" :class="row.mlScore >= 80 ? 'text-emerald-400' : row.mlScore <= 20 ? 'text-rose-400' : 'text-slate-300'">{{ row.mlScore }}</span>
                   <span v-else class="text-slate-600 text-xs">—</span>
                 </td>
                 <td v-if="hasFundamentals" class="px-4 py-3 text-right whitespace-nowrap">

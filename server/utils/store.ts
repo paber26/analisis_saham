@@ -142,3 +142,26 @@ export async function getAlertStore(): Promise<AlertStore> {
 export async function saveAlertStore(store: AlertStore): Promise<void> {
   await writeJson(ALERTS_FILE, { ...store, history: store.history.slice(0, HISTORY_CAP) });
 }
+
+// ---- Pooled ML ranking model snapshot (written after the daily sync) ----
+export interface MlSnapshot {
+  date: string;          // cross-section date that was scored
+  trainedAt: string;     // ISO timestamp
+  horizon: number;       // trading days ahead (target)
+  nStocks: number;
+  nTrain: number;
+  ms: number;            // training wall time
+  evaluation: {
+    meanIC: number; icStd: number; nDates: number; nEff: number; tStat: number;
+    significant: boolean; spreadPct: number; topBeatPct: number; blocks: number;
+  } | null;
+  importance: { key: string; label: string; weight: number }[];
+  scores: Record<string, number>; // code → 0..100 percentile
+}
+const ML_FILE = 'ml-latest.json';
+export async function saveMlSnapshot(snap: MlSnapshot): Promise<void> {
+  await writeJson(ML_FILE, snap);
+}
+export async function loadMlSnapshot(): Promise<MlSnapshot | null> {
+  return readJson<MlSnapshot | null>(ML_FILE, null);
+}

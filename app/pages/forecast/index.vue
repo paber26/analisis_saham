@@ -729,7 +729,7 @@ const forecastChartOption = computed(() => {
             <div>
               <span>Buka:</span>
               <strong class="text-slate-200 ml-1">
-                {{ stockDetail.history && stockDetail.history[0] ? stockDetail.history[stockDetail.history.length - 1].open.toLocaleString('id-ID') : '-' }}
+                {{ stockDetail.history && stockDetail.history[0] ? stockDetail.history[0].open.toLocaleString('id-ID') : '-' }}
               </strong>
             </div>
 
@@ -832,7 +832,7 @@ const forecastChartOption = computed(() => {
             </div>
             <div class="rounded-xl bg-slate-900/50 border border-slate-800 p-4">
               <p class="text-[10px] text-slate-400 uppercase tracking-wide">Cara baca</p>
-              <p class="text-[11px] text-slate-300 leading-relaxed mt-1">Jika P(kena stop) jauh lebih besar dari P(target), hindari entri baru / kecilkan posisi.</p>
+              <p class="text-[11px] text-slate-300 leading-relaxed mt-1">Peluang harga <em>pernah menyentuh</em> level itu dalam {{ data.horizon }} hari. Ekspektasi = P(target)×target − P(stop)×stop; jika negatif, hindari entri baru / kecilkan posisi.</p>
             </div>
           </div>
         </section>

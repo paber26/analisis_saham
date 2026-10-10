@@ -78,6 +78,38 @@ function erf(x: number): number {
 }
 const Phi = (x: number) => 0.5 * (1 + erf(x / Math.SQRT2));
 
+// ---------- Barrier-touch probability & trade edge ----------
+/**
+ * P(log-return path X_t = mu·t + sigma·W_t touches `barrier` for some t ≤ horizon).
+ * Closed-form first-passage probability (reflection principle with drift).
+ * `barrier` > 0 is an upper barrier (target), < 0 a lower one (stop).
+ * mu / sigma are per-step (daily) log-return drift and volatility.
+ */
+export function touchProb(barrier: number, mu: number, sigma: number, horizon: number): number {
+  if (barrier === 0) return 1;
+  if (!(sigma > 0) || !(horizon > 0)) {
+    // No randomness: touched only if the drift alone reaches the barrier.
+    return barrier > 0 ? (mu * horizon >= barrier ? 1 : 0) : (mu * horizon <= barrier ? 1 : 0);
+  }
+  const sT = sigma * Math.sqrt(horizon);
+  const mT = mu * horizon;
+  const p = barrier > 0
+    ? Phi((mT - barrier) / sT) + Math.exp((2 * mu * barrier) / (sigma * sigma)) * Phi((-barrier - mT) / sT)
+    : Phi((barrier - mT) / sT) + Math.exp((2 * mu * barrier) / (sigma * sigma)) * Phi((barrier + mT) / sT);
+  return isFinite(p) ? Math.min(1, Math.max(0, p)) : barrier * mu > 0 ? 1 : 0;
+}
+
+/**
+ * Edge from the payoff-weighted odds: EV ≈ P(target)·target − P(stop)·stop,
+ * scaled by the stop distance. Comparing raw probabilities would always look
+ * negative because the stop (2σ) sits closer than the target (3σ).
+ */
+export function tradeEdge(pStop: number, pTarget: number, stopPct: number, targetPct: number): 'positif' | 'negatif' | 'netral' {
+  if (!(stopPct > 0)) return 'netral';
+  const evPerRisk = (pTarget * targetPct - pStop * stopPct) / stopPct;
+  return evPerRisk >= 0.1 ? 'positif' : evPerRisk <= -0.1 ? 'negatif' : 'netral';
+}
+
 // ---------- Linear algebra (Gauss-Jordan inverse + ridge) ----------
 function invert(m: number[][]): number[][] | null {
   const n = m.length;
@@ -564,16 +596,16 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
   const regime: 'rendah' | 'normal' | 'tinggi' = ratio < 0.85 ? 'rendah' : ratio > 1.25 ? 'tinggi' : 'normal';
 
   // ----- Entry/exit probabilities over horizon -----
-  // Drift-adjusted lognormal probabilities (uses mu1 & sigmaNow above).
+  // Probability that price TOUCHES the stop / target at any point within the
+  // horizon (first-passage of a drifted Brownian motion in log-price), not the
+  // probability of ending beyond it on the last day.
   const stopPct = round(2 * sigmaNow * 100, 2);   // ≈2σ below
   const targetPct = round(3 * sigmaNow * 100, 2); // ≈3σ above
-  const muH = mu1 * horizon;
-  const sigmaH = sigmaNow * Math.sqrt(horizon);
-  const probDownToStop = sigmaH > 0 ? round(Phi((Math.log(1 - stopPct / 100) - muH) / sigmaH) * 100, 1) : 50;
-  const probUpToTarget = sigmaH > 0 ? round(Phi((Math.log(1 + targetPct / 100) - muH) / sigmaH) * 100, 1) : 50;
-  const edge: 'positif' | 'negatif' | 'netral' =
-    probUpToTarget - probDownToStop >= 10 ? 'positif' :
-      probDownToStop - probUpToTarget >= 10 ? 'negatif' : 'netral';
+  const pStop = touchProb(Math.log(1 - stopPct / 100), mu1, sigmaNow, horizon);
+  const pTarget = touchProb(Math.log(1 + targetPct / 100), mu1, sigmaNow, horizon);
+  const probDownToStop = sigmaNow > 0 ? round(pStop * 100, 1) : 50;
+  const probUpToTarget = sigmaNow > 0 ? round(pTarget * 100, 1) : 50;
+  const edge = tradeEdge(pStop, pTarget, stopPct, targetPct);
 
   // ----- Chart series (test window) -----
   const winStart = Math.max(0, n - Math.max(180, testTargets.length));

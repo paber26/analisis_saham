@@ -9,8 +9,13 @@
 // - Evaluation: 3-fold walk-forward on the last 3×60 sessions, refit per fold,
 //   ensemble weights computed on a validation slice INSIDE each fold's train
 //   (no look-ahead leakage).
-// - Uncertainty: EWMA volatility (lambda 0.94, RiskMetrics) drives the
-//   projection band and P(up) = Phi(mu/sigma).
+// - Uncertainty: GARCH(1,1) with Student-t innovations (fallback: EWMA,
+//   lambda 0.94) drives the projection band, P(up) and the entry/exit odds.
+//   The 80% band is conformally calibrated: its width per horizon is the
+//   empirical 80% quantile of realized/predicted moves over a walk-forward
+//   window, with out-of-sample coverage reported (see volatility.ts).
+
+import { fitGarchT, garchFilter, garchStepVars, calibrateBands, studentTCdf, Z80, type BandCalibration } from './volatility';
 
 export interface PricePoint { date: string; close: number; }
 
@@ -43,7 +48,15 @@ export interface ForecastResult {
     probUp: number;                  // %
     hitRate: number | null;          // ensemble dirAcc on test
   };
-  vol: { dailyPct: number; annualPct: number; regime: 'rendah' | 'normal' | 'tinggi' };
+  vol: {
+    dailyPct: number;
+    annualPct: number;
+    regime: 'rendah' | 'normal' | 'tinggi';
+    model: 'GARCH(1,1)-t' | 'EWMA';
+    garch: { alpha: number; beta: number; nu: number; persistence: number; halfLifeDays: number | null } | null;
+    /** Coverage (%) of the 80% band at the forecast horizon over the walk-forward window. */
+    calibration: (Omit<BandCalibration, 'q80'> & { nominal: number; scale: number }) | null;
+  };
   /** Entry/exit probabilities over the horizon (drift + EWMA vol). */
   tradeOdds: {
     stopPct: number;
@@ -551,8 +564,45 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
     }
   }
 
-  const sigmaNow = sigma[n - 1]! || 0.01;
-  const probUp = round(Phi(mu1 / sigmaNow) * 100, 1);
+  // ----- Volatility model: GARCH(1,1)-t (fallback EWMA) + band calibration -----
+  const H = horizon;
+  const calStart = Math.max(260, n - 500 - H);
+  const canCalibrate = n - 1 - H - calStart + 1 >= 60;
+  const garchFull = fitGarchT(rets.slice(1));
+  const garchPre = canCalibrate && garchFull ? fitGarchT(rets.slice(1, calStart + 1)) : null;
+  const garch = garchFull && (!canCalibrate || garchPre) ? garchFull : null;
+  const calib = canCalibrate ? calibrateBands(rets, sigma, garch ? garchPre : null, calStart, H) : null;
+
+  let sigmaNow: number;          // next-day sigma
+  let stepVars: number[];        // per-step variance forecasts for days 1..H
+  let condSigma: number[];       // in-sample conditional sigma path (for the regime)
+  if (garch) {
+    const h = garchFilter(garch, rets.slice(1).map((x) => x - garch.mean), garch.longRunVar);
+    const hNext = h[h.length - 1]!;
+    sigmaNow = Math.sqrt(hNext);
+    stepVars = garchStepVars(garch, hNext, H);
+    condSigma = h.slice(1).map(Math.sqrt);
+  } else {
+    sigmaNow = sigma[n - 1]! || 0.01;
+    stepVars = new Array(H).fill(sigmaNow * sigmaNow);
+    condSigma = sigma;
+  }
+  const q80 = calib?.q80 ?? new Array(H).fill(Z80);
+  // Calibrated half-width (log space) of the 80% band per horizon, kept non-decreasing.
+  const bandW: number[] = [];
+  let accVar = 0;
+  for (let h = 1; h <= H; h++) {
+    accVar += stepVars[h - 1]!;
+    bandW.push(Math.max(q80[h - 1]! * Math.sqrt(accVar), bandW[h - 2] ?? 0));
+  }
+
+  // P(next-day return > 0): Student-t with GARCH's tails, else normal.
+  const probUp = round(
+    (garch
+      ? studentTCdf(mu1 / (sigmaNow * Math.sqrt((garch.nu - 2) / garch.nu)), garch.nu)
+      : Phi(mu1 / sigmaNow)) * 100,
+    1
+  );
 
   // ----- Forward path (multi-step capable models: drift, ar, holt) -----
   const pathKeys = wF.entries.filter((e) => e.key !== 'reg');
@@ -580,7 +630,7 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
     holtPrev = Math.max(mFull.holtState.level + h * mFull.holtState.trend, 0.05 * P0);
     retBuf.push(rh);
     cum += rh;
-    const band = 1.2816 * sigmaNow * Math.sqrt(h); // ~80% two-sided
+    const band = bandW[h - 1]!; // calibrated ~80% two-sided
     forecast.push({
       date: fwdDates[h - 1]!,
       mean: round(P0 * Math.exp(cum)),
@@ -590,7 +640,7 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
   }
 
   // ----- Volatility regime -----
-  const sigWindow = sigma.slice(Math.max(1, n - 252)).filter((s) => s > 0).sort((a, b) => a - b);
+  const sigWindow = condSigma.slice(Math.max(1, condSigma.length - 252)).filter((s) => s > 0).sort((a, b) => a - b);
   const sigMed = sigWindow.length ? sigWindow[Math.floor(sigWindow.length / 2)]! : sigmaNow;
   const ratio = sigMed > 0 ? sigmaNow / sigMed : 1;
   const regime: 'rendah' | 'normal' | 'tinggi' = ratio < 0.85 ? 'rendah' : ratio > 1.25 ? 'tinggi' : 'normal';
@@ -599,10 +649,13 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
   // Probability that price TOUCHES the stop / target at any point within the
   // horizon (first-passage of a drifted Brownian motion in log-price), not the
   // probability of ending beyond it on the last day.
+  // Levels in next-day sigmas; odds use the per-day sigma implied by the
+  // calibrated band at the horizon (so odds and band agree).
   const stopPct = round(2 * sigmaNow * 100, 2);   // ≈2σ below
   const targetPct = round(3 * sigmaNow * 100, 2); // ≈3σ above
-  const pStop = touchProb(Math.log(1 - stopPct / 100), mu1, sigmaNow, horizon);
-  const pTarget = touchProb(Math.log(1 + targetPct / 100), mu1, sigmaNow, horizon);
+  const sigmaEff = bandW[H - 1]! / (Z80 * Math.sqrt(H));
+  const pStop = touchProb(Math.log(1 - stopPct / 100), mu1, sigmaEff, horizon);
+  const pTarget = touchProb(Math.log(1 + targetPct / 100), mu1, sigmaEff, horizon);
   const probDownToStop = sigmaNow > 0 ? round(pStop * 100, 1) : 50;
   const probUpToTarget = sigmaNow > 0 ? round(pTarget * 100, 1) : 50;
   const edge = tradeEdge(pStop, pTarget, stopPct, targetPct);
@@ -644,7 +697,27 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
     vol: {
       dailyPct: round(sigmaNow * 100, 2),
       annualPct: round(sigmaNow * Math.sqrt(252) * 100, 1),
-      regime
+      regime,
+      model: garch ? 'GARCH(1,1)-t' : 'EWMA',
+      garch: garch
+        ? {
+            alpha: round(garch.alpha, 4),
+            beta: round(garch.beta, 4),
+            nu: round(garch.nu, 1),
+            persistence: round(garch.persistence, 4),
+            halfLifeDays: garch.persistence > 0 ? round(Math.log(0.5) / Math.log(garch.persistence), 1) : null
+          }
+        : null,
+      calibration: calib
+        ? {
+            nominal: 80,
+            scale: round(calib.q80[H - 1]! / Z80, 3),
+            ewmaCoverage: calib.ewmaCoverage,
+            garchCoverage: calib.garchCoverage,
+            calibratedCoverage: calib.calibratedCoverage,
+            windowSize: calib.windowSize
+          }
+        : null
     },
     tradeOdds: {
       stopPct,

@@ -47,6 +47,50 @@ docker compose ps             # status + healthcheck
 - Jika memakai Docker, PM2 + `deploy.sh` tidak dipakai (hentikan `pm2 delete saham`
   agar port 3200 tidak bentrok).
 
+## Deploy otomatis (GitHub Actions)
+
+Setiap push ke `main` yang CI-nya hijau → `.github/workflows/deploy.yml` SSH ke
+server → menjalankan `scripts/deploy-server.sh <commit>`:
+`git fetch` + checkout commit itu → `docker compose up -d --build` → tunggu
+healthcheck + cek `/forecast` 200. **Bila gagal, otomatis rollback** ke versi
+sebelumnya. Hanya menyentuh repo ini & container `saham`. Bisa juga dijalankan
+manual: tab **Actions → Deploy → Run workflow**. Selama secret belum diisi,
+workflow hanya menulis notice "dilewati".
+
+Setup sekali (di server, dari folder repo, setelah versi yang memuat
+`scripts/deploy-server.sh` sudah di-pull):
+
+```bash
+# 1. Kunci khusus deploy (dibuat DI server)
+ssh-keygen -t ed25519 -N "" -C github-deploy -f ~/gh_deploy
+
+# 2. Izinkan kunci itu HANYA menjalankan script deploy (forced command)
+echo "command=\"$(pwd)/scripts/deploy-server.sh\",no-port-forwarding,no-X11-forwarding,no-agent-forwarding,no-pty $(cat ~/gh_deploy.pub)" >> ~/.ssh/authorized_keys
+
+# 3. User ini harus bisa menjalankan docker tanpa password (lalu logout/login)
+#    Catatan: grup docker setara akses root — kunci di atas tetap dibatasi ke script deploy.
+sudo usermod -aG docker "$USER"
+
+# 4. Host key server (untuk secret DEPLOY_KNOWN_HOSTS; port ≠ 22 → "[IP]:PORT ...")
+echo "203.145.35.13 $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"
+
+# 5. Tampilkan private key untuk disalin ke GitHub, lalu HAPUS dari server
+cat ~/gh_deploy && rm ~/gh_deploy
+```
+
+Di GitHub: repo → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Secret | Isi |
+|---|---|
+| `DEPLOY_HOST` | `203.145.35.13` (IP langsung — Cloudflare tidak meneruskan SSH) |
+| `DEPLOY_USER` | user SSH di server (`whoami`) |
+| `DEPLOY_SSH_KEY` | isi lengkap private key dari langkah 5 (termasuk baris BEGIN/END) |
+| `DEPLOY_KNOWN_HOSTS` | output langkah 4 |
+| `DEPLOY_PORT` | (opsional) bila SSH bukan port 22 |
+
+Syarat: port SSH server bisa diakses dari internet (runner GitHub IP-nya
+berubah-ubah). Tes: **Actions → Deploy → Run workflow**.
+
 ## Update rutin dengan PM2 (tanpa Docker)
 
 ```bash

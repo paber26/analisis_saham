@@ -847,6 +847,58 @@ const forecastChartOption = computed(() => {
           </div>
         </section>
 
+        <!-- Multi-horizon (direct 5/10/20-day models) -->
+        <section v-if="data?.multiHorizon?.length" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-100">Proyeksi Multi-Horizon</h3>
+              <p class="text-[11px] text-slate-400 mt-1 max-w-2xl">
+                Model langsung untuk return kumulatif 5/10/20 hari, diuji <em>walk-forward</em> tanpa look-ahead.
+                Akurasi arah dibandingkan baseline "selalu tebak arah mayoritas"; <strong class="text-slate-300">unggul</strong> hanya bila signifikan secara statistik (p &lt; 0,05).
+              </p>
+            </div>
+          </div>
+          <div class="overflow-x-auto">
+            <table class="w-full text-xs">
+              <thead>
+                <tr class="text-slate-500 text-left border-b border-slate-800">
+                  <th class="py-2 pr-3 font-semibold">Horizon</th>
+                  <th class="py-2 pr-3 font-semibold text-right">Ekspektasi</th>
+                  <th class="py-2 pr-3 font-semibold text-right">P(naik)</th>
+                  <th class="py-2 pr-3 font-semibold text-right">P(kalahkan IHSG)</th>
+                  <th class="py-2 pr-3 font-semibold text-right">Akurasi arah uji</th>
+                  <th class="py-2 font-semibold">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="m in data.multiHorizon" :key="m.h" class="border-b border-slate-900/70">
+                  <td class="py-2 pr-3 font-bold text-slate-200">{{ m.h }} hari</td>
+                  <td class="py-2 pr-3 text-right font-semibold" :class="m.expectedReturnPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ m.expectedReturnPct >= 0 ? '+' : '' }}{{ m.expectedReturnPct }}%</td>
+                  <td class="py-2 pr-3 text-right text-slate-200">{{ m.probUp }}%</td>
+                  <td class="py-2 pr-3 text-right text-slate-200">{{ m.probBeatIhsg != null ? m.probBeatIhsg + '%' : '—' }}</td>
+                  <td class="py-2 pr-3 text-right text-slate-300" :title="`~${m.nEff} jendela independen · p = ${m.pValue ?? '–'}`">
+                    {{ m.hitRate ?? '—' }}<span v-if="m.hitRate != null">%</span>
+                    <span class="text-slate-500"> vs {{ m.baselineHitRate ?? '—' }}<span v-if="m.baselineHitRate != null">%</span></span>
+                  </td>
+                  <td class="py-2">
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full border" :class="m.significant ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-slate-400 bg-slate-800/60 border-slate-700'">
+                      {{ m.significant ? 'Unggul' : 'Belum unggul' }}
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-if="data.features?.length" class="mt-4 flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span class="text-slate-500 mr-1">Fitur model regresi:</span>
+            <span class="px-2 py-0.5 rounded border border-slate-700 bg-slate-800/60 text-slate-300">Teknikal (RSI, MACD, momentum)</span>
+            <span v-for="f in data.features" :key="f.label" class="px-2 py-0.5 rounded border"
+              :class="f.available ? 'border-sky-500/30 bg-sky-500/10 text-sky-300' : 'border-slate-800 text-slate-600 line-through'"
+              :title="f.available ? 'Dipakai' : 'Data tidak tersedia — dilewati'">{{ f.label }}</span>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-2">Komoditas memakai harga penutupan hari sebelumnya (pasar luar negeri tutup setelah BEI). Bukan rekomendasi investasi.</p>
+        </section>
+
         <!-- Summary cards -->
         <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div class="glow-card rounded-2xl p-5">

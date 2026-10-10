@@ -4,6 +4,7 @@ import { fetchDailyBars } from '../utils/yahoo';
 import { runForecast, type PricePoint } from '../utils/forecast';
 import { loadScreenSnapshot } from '../utils/store';
 import { tradingDay } from '../utils/cacheKey';
+import { loadExoFor } from '../utils/exoFetch';
 
 /**
  * Batch forecast scan: run the model for every stock in the daily screening
@@ -57,8 +58,9 @@ async function buildForecastRow(code: string, horizon: number): Promise<Forecast
     const fetched = await fetchDailyBars(symbol, '5y', true);
     if (!fetched || fetched.bars.length === 0) return null;
 
-    const points: PricePoint[] = fetched.bars.map((b) => ({ date: b.date, close: b.close }));
-    const result = runForecast(points, horizon);
+    const points: PricePoint[] = fetched.bars.map((b) => ({ date: b.date, close: b.close, volume: b.volume }));
+    const exo = await loadExoFor(symbol);
+    const result = runForecast(points, horizon, exo);
     if (!result) return null;
 
     const last = result.forecast[result.forecast.length - 1];

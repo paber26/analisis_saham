@@ -16,8 +16,27 @@
 //   window, with out-of-sample coverage reported (see volatility.ts).
 
 import { fitGarchT, garchFilter, garchStepVars, calibrateBands, studentTCdf, Z80, type BandCalibration } from './volatility';
+import { alignExoReturns, type Driver, type ExoPoint } from './exogenous';
 
-export interface PricePoint { date: string; close: number; }
+export interface PricePoint { date: string; close: number; volume?: number }
+
+/** Optional exogenous inputs (see exogenous.ts for the look-ahead rule). */
+export interface ExoInput {
+  ihsg?: ExoPoint[];
+  drivers?: { driver: Driver; points: ExoPoint[] }[];
+}
+
+export interface MultiHorizonRow {
+  h: number;                     // trading days ahead
+  expectedReturnPct: number;     // direct h-day model
+  probUp: number;                // %, from walk-forward residual spread
+  probBeatIhsg: number | null;   // %, excess-return model (needs IHSG)
+  hitRate: number | null;        // % correct sign, walk-forward
+  baselineHitRate: number | null;// % of the majority sign in the same test window
+  nEff: number;                  // ~independent test windows (tests / h)
+  pValue: number | null;         // one-sided, hit rate vs baseline, on nEff
+  significant: boolean;          // pValue < 0.05
+}
 
 export interface Metric {
   rmse: number;
@@ -65,6 +84,10 @@ export interface ForecastResult {
     probUpToTarget: number;
     edge: 'positif' | 'negatif' | 'netral';
   };
+  /** Direct h-day models (5/10/20) with honest walk-forward evaluation. */
+  multiHorizon: MultiHorizonRow[];
+  /** Feature groups fed to the regression model and whether data was available. */
+  features: { label: string; available: boolean }[];
   trainSize: number;
   testSize: number;
   horizon: number;
@@ -243,30 +266,204 @@ function optimizeHolt(prices: number[], fitEnd: number) {
 const FEATURE_START = 30;
 interface FeatRow { idx: number; f: number[]; y: number } // y = log return of idx+1
 
-function buildFeatures(prices: number[], rets: number[]) {
+/** Extra per-index features (exogenous / volume); null → 0 (neutral after z-scoring). */
+type ExtraFeature = (t: number) => number | null;
+
+function buildFeatures(prices: number[], rets: number[], extra: ExtraFeature[] = []) {
   const n = prices.length;
   const rsi = rsiSeries(prices, 14);
   const macdH = macdHistSeries(prices);
-  const rows: FeatRow[] = [];
-  for (let t = FEATURE_START; t < n - 1; t++) {
+  const rowAt = (t: number): number[] | null => {
     const rv = rsi[t];
-    if (rv == null) continue;
+    if (rv == null) return null;
     let mom5 = 0;
     for (let k = t - 4; k <= t; k++) mom5 += rets[k]!;
-    rows.push({
-      idx: t,
-      f: [rets[t]!, rets[t - 1]!, mom5, (rv - 50) / 50, macdH[t]! / prices[t]!, prices[t]! / smaAt(prices, 10, t) - 1],
-      y: rets[t + 1]!
+    const base = [rets[t]!, rets[t - 1]!, mom5, (rv - 50) / 50, macdH[t]! / prices[t]!, prices[t]! / smaAt(prices, 10, t) - 1];
+    for (const fx of extra) {
+      const v = fx(t);
+      base.push(v != null && isFinite(v) ? v : 0);
+    }
+    return base;
+  };
+  const rows: FeatRow[] = [];
+  for (let t = FEATURE_START; t < n - 1; t++) {
+    const f = rowAt(t);
+    if (f) rows.push({ idx: t, f, y: rets[t + 1]! });
+  }
+  const lastRow = n - 1 >= FEATURE_START ? rowAt(n - 1) : null;
+  return { rows, lastRow };
+}
+
+// ---------- Exogenous / volume features ----------
+const sumBack = (arr: (number | null)[], t: number, k: number): number | null => {
+  let s = 0;
+  for (let i = t - k + 1; i <= t; i++) {
+    const v = arr[i];
+    if (v == null) return null;
+    s += v;
+  }
+  return s;
+};
+
+function exoFeatures(points: PricePoint[], rets: number[], exo?: ExoInput) {
+  const dates = points.map((p) => p.date);
+  const extra: ExtraFeature[] = [];
+  const groups: { label: string; available: boolean }[] = [];
+
+  // Volume: abnormal volume (log vs 20-day mean) and 5-day signed-volume flow.
+  const vol = points.map((p) => (p.volume != null && p.volume > 0 ? p.volume : 0));
+  const volOk = vol.filter((v) => v > 0).length > points.length * 0.8;
+  if (volOk) {
+    extra.push((t) => {
+      if (t < 20 || !(vol[t]! > 0)) return null;
+      let m = 0;
+      for (let i = t - 19; i <= t; i++) m += vol[i]!;
+      m /= 20;
+      return m > 0 ? Math.log(vol[t]! / m) : null;
+    });
+    extra.push((t) => {
+      let num = 0;
+      let den = 0;
+      for (let i = t - 4; i <= t; i++) { num += Math.sign(rets[i]!) * vol[i]!; den += vol[i]!; }
+      return den > 0 ? num / den : null;
     });
   }
-  let lastRow: number[] | null = null;
-  const tl = n - 1;
-  if (rsi[tl] != null) {
-    let mom5 = 0;
-    for (let k = tl - 4; k <= tl; k++) mom5 += rets[k]!;
-    lastRow = [rets[tl]!, rets[tl - 1]!, mom5, (rsi[tl]! - 50) / 50, macdH[tl]! / prices[tl]!, prices[tl]! / smaAt(prices, 10, tl) - 1];
+  groups.push({ label: 'Volume', available: volOk });
+
+  // IHSG (same session, lag 0): index return, 5-day return, 20-day relative strength.
+  let ihsgRet: (number | null)[] | null = null;
+  if (exo?.ihsg && exo.ihsg.length > 100) {
+    const r = alignExoReturns(dates, exo.ihsg, 0);
+    if (r.filter((v) => v != null).length > points.length * 0.8) ihsgRet = r;
   }
-  return { rows, lastRow };
+  if (ihsgRet) {
+    const ir = ihsgRet;
+    extra.push((t) => ir[t] ?? null);
+    extra.push((t) => sumBack(ir, t, 5));
+    extra.push((t) => {
+      const m = sumBack(ir, t, 20);
+      if (m == null) return null;
+      let s = 0;
+      for (let i = t - 19; i <= t; i++) s += rets[i]!;
+      return s - m;
+    });
+  }
+  groups.push({ label: 'IHSG', available: ihsgRet != null });
+
+  // Commodities / FX (lag 1): 1-day and 5-day returns.
+  for (const { driver, points: pts } of exo?.drivers || []) {
+    const r = pts.length > 100 ? alignExoReturns(dates, pts, driver.lag) : null;
+    const ok = r != null && r.filter((v) => v != null).length > points.length * 0.7;
+    if (ok && r) {
+      extra.push((t) => r[t] ?? null);
+      extra.push((t) => sumBack(r, t, 5));
+    }
+    groups.push({ label: driver.label, available: ok });
+  }
+  return { extra, groups, ihsgRet };
+}
+
+// ---------- Direct multi-horizon models ----------
+const MULTI_H = [5, 10, 20];
+
+function runMultiHorizon(rows: FeatRow[], lastRow: number[] | null, rets: number[], ihsgRet: (number | null)[] | null): MultiHorizonRow[] {
+  const n = rets.length;
+  const cum = new Array<number>(n).fill(0);
+  for (let t = 1; t < n; t++) cum[t] = cum[t - 1]! + rets[t]!;
+  let icum: number[] | null = null;
+  if (ihsgRet) {
+    icum = new Array<number>(n).fill(0);
+    for (let t = 1; t < n; t++) icum[t] = icum[t - 1]! + (ihsgRet[t] ?? 0);
+  }
+  const out: MultiHorizonRow[] = [];
+
+  for (const h of MULTI_H) {
+    const usable = rows.filter((r) => r.idx + h <= n - 1);
+    if (usable.length < 300 || !lastRow) continue;
+    const yOf = (t: number) => cum[t + h]! - cum[t]!;
+    const xOf = (t: number) => (icum ? yOf(t) - (icum[t + h]! - icum[t]!) : null);
+
+    const fitPredict = (train: FeatRow[], target: (t: number) => number) => {
+      const k = train[0]!.f.length;
+      const mus = new Array(k).fill(0);
+      const sds = new Array(k).fill(1);
+      for (let c = 0; c < k; c++) {
+        const col = train.map((r) => r.f[c]!);
+        mus[c] = mean(col);
+        sds[c] = std(col) || 1;
+      }
+      const z = (f: number[]) => f.map((v, c) => (v - mus[c]) / sds[c]);
+      const beta = ridgeFit(train.map((r) => z(r.f)), train.map((r) => target(r.idx)), 5.0);
+      return (f: number[]) => {
+        if (!beta) return mean(train.map((r) => target(r.idx)));
+        const zz = z(f);
+        let s = beta[0]!;
+        for (let j = 0; j < zz.length; j++) s += beta[j + 1]! * zz[j]!;
+        return s;
+      };
+    };
+
+    // Walk-forward: last ~250 origins in 5 blocks; train only on labels realized before the block.
+    const testRows = usable.slice(-Math.min(250, usable.length - 200));
+    const blocks = 5;
+    const per = Math.ceil(testRows.length / blocks);
+    const resY: number[] = [];
+    const resX: number[] = [];
+    let hits = 0;
+    let decided = 0;
+    let ups = 0;
+    let downs = 0;
+    for (let b = 0; b < blocks; b++) {
+      const blk = testRows.slice(b * per, (b + 1) * per);
+      if (!blk.length) continue;
+      const start = blk[0]!.idx;
+      const train = rows.filter((r) => r.idx + h <= start);
+      if (train.length < 200) continue;
+      const predY = fitPredict(train, yOf);
+      const predX = icum ? fitPredict(train, (t) => xOf(t)!) : null;
+      for (const r of blk) {
+        const a = yOf(r.idx);
+        const p = predY(r.f);
+        resY.push(a - p);
+        if (predX) resX.push(xOf(r.idx)! - predX(r.f));
+        if (a !== 0) {
+          decided++;
+          if (a > 0) ups++; else downs++;
+          if (Math.sign(p) === Math.sign(a)) hits++;
+        }
+      }
+    }
+
+    const predYFull = fitPredict(usable, yOf);
+    const muY = predYFull(lastRow);
+    const sdY = std(resY) || std(usable.map((r) => yOf(r.idx))) || 0.01;
+    let probBeatIhsg: number | null = null;
+    if (icum && resX.length) {
+      const predXFull = fitPredict(usable, (t) => xOf(t)!);
+      probBeatIhsg = round(Phi(predXFull(lastRow) / (std(resX) || 0.01)) * 100, 1);
+    }
+
+    const hitRate = decided ? hits / decided : null;
+    const base = decided ? Math.max(ups, downs) / decided : null;
+    const nEff = Math.max(1, Math.floor(decided / h));
+    let pValue: number | null = null;
+    if (hitRate != null && base != null && base < 1) {
+      const zStat = ((hitRate - base) * Math.sqrt(nEff)) / Math.sqrt(base * (1 - base));
+      pValue = round(1 - Phi(zStat), 3);
+    }
+    out.push({
+      h,
+      expectedReturnPct: round((Math.exp(muY) - 1) * 100, 2),
+      probUp: round(Phi(muY / sdY) * 100, 1),
+      probBeatIhsg,
+      hitRate: hitRate != null ? round(hitRate * 100, 1) : null,
+      baselineHitRate: base != null ? round(base * 100, 1) : null,
+      nEff,
+      pValue,
+      significant: pValue != null && pValue < 0.05
+    });
+  }
+  return out;
 }
 
 // ---------- AR(p) on returns, order by AIC ----------
@@ -463,7 +660,7 @@ function businessDaysAfter(lastDate: string, count: number): string[] {
 
 const MODEL_LABEL: Record<string, string> = { drift: 'Drift', ar: 'AR', holt: 'Holt', reg: 'Regresi' };
 
-export function runForecast(points: PricePoint[], horizon = 14): ForecastResult | null {
+export function runForecast(points: PricePoint[], horizon = 14, exo?: ExoInput): ForecastResult | null {
   const clean = points.filter((p) => p.close > 0);
   const n = clean.length;
   if (n < 150) return null;
@@ -476,7 +673,8 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
   for (let t = 1; t < n; t++) rets[t] = Math.log(prices[t]! / prices[t - 1]!);
 
   const sigma = ewmaSigmaSeries(rets);
-  const { rows, lastRow } = buildFeatures(prices, rets);
+  const exoF = exoFeatures(clean, rets, exo);
+  const { rows, lastRow } = buildFeatures(prices, rets, exoF.extra);
   const rowByTarget = new Map<number, FeatRow>(rows.map((r) => [r.idx + 1, r]));
 
   // ----- Fold layout -----
@@ -726,6 +924,8 @@ export function runForecast(points: PricePoint[], horizon = 14): ForecastResult 
       probUpToTarget,
       edge
     },
+    multiHorizon: runMultiHorizon(rows, lastRow, rets, exoF.ihsgRet),
+    features: exoF.groups,
     trainSize: folds[0]!.ts,
     testSize: testTargets.length,
     horizon

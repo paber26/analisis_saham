@@ -434,6 +434,12 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                     <span v-if="row.pbv != null">PBV {{ row.pbv }}×</span>
                     <span v-if="row.roe != null"> · ROE {{ row.roe }}%</span>
                   </div>
+                  <div v-if="row.evEbitda != null || row.fScore != null" class="text-[10px] text-slate-500 mt-0.5">
+                    <span v-if="row.evEbitda != null" title="Enterprise value / EBITDA">EV/EBITDA {{ row.evEbitda }}×</span>
+                    <span v-if="row.fScore != null" :title="`Piotroski F-Score: ${row.fScore} dari ${row.fScoreMax} sinyal kualitas fundamental terpenuhi`"
+                      :class="row.fScoreMax && row.fScore / row.fScoreMax >= 0.7 ? 'text-emerald-400' : row.fScoreMax && row.fScore / row.fScoreMax <= 0.35 ? 'text-rose-400' : ''">
+                      · F {{ row.fScore }}/{{ row.fScoreMax }}</span>
+                  </div>
                 </td>
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-1.5 text-xs">

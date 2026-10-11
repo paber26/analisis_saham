@@ -7,28 +7,12 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feat/ksei-ownership
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: syncKsei() end-to-end (store sementara)
+      - name: Kepemilikan KSEI di cuan.bernaldo.id
         run: |
-          export DATA_STORE_DIR=$RUNNER_TEMP/store
-          cat > /tmp/run.mts <<'TS'
-          const R = process.env.GITHUB_WORKSPACE;
-          const t0 = Date.now();
-          const { syncKsei } = await import(`${R}/server/utils/kseiSync.ts`);
-          const snap = await syncKsei();
-          console.log(`run 1: ${((Date.now() - t0) / 1000).toFixed(0)} s, bulan ${snap?.months}, data ${snap?.date}, saham ${Object.keys(snap?.latest || {}).length}`);
-          console.table(snap?.evaluation?.signals.map(({ label, ...s }: any) => s));
-          for (const c of ['BBCA', 'TLKM', 'ADRO', 'GOTO']) console.log(c, JSON.stringify(snap?.latest[c]));
-          const t1 = Date.now();
-          const again = await syncKsei();
-          console.log(`run 2 (tidak ada bulan baru): ${((Date.now() - t1) / 1000).toFixed(1)} s, bulan ${again?.months}`);
-          TS
-          npx -y tsx@4.19.2 /tmp/run.mts
-          du -sh $DATA_STORE_DIR/ksei; ls $DATA_STORE_DIR/ksei | head -2; ls $DATA_STORE_DIR/ksei | tail -2; ls -la $DATA_STORE_DIR/ksei-latest.json
+          B=https://cuan.bernaldo.id
+          for s in BBCA GOTO; do curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 "$B/api/ownership?symbol=$s" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log('$s', o.available, o.date, JSON.stringify(o.latest), 'seri:', (o.series||[]).length, 'bln')})"; done
+          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o screen.json "$B/api/screen"
+          node -e "const s=JSON.parse(require('fs').readFileSync('screen.json','utf8'));const R=s.results;console.log({source:s.source,count:s.count,own:R.filter(r=>r.own).length,ownDate:s.ownership?.date,months:s.ownership?.months,anySig:s.ownership?.evaluation?.signals.some(x=>x.significant)});const t=R.filter(r=>r.own?.dForeign3!=null&&r.liquidity!=='tipis').sort((a,b)=>b.own.dForeign3-a.own.dForeign3);console.log('Δ asing 3b terbesar (non-tipis):',t.slice(0,5).map(r=>r.code+' '+r.own.dForeign3).join(', '));console.log('terkecil:',t.slice(-5).map(r=>r.code+' '+r.own.dForeign3).join(', '))"
+          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o page.html -w "/analisa/BBCA HTTP %{http_code}\n" "$B/analisa/BBCA"; grep -o 'Kepemilikan Saham (KSEI)' page.html | head -1 || echo "kartu belum di SSR (dimuat lazy di browser)"

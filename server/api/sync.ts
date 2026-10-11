@@ -105,7 +105,10 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; date: st
 
   // Retrain the pooled ML ranking model in the background (not awaited —
   // it yields to the event loop and writes ml-latest.json when done).
-  if (rows.length >= 30) void trainAndStoreMl(rows.map((r) => r.code));
+  // Thin stocks are left out (untradeable, noisy returns; also keeps the
+  // 5y fetch + training small on the VPS), as in the QVM ranking.
+  const mlCodes = rows.filter((r) => r.liquidity !== 'tipis').map((r) => r.code);
+  if (mlCodes.length >= 30) void trainAndStoreMl(mlCodes);
 
   // Append a compact daily history record (score/RS/QVM/fundamentals) — the
   // foundation for trends & honest screener backtests over time.

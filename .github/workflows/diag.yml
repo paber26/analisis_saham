@@ -9,15 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: cuan.bernaldo.id lewat Cloudflare
+      - name: Uji endpoint IDX (data asing/broker)
         run: |
-          for p in / /api/screen; do
-            echo "== $p"
-            curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o "out.txt" -D - "https://cuan.bernaldo.id$p" | grep -iE '^(HTTP|server|x-vercel-id|cf-cache-status|content-type|location)' || echo gagal
-            head -c 300 out.txt | tr '\n' ' ' | grep -o '<title>[^<]*' || true
-          done
-          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o screen.json https://cuan.bernaldo.id/api/screen
-          node -e "try{const s=JSON.parse(require('fs').readFileSync('screen.json','utf8'));const R=s.results||[];const n=k=>R.filter(r=>r[k]!=null).length;console.log({source:s.source,generatedAt:s.generatedAt,count:s.count,ml:!!s.ml,fScore:n('fScore'),mlScore:n('mlScore')})}catch(e){console.log('bukan JSON:',require('fs').readFileSync('screen.json','utf8').slice(0,300))}"
-          echo "== handshake langsung ke origin (cipher/protokol)"
-          echo | openssl s_client -connect 203.145.35.13:443 -servername cuan.bernaldo.id 2>&1 | grep -E 'Protocol|Cipher|Verify return' | head -5
-          echo | openssl s_client -connect 203.145.35.13:443 2>&1 | grep -E 'subject=|Protocol|Cipher ' | head -3
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
+          H=(-A "$UA" -H 'Accept: application/json, text/plain, */*' -H 'Referer: https://www.idx.co.id/id/data-pasar/ringkasan-perdagangan/ringkasan-saham/' -H 'Accept-Language: id-ID,id;q=0.9,en;q=0.8')
+          t() { echo "== $1"; curl -sS --compressed "${H[@]}" --max-time 30 -o out.bin -w "HTTP %{http_code} %{content_type} %{size_download}B\n" "$1" || echo gagal; head -c 600 out.bin | tr '\n' ' '; echo; echo; }
+          t "https://www.idx.co.id/primary/TradingSummary/GetStockSummary?length=9999&start=0&date=20261009"
+          t "https://www.idx.co.id/primary/TradingSummary/GetBrokerSummary?length=9999&start=0&date=20261009"
+          t "https://www.idx.co.id/primary/TradingSummary/GetForeignStockSummary?length=10&start=0&date=20261009"
+          t "https://www.idx.co.id/primary/TradingSummary/GetTradeSummary?length=10&start=0&date=20261009"
+          t "https://www.idx.co.id/primary/ListedCompany/GetTradingInfoSS?code=BBCA&length=5&start=0"

@@ -9,11 +9,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: DNS + header (siapa yang melayani cuan.bernaldo.id?)
+      - name: VPS langsung (tanpa Cloudflare)
         run: |
-          echo "== DNS"; dig +short cuan.bernaldo.id A; dig +short cuan.bernaldo.id CNAME; dig +short bernaldo.id NS
-          for p in / /api/screen "/api/sync?token=salah"; do
-            echo "== HEAD-ish $p"
-            curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o /dev/null -D - "https://cuan.bernaldo.id$p" | grep -iE '^(HTTP|server|x-vercel|x-powered-by|cf-cache-status|cf-ray|age|cache-control|x-nitro|via|x-matched-path|content-type)' || true
+          IP=203.145.35.13
+          for proto in http https; do
+            echo "== $proto://cuan.bernaldo.id/api/screen -> $IP"
+            curl -sS -k -A 'Mozilla/5.0 (diag)' --max-time 30 --resolve "cuan.bernaldo.id:80:$IP" --resolve "cuan.bernaldo.id:443:$IP" \
+              -o "screen-$proto.json" -D - "$proto://cuan.bernaldo.id/api/screen" | grep -iE '^(HTTP|server|location|content-type|x-powered-by)' || echo "gagal"
+            node -e "try{const s=JSON.parse(require('fs').readFileSync('screen-$proto.json','utf8'));const R=s.results||[];const n=k=>R.filter(r=>r[k]!=null).length;console.log({source:s.source,date:s.date,generatedAt:s.generatedAt,count:s.count,ml:!!s.ml,fScore:n('fScore'),evEbitda:n('evEbitda'),sector:n('sector'),mlScore:n('mlScore')});if(s.ml)console.log(JSON.stringify(s.ml))}catch(e){console.log('bukan JSON:',require('fs').readFileSync('screen-$proto.json','utf8').slice(0,200))}" || true
           done
-          echo "== body /api/sync?token=salah"; curl -sS -A 'Mozilla/5.0 (diag)' --max-time 30 "https://cuan.bernaldo.id/api/sync?token=salah" | head -c 300; echo

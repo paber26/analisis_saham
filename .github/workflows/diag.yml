@@ -1,0 +1,34 @@
+name: Diag produksi (sementara)
+on:
+  push:
+    branches: ['diag/prod-check']
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/piotroski-cfo-direct
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: F-Score dengan parser baru vs data Yahoo asli
+        run: |
+          cat > /tmp/run.ts <<'TS'
+          import { TIMESERIES_QUERY_TYPES, parseTimeseries, computePiotroski } from '/home/runner/work/analisis_saham/analisis_saham/server/utils/piotroski.ts';
+          const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+          const r0 = await fetch('https://fc.yahoo.com', { headers: { 'user-agent': UA }, redirect: 'manual' }).catch(() => null);
+          const cookie = (r0?.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
+          const crumb = await (await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers: { 'user-agent': UA, cookie } })).text();
+          const now = Math.floor(Date.now() / 1000), from = now - 6 * 365 * 86400;
+          for (const [code, bank] of [['ADRO', false], ['ANTM', false], ['TLKM', false], ['ASII', false], ['UNVR', false], ['BBCA', true], ['BBRI', true]] as const) {
+            const s = `${code}.JK`;
+            const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${s}?symbol=${s}&type=${TIMESERIES_QUERY_TYPES.join(',')}&period1=${from}&period2=${now}&crumb=${encodeURIComponent(crumb)}`;
+            const j = await (await fetch(url, { headers: { 'user-agent': UA, cookie } })).json();
+            const p = computePiotroski(parseTimeseries(j), bank);
+            console.log(code.padEnd(5), p ? `${p.score}/${p.max} FY${p.fiscalYear.slice(0, 4)}  ` + p.signals.map((x) => `${x.key}:${x.pass == null ? '-' : x.pass ? '✓' : '✗'}`).join(' ') : 'null');
+          }
+          TS
+          npx -y tsx@4.19.2 /tmp/run.ts

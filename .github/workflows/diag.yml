@@ -7,15 +7,19 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - name: Cari link file kepemilikan di KSEI
+      - name: Format KSEI BalanceposEfek + kedalaman histori
         run: |
           UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-          for u in https://www.ksei.co.id/archive_download/holding_composition https://web.ksei.co.id/archive_download/holding_composition https://www.ksei.co.id/archive_download/statistik; do
-            echo "== $u"
-            curl -sS -L -A "$UA" --max-time 60 -o page.html -w "HTTP %{http_code} %{size_download}B\n" "$u" || echo gagal
-            grep -oiE 'href="[^"]+\.(zip|xlsx?|txt|pdf)"' page.html | sort -u | head -25
+          B=https://web.ksei.co.id/Download
+          curl -sS -A "$UA" --max-time 90 -o bp.zip -w "HTTP %{http_code} %{size_download}B\n" "$B/BalanceposEfek20260930.zip"
+          unzip -o -q bp.zip -d bp && ls -la bp
+          f=$(ls bp/* | head -1)
+          echo "-- baris: $(wc -l < "$f")"; echo "-- header:"; head -1 "$f"; echo "-- 3 baris awal:"; sed -n 2,4p "$f"
+          echo "-- BBCA/TLKM/ADRO/GOTO:"; grep -E '(^|\|)(BBCA|TLKM|ADRO|GOTO)(\||$)' "$f" | head -4
+          echo "-- tipe efek (kolom 2) terbanyak:"; cut -d'|' -f2 "$f" | sort | uniq -c | sort -rn | head -8
+          echo "== histori (HEAD-ish, status saja)"
+          for d in 20251230 20250630 20241230 20240628 20231229 20221230 20211230 20201230; do
+            curl -sS -A "$UA" --max-time 60 -o /dev/null -w "$d HTTP %{http_code} %{size_download}B\n" "$B/BalanceposEfek$d.zip" || echo "$d gagal"
           done
-          echo "== cari pola Balancepos"
-          grep -oiE '[^"]*balance[^"]*' page.html | sort -u | head

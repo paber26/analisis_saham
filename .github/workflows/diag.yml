@@ -7,28 +7,34 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: fix/piotroski-cfo-direct
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - name: F-Score dengan parser baru vs data Yahoo asli
+      - name: Tunggu ML lalu ringkas /api/screen
         run: |
-          cat > /tmp/run.mts <<'TS'
-          import { TIMESERIES_QUERY_TYPES, parseTimeseries, computePiotroski } from '/home/runner/work/analisis_saham/analisis_saham/server/utils/piotroski.ts';
-          const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
-          const r0 = await fetch('https://fc.yahoo.com', { headers: { 'user-agent': UA }, redirect: 'manual' }).catch(() => null);
-          const cookie = (r0?.headers.getSetCookie?.() || []).map((c) => c.split(';')[0]).join('; ');
-          const crumb = await (await fetch('https://query2.finance.yahoo.com/v1/test/getcrumb', { headers: { 'user-agent': UA, cookie } })).text();
-          const now = Math.floor(Date.now() / 1000), from = now - 6 * 365 * 86400;
-          for (const [code, bank] of [['ADRO', false], ['ANTM', false], ['TLKM', false], ['ASII', false], ['UNVR', false], ['BBCA', true], ['BBRI', true]] as const) {
-            const s = `${code}.JK`;
-            const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${s}?symbol=${s}&type=${TIMESERIES_QUERY_TYPES.join(',')}&period1=${from}&period2=${now}&crumb=${encodeURIComponent(crumb)}`;
-            const j = await (await fetch(url, { headers: { 'user-agent': UA, cookie } })).json();
-            const p = computePiotroski(parseTimeseries(j), bank);
-            console.log(code.padEnd(5), p ? `${p.score}/${p.max} FY${p.fiscalYear.slice(0, 4)}  ` + p.signals.map((x) => `${x.key}:${x.pass == null ? '-' : x.pass ? '✓' : '✗'}`).join(' ') : 'null');
-          }
-          TS
-          npx -y tsx@4.19.2 /tmp/run.mts
+          cat > s.js <<'JS'
+          const fs = require('fs');
+          const s = JSON.parse(fs.readFileSync('screen.json', 'utf8'));
+          const R = s.results;
+          const n = (k) => R.filter((r) => r[k] != null).length;
+          console.log({ source: s.source, date: s.date, generatedAt: s.generatedAt, count: s.count, rows: R.length });
+          console.log('terisi:', JSON.stringify({ sector: n('sector'), per: n('per'), pbv: n('pbv'), roe: n('roe'), evEbitda: n('evEbitda'), fScore: n('fScore'), qvm: n('qvm'), qvmRank: n('qvmRank'), mlScore: n('mlScore') }));
+          const tally = (f) => { const m = {}; R.forEach((r) => { const v = String(f(r)); m[v] = (m[v] || 0) + 1; }); return m; };
+          console.log('likuiditas:', JSON.stringify(tally((r) => r.liquidity)));
+          console.log('fScoreMax:', JSON.stringify(tally((r) => r.fScoreMax)));
+          console.log('fScore (max 9):', JSON.stringify(tally((r) => (r.fScoreMax === 9 ? r.fScore : 'x'))));
+          const likuid = R.filter((r) => r.liquidity !== 'tipis');
+          console.log('non-tipis:', likuid.length, 'dgn fScore:', likuid.filter((r) => r.fScore != null).length, 'dgn sector:', likuid.filter((r) => r.sector != null).length);
+          console.log('contoh fScore null (non-tipis):', likuid.filter((r) => r.fScore == null).slice(0, 15).map((r) => `${r.code}(${r.sector || '-'})`).join(' '));
+          console.log('ML meta:', JSON.stringify(s.ml, null, 1));
+          const pick = (r) => ({ code: r.code, sector: r.sector, ml: r.mlScore, f: r.fScore != null ? `${r.fScore}/${r.fScoreMax}` : null, ev: r.evEbitda, liq: r.liquidity, qvm: r.qvm, score: r.score });
+          const top = R.filter((r) => r.mlScore != null).sort((a, b) => b.mlScore - a.mlScore);
+          console.log('ML top 10:'); console.table(top.slice(0, 10).map(pick));
+          const q = R.filter((r) => r.qvmRank != null).sort((a, b) => a.qvmRank - b.qvmRank);
+          console.log('QVM top 10:'); console.table(q.slice(0, 10).map(pick));
+          JS
+          for i in $(seq 1 24); do
+            curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o screen.json https://cuan.bernaldo.id/api/screen || true
+            if node -e "const s=JSON.parse(require('fs').readFileSync('screen.json','utf8')); process.exit(s.ml ? 0 : 1)" 2>/dev/null; then echo "ML siap (percobaan $i)"; break; fi
+            echo "percobaan $i: ML belum ada, tunggu 30 dtk"; sleep 30
+          done
+          node s.js

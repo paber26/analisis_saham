@@ -9,16 +9,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Uji KSEI Balancepos (kepemilikan asing/lokal per saham, bulanan)
+      - name: Cari link file kepemilikan di KSEI
         run: |
           UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-          for d in 20260930 20260831 20260731; do
-            u="https://web.ksei.co.id/Download/Balancepos$d.zip"
+          for u in https://www.ksei.co.id/archive_download/holding_composition https://web.ksei.co.id/archive_download/holding_composition https://www.ksei.co.id/archive_download/statistik; do
             echo "== $u"
-            curl -sS -L -A "$UA" --max-time 60 -o "bp-$d.zip" -w "HTTP %{http_code} %{content_type} %{size_download}B\n" "$u" || echo gagal
-            if unzip -l "bp-$d.zip" >/dev/null 2>&1; then
-              unzip -o -q "bp-$d.zip" -d "bp-$d"; ls -la "bp-$d"
-              f=$(ls "bp-$d"/* | head -1); echo "-- header + BBCA + TLKM:"; head -2 "$f"; grep -E '\|(BBCA|TLKM)\|' "$f" | head -2; echo "-- baris: $(wc -l < "$f")"
-              break
-            else head -c 200 "bp-$d.zip" | tr '\n' ' '; echo; fi
+            curl -sS -L -A "$UA" --max-time 60 -o page.html -w "HTTP %{http_code} %{size_download}B\n" "$u" || echo gagal
+            grep -oiE 'href="[^"]+\.(zip|xlsx?|txt|pdf)"' page.html | sort -u | head -25
           done
+          echo "== cari pola Balancepos"
+          grep -oiE '[^"]*balance[^"]*' page.html | sort -u | head

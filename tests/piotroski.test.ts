@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseTimeseries, computePiotroski, TIMESERIES_TYPES, type AnnualFinancials } from '../server/utils/piotroski';
+import { parseTimeseries, computePiotroski, TIMESERIES_TYPES, TIMESERIES_FALLBACK_TYPES, TIMESERIES_QUERY_TYPES, type AnnualFinancials } from '../server/utils/piotroski';
 import { computeFactors } from '../server/utils/factor';
 import type { ScreenRow } from '../server/utils/store';
 
@@ -31,6 +31,34 @@ describe('parseTimeseries', () => {
   it('respons kosong/rusak → array kosong', () => {
     expect(parseTimeseries(null)).toEqual([]);
     expect(parseTimeseries({ timeseries: { result: [{ meta: { type: ['unknownType'] } }] } })).toEqual([]);
+  });
+
+  // Emiten non-bank IDX: arus kas metode langsung → Yahoo hanya punya tipe "...Direct".
+  const DIRECT = TIMESERIES_FALLBACK_TYPES.operatingCashFlow!;
+  function asDirect(json: any, keepPrimary = false) {
+    const cfo = json.timeseries.result.find((r: any) => r.meta.type[0] === TIMESERIES_TYPES.operatingCashFlow);
+    const direct = { ...cfo, meta: { ...cfo.meta, type: [DIRECT] }, [DIRECT]: cfo[TIMESERIES_TYPES.operatingCashFlow] };
+    delete direct[TIMESERIES_TYPES.operatingCashFlow];
+    const rest = json.timeseries.result.filter((r: any) => r !== cfo);
+    return { timeseries: { result: keepPrimary ? [direct, ...json.timeseries.result] : [...rest, direct] } };
+  }
+
+  it('arus kas metode langsung dipakai bila tipe utama kosong → 9 sinyal dinilai', () => {
+    expect(TIMESERIES_QUERY_TYPES).toContain(DIRECT);
+    const rows = parseTimeseries(asDirect(yahooJson([Y2022, Y2023, Y2024])));
+    expect(rows[2]!.operatingCashFlow).toBe(200);
+    const r = computePiotroski(rows)!;
+    expect(r.max).toBe(9);
+    expect(r.score).toBe(9);
+  });
+
+  it('tipe utama menang atas fallback, apa pun urutan respons', () => {
+    const json = asDirect(yahooJson([Y2022, Y2023, Y2024]), true);
+    const direct = json.timeseries.result[0];
+    direct[DIRECT] = direct[DIRECT].map((p: any) => ({ ...p, reportedValue: { raw: -1 } }));
+    expect(parseTimeseries(json)[2]!.operatingCashFlow).toBe(200);
+    json.timeseries.result.reverse();
+    expect(parseTimeseries(json)[2]!.operatingCashFlow).toBe(200);
   });
 });
 

@@ -13,6 +13,6 @@ export default defineCachedEventHandler(async (event) => {
 }, {
   maxAge: 60 * 60 * 24, // 1 day (refreshed via the day-based key)
   swr: true,
-  name: 'fundamentals',
+  name: 'fundamentals-v2', // v2: F-Score with direct-method cash flow (drops cached 7-signal scores)
   getKey: (event) => `${normalizeSymbol(getQuery(event).symbol as string)}:${tradingDay()}`
 });

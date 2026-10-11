@@ -442,7 +442,7 @@ const verdict = computed(() => {
           <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
             <div>
               <h4 class="text-sm font-bold text-slate-100">Kepemilikan Saham (KSEI)</h4>
-              <p class="text-[11px] text-slate-500 mt-0.5">Komposisi pemegang saham scripless per akhir bulan · data {{ own.date }}</p>
+              <p class="text-[11px] text-slate-500 mt-0.5" title="Porsi dihitung dari saham yang tercatat di rekening KSEI. Pada banyak emiten saham pengendali tidak termasuk, jadi angka ini lebih mendekati komposisi free float daripada seluruh saham.">Komposisi pemegang saham di KSEI (≈ free float) per akhir bulan · data {{ own.date }}</p>
             </div>
             <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border"
               :class="ownProven ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">

@@ -346,7 +346,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
           <div>
             <h3 class="text-sm font-bold text-slate-100">Kepemilikan KSEI — apakah perubahan pemegang saham memprediksi return?</h3>
             <p class="text-[11px] text-slate-400 mt-1 max-w-3xl">
-              Data akhir bulan dari KSEI: porsi asing vs lokal, ritel vs institusi. Tiap bulan, saham berkapitalisasi ≥ Rp500 miliar diurutkan menurut perubahan kepemilikan,
+              Data akhir bulan dari KSEI: porsi asing vs lokal, ritel vs institusi (dari saham yang tercatat di KSEI, ≈ free float). Tiap bulan, saham berkapitalisasi ≥ Rp500 miliar diurutkan menurut perubahan kepemilikan,
               lalu dibandingkan dengan return bulan berikutnya (termasuk saham yang kemudian delisting).
             </p>
           </div>
@@ -398,7 +398,7 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                   ML <span v-if="sortBy === 'ml'" class="text-emerald-400">▼</span>
                 </th>
                 <th v-if="hasOwn" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300 text-right" @click="sortBy = 'asing'"
-                  title="Kepemilikan asing (KSEI, akhir bulan) dan perubahannya 3 bulan. Urutkan: kenaikan porsi asing terbesar.">
+                  title="Porsi asing dari saham yang tercatat di KSEI (≈ free float; saham pengendali sering tidak termasuk), akhir bulan, dan perubahannya 3 bulan. Urutkan: kenaikan porsi asing terbesar.">
                   Asing <span v-if="sortBy === 'asing'" class="text-emerald-400">▼</span>
                 </th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>

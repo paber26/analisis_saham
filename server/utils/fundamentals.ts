@@ -3,7 +3,7 @@
 // daily sync job can reuse it.
 
 import { normalizeSymbol, YAHOO_HEADERS, getYahooAuth } from './symbol';
-import { TIMESERIES_TYPES, parseTimeseries, computePiotroski, type PiotroskiResult } from './piotroski';
+import { TIMESERIES_QUERY_TYPES, parseTimeseries, computePiotroski, type PiotroskiResult } from './piotroski';
 
 export interface FundamentalsData {
   symbol: string;
@@ -133,7 +133,7 @@ export async function fetchPiotroski(rawSymbol: string, isBank: boolean): Promis
   const auth = await getYahooAuth();
   const now = Math.floor(Date.now() / 1000);
   const from = now - 6 * 365 * 86400;
-  const types = Object.values(TIMESERIES_TYPES).join(',');
+  const types = TIMESERIES_QUERY_TYPES.join(',');
   const crumbParam = auth ? `&crumb=${encodeURIComponent(auth.crumb)}` : '';
   const url = `https://query2.finance.yahoo.com/ws/fundamentals-timeseries/v1/finance/timeseries/${encodeURIComponent(symbol)}`
     + `?symbol=${encodeURIComponent(symbol)}&type=${types}&period1=${from}&period2=${now}${crumbParam}`;

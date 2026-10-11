@@ -51,17 +51,32 @@ export const TIMESERIES_TYPES: Record<keyof Omit<AnnualFinancials, 'asOfDate'>, 
 };
 
 /**
+ * Alternative type names, used only where the primary type has no value.
+ * IDX filers report cash flow with the direct method (PSAK 2), which Yahoo
+ * stores under its own type — non-banks have no `annualOperatingCashFlow`.
+ */
+export const TIMESERIES_FALLBACK_TYPES: Partial<Record<keyof Omit<AnnualFinancials, 'asOfDate'>, string>> = {
+  operatingCashFlow: 'annualCashFlowsfromusedinOperatingActivitiesDirect'
+};
+
+/** Every `type` to request from Yahoo (primary + fallback). */
+export const TIMESERIES_QUERY_TYPES: string[] = [...Object.values(TIMESERIES_TYPES), ...Object.values(TIMESERIES_FALLBACK_TYPES)];
+
+/**
  * Parse a Yahoo `ws/fundamentals-timeseries` response into one row per fiscal
  * year (oldest → newest). Unknown/missing values become null.
  */
 export function parseTimeseries(json: any): AnnualFinancials[] {
   const results: any[] = json?.timeseries?.result || [];
   const byDate = new Map<string, AnnualFinancials>();
+  const fallbacks: [AnnualFinancials, keyof AnnualFinancials, number][] = [];
   const fieldOf = new Map(Object.entries(TIMESERIES_TYPES).map(([field, type]) => [type, field as keyof AnnualFinancials]));
+  const fallbackOf = new Map(Object.entries(TIMESERIES_FALLBACK_TYPES).map(([field, type]) => [type!, field as keyof AnnualFinancials]));
   for (const r of results) {
     const type: string | undefined = r?.meta?.type?.[0];
-    const field = type ? fieldOf.get(type) : undefined;
+    const field = type ? fieldOf.get(type) ?? fallbackOf.get(type) : undefined;
     if (!type || !field) continue;
+    const isFallback = !fieldOf.has(type);
     for (const pt of r[type] || []) {
       const date: string | undefined = pt?.asOfDate;
       const v = pt?.reportedValue?.raw;
@@ -74,9 +89,12 @@ export function parseTimeseries(json: any): AnnualFinancials[] {
         };
         byDate.set(date, row);
       }
-      (row as any)[field] = v;
+      if (isFallback) fallbacks.push([row, field, v]);
+      else (row as any)[field] = v;
     }
   }
+  // Fallbacks fill only what the primary type left empty, whatever the response order.
+  for (const [row, field, v] of fallbacks) if (row[field] == null) (row as any)[field] = v;
   return [...byDate.values()].sort((a, b) => (a.asOfDate < b.asOfDate ? -1 : 1));
 }
 

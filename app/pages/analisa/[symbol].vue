@@ -64,6 +64,20 @@ const { data: fc, pending: fcPending } = await useFetch<any>(() => '/api/forecas
 const { data: hist } = await useFetch<any>(() => '/api/history', {
   params: { symbol }, watch: [symbol], lazy: true
 });
+const { data: own } = await useFetch<any>(() => '/api/ownership', {
+  params: { symbol }, watch: [symbol], lazy: true
+});
+const ownGroups = computed(() => {
+  const l = own.value?.latest;
+  if (!l) return [];
+  return [
+    { key: 'foreign', label: 'Asing', pct: l.foreignPct, d3: l.dForeign3, d1: l.dForeign1 },
+    { key: 'retail', label: 'Ritel lokal', pct: l.retailPct, d3: l.dRetail3, d1: undefined },
+    { key: 'inst', label: 'Institusi lokal', pct: l.instPct, d3: l.dInst3, d1: undefined }
+  ];
+});
+const ownSpark = computed(() => sparkPoints((own.value?.series || []).map((p: any) => p.foreignPct)));
+const ownProven = computed(() => (own.value?.evaluation?.signals || []).some((s: any) => s.significant));
 
 const t = computed(() => an.value?.technical || null);
 const lv = computed(() => an.value?.levels || null);
@@ -421,6 +435,34 @@ const verdict = computed(() => {
             <NuxtLink :to="`/forecast?symbol=${an.code}`" class="text-emerald-400 hover:text-emerald-300 font-semibold">→ Forecast lengkap</NuxtLink>
             <NuxtLink :to="`/profil-saham?symbol=${an.code}`" class="text-emerald-400 hover:text-emerald-300 font-semibold">→ Profil emiten</NuxtLink>
           </div>
+        </section>
+
+        <!-- Month-end ownership (KSEI) -->
+        <section v-if="own?.available" class="glow-card rounded-2xl p-6">
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h4 class="text-sm font-bold text-slate-100">Kepemilikan Saham (KSEI)</h4>
+              <p class="text-[11px] text-slate-500 mt-0.5">Komposisi pemegang saham scripless per akhir bulan · data {{ own.date }}</p>
+            </div>
+            <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border"
+              :class="ownProven ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-slate-300 bg-slate-800/60 border-slate-700'">
+              {{ ownProven ? 'Ada bukti historis' : 'Informasi, bukan sinyal' }}
+            </span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div v-for="g in ownGroups" :key="g.key" class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500 uppercase tracking-wide">{{ g.label }}</p>
+              <p class="text-lg font-extrabold text-slate-100">{{ g.pct != null ? g.pct.toLocaleString('id-ID', { maximumFractionDigits: 1 }) + '%' : '—' }}</p>
+              <p class="text-[11px] text-slate-400">3 bln {{ fmtPp(g.d3) }}<span v-if="g.d1 !== undefined"> · 1 bln {{ fmtPp(g.d1) }}</span></p>
+            </div>
+          </div>
+          <div v-if="ownSpark" class="mt-4">
+            <p class="text-[10px] text-slate-500 mb-1">Kepemilikan asing, {{ own.series.length }} bulan terakhir ({{ ownSpark.min }}–{{ ownSpark.max }}%)</p>
+            <svg viewBox="0 0 300 48" class="w-full h-12 text-sky-400" preserveAspectRatio="none" aria-hidden="true">
+              <polyline :points="ownSpark.points" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            </svg>
+          </div>
+          <p class="text-[10px] text-slate-500 mt-3 leading-relaxed">{{ ownershipNote(own.evaluation) }}</p>
         </section>
 
         <!-- Explicit trade signal (entry / exit when) -->

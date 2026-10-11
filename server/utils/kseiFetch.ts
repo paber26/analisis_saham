@@ -8,9 +8,10 @@ const BASE = 'https://web.ksei.co.id/Download';
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
 
 async function tryFile(ymd: string): Promise<OwnershipMonth | null> {
-  const res = await fetch(`${BASE}/BalanceposEfek${ymd}.zip`, { headers: { 'user-agent': UA } }).catch(() => null);
-  if (!res || !res.ok) return null;
-  const buf = Buffer.from(await res.arrayBuffer());
+  const res = await fetch(`${BASE}/BalanceposEfek${ymd}.zip`, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(30_000) }).catch(() => null);
+  const body = res?.ok ? await res.arrayBuffer().catch(() => null) : null;
+  if (!body) return null;
+  const buf = Buffer.from(body);
   if (buf.length < 4 || buf.readUInt32LE(0) !== 0x04034b50) return null; // 404 pages come back as HTML
   const txt = unzipFirst(buf);
   return txt ? parseBalancepos(txt.toString('utf-8')) : null;

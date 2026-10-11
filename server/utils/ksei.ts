@@ -121,8 +121,14 @@ export interface SignalEvaluation {
   nMonths: number;
   hitPct: number;      // % of months with IC > 0
   spreadPct: number;   // mean next-month return, top − bottom quintile (%)
-  significant: boolean; // |t| ≥ 2
+  significant: boolean; // |t| ≥ 2.5 (see SIGNIFICANT_T)
 }
+
+/**
+ * Four signals are tested together, so a lone |t| ≈ 2 is expected by chance;
+ * 2.5 ≈ a Bonferroni-corrected 5% two-sided level for four tests.
+ */
+export const SIGNIFICANT_T = 2.5;
 
 export interface OwnershipEvaluation {
   from: string;
@@ -188,7 +194,7 @@ export function evaluateOwnership(months: OwnershipMonth[]): OwnershipEvaluation
       nMonths: n,
       hitPct: n ? Math.round((ics.filter((v) => v > 0).length / n) * 100) : 0,
       spreadPct: n ? round((spreads.reduce((a, b) => a + b, 0) / n) * 100, 2) : 0,
-      significant: n >= 12 && Math.abs(tStat) >= 2
+      significant: n >= 12 && Math.abs(tStat) >= SIGNIFICANT_T
     };
   });
   return { from, to, avgStocks: Math.round(stocks / used), signals };

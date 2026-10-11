@@ -5,6 +5,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import type { TechResult } from './technical';
+import type { OwnershipMonth, OwnershipEvaluation, OwnershipSnapshot } from './ksei';
 
 export interface ScreenRow extends TechResult {
   code: string;
@@ -164,4 +165,34 @@ export async function saveMlSnapshot(snap: MlSnapshot): Promise<void> {
 }
 export async function loadMlSnapshot(): Promise<MlSnapshot | null> {
   return readJson<MlSnapshot | null>(ML_FILE, null);
+}
+
+// ---- KSEI month-end ownership (one file per month) + derived snapshot ----
+const KSEI_DIR = 'ksei';
+export async function saveKseiMonth(m: OwnershipMonth): Promise<void> {
+  await fs.mkdir(path.join(DIR, KSEI_DIR), { recursive: true });
+  await writeJson(`${KSEI_DIR}/${m.date.slice(0, 7)}.json`, m);
+}
+/** Stored months, oldest → newest; `limit` keeps only the most recent ones. */
+export async function loadKseiMonths(limit?: number): Promise<OwnershipMonth[]> {
+  const files = (await fs.readdir(path.join(DIR, KSEI_DIR)).catch(() => [] as string[]))
+    .filter((f) => /^\d{4}-\d{2}\.json$/.test(f)).sort();
+  const months = await Promise.all(
+    files.slice(limit ? -limit : 0).map((f) => readJson<OwnershipMonth | null>(`${KSEI_DIR}/${f}`, null))
+  );
+  return months.filter((m): m is OwnershipMonth => m != null);
+}
+export interface KseiSnapshot {
+  updatedAt: string;
+  date: string;      // latest month-end in the data
+  months: number;
+  evaluation: OwnershipEvaluation | null;
+  latest: Record<string, OwnershipSnapshot>;
+}
+const KSEI_FILE = 'ksei-latest.json';
+export async function saveKseiSnapshot(snap: KseiSnapshot): Promise<void> {
+  await writeJson(KSEI_FILE, snap);
+}
+export async function loadKseiSnapshot(): Promise<KseiSnapshot | null> {
+  return readJson<KseiSnapshot | null>(KSEI_FILE, null);
 }

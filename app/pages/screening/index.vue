@@ -24,9 +24,12 @@ const onlyValue = ref(false); // "Murah + Uptrend": PER wajar & di atas MA200
 const liqFilter = ref<LiquidityFilter>('no_tipis'); // default: sembunyikan saham tipis
 const hasLiquidity = computed(() => rows.value.some((x) => x.liquidity != null));
 const hiddenIlliquid = computed(() => rows.value.filter((x) => !passesLiquidity(x, liqFilter.value)).length);
-const sortBy = ref<'score' | 'qvm' | 'ml'>('score'); // ranking column
+const sortBy = ref<'score' | 'qvm' | 'ml' | 'asing'>('score'); // ranking column
 const ml = computed<any>(() => data.value?.ml || null);
 const hasMl = computed(() => rows.value.some((x) => x.mlScore != null));
+const ownership = computed<any>(() => data.value?.ownership || null);
+const hasOwn = computed(() => rows.value.some((x) => x.own != null));
+const ownProven = computed(() => (ownership.value?.evaluation?.signals || []).some((s: any) => s.significant));
 
 // Advanced filters
 const minAdx = ref(0); // 0 = off
@@ -81,6 +84,8 @@ const filtered = computed(() => {
     r = [...r].sort((a, b) => (b.qvm ?? -1) - (a.qvm ?? -1));
   } else if (sortBy.value === 'ml') {
     r = [...r].sort((a, b) => (b.mlScore ?? -1) - (a.mlScore ?? -1));
+  } else if (sortBy.value === 'asing') {
+    r = [...r].sort((a, b) => (b.own?.dForeign3 ?? -Infinity) - (a.own?.dForeign3 ?? -Infinity));
   }
   return r;
 });
@@ -335,6 +340,31 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
         <p class="text-[10px] text-slate-500 mt-3">Dilatih {{ new Date(ml.trainedAt).toLocaleString('id-ID') }} · data per {{ ml.date }} · {{ ml.nTrain.toLocaleString('id-ID') }} sampel. Bukan rekomendasi investasi.</p>
       </section>
 
+      <!-- KSEI month-end ownership: does it predict returns? -->
+      <section v-if="!pending && !error && ownership?.evaluation" class="glow-card rounded-2xl p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 class="text-sm font-bold text-slate-100">Kepemilikan KSEI — apakah perubahan pemegang saham memprediksi return?</h3>
+            <p class="text-[11px] text-slate-400 mt-1 max-w-3xl">
+              Data akhir bulan dari KSEI: porsi asing vs lokal, ritel vs institusi (dari saham yang tercatat di KSEI, ≈ free float). Tiap bulan, saham berkapitalisasi ≥ Rp500 miliar diurutkan menurut perubahan kepemilikan,
+              lalu dibandingkan dengan return bulan berikutnya (termasuk saham yang kemudian delisting).
+            </p>
+          </div>
+          <span class="text-[10px] font-bold px-2.5 py-1 rounded-full border"
+            :class="ownProven ? 'text-emerald-300 bg-emerald-500/10 border-emerald-500/30' : 'text-amber-300 bg-amber-500/10 border-amber-500/30'">
+            {{ ownProven ? 'Ada sinyal teruji' : 'Tidak terbukti — informasi saja' }}
+          </span>
+        </div>
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-xs">
+          <div v-for="s in ownership.evaluation.signals" :key="s.key" class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+            <p class="text-[10px] text-slate-500 leading-snug">{{ s.label }}</p>
+            <p class="text-lg font-extrabold" :class="s.significant ? 'text-emerald-300' : 'text-slate-300'">IC {{ s.meanIC }}</p>
+            <p class="text-[10px] text-slate-500">t = {{ s.tStat }} · atas−bawah {{ s.spreadPct >= 0 ? '+' : '' }}{{ s.spreadPct }}%/bln</p>
+          </div>
+        </div>
+        <p class="text-[10px] text-slate-500 mt-3">{{ ownershipNote(ownership.evaluation) }} Data per {{ ownership.date }}.</p>
+      </section>
+
       <!-- Loading -->
       <div v-if="pending" class="py-20 flex flex-col items-center justify-center gap-4 bg-slate-900/30 border border-slate-900 rounded-2xl">
         <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
@@ -366,6 +396,10 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 <th v-if="hasMl" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300 text-right" @click="sortBy = 'ml'"
                   title="Skor model ML gabungan (0–100): peringkat ekspektasi return 20 hari relatif IHSG">
                   ML <span v-if="sortBy === 'ml'" class="text-emerald-400">▼</span>
+                </th>
+                <th v-if="hasOwn" class="px-4 py-3 font-semibold cursor-pointer select-none hover:text-slate-300 text-right" @click="sortBy = 'asing'"
+                  title="Porsi asing dari saham yang tercatat di KSEI (≈ free float; saham pengendali sering tidak termasuk), akhir bulan, dan perubahannya 3 bulan. Urutkan: kenaikan porsi asing terbesar.">
+                  Asing <span v-if="sortBy === 'asing'" class="text-emerald-400">▼</span>
                 </th>
                 <th v-if="hasFundamentals" class="px-4 py-3 font-semibold text-right">Valuasi</th>
                 <th class="px-4 py-3 font-semibold">Tren</th>
@@ -424,6 +458,14 @@ const sectorLabel = (s: string | null) => (s ? SECTOR_ID[s] || s : null);
                 </td>
                 <td v-if="hasMl" class="px-4 py-3 text-right">
                   <span v-if="row.mlScore != null" class="text-sm font-extrabold" :class="row.mlScore >= 80 ? 'text-emerald-400' : row.mlScore <= 20 ? 'text-rose-400' : 'text-slate-300'">{{ row.mlScore }}</span>
+                  <span v-else class="text-slate-600 text-xs">—</span>
+                </td>
+                <td v-if="hasOwn" class="px-4 py-3 text-right whitespace-nowrap">
+                  <template v-if="row.own?.foreignPct != null">
+                    <div class="text-xs font-semibold text-slate-200">{{ row.own.foreignPct.toLocaleString('id-ID', { maximumFractionDigits: 1 }) }}%</div>
+                    <div class="text-[10px] text-slate-500" title="Perubahan porsi asing & ritel lokal dalam 3 bulan (poin persen)">3b {{ fmtPp(row.own.dForeign3) }}</div>
+                    <div class="text-[10px] text-slate-600">ritel {{ fmtPp(row.own.dRetail3) }}</div>
+                  </template>
                   <span v-else class="text-slate-600 text-xs">—</span>
                 </td>
                 <td v-if="hasFundamentals" class="px-4 py-3 text-right whitespace-nowrap">

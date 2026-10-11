@@ -10,6 +10,7 @@ import { computeFactors } from '../utils/factor';
 import { appendDailyHistory, type HistoryRow } from '../utils/history';
 import { tradingDay } from '../utils/cacheKey';
 import { trainAndStoreMl } from '../utils/mlTrain';
+import { syncKsei } from '../utils/kseiSync';
 
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
@@ -109,6 +110,8 @@ export default defineEventHandler(async (event): Promise<{ ok: boolean; date: st
   // 5y fetch + training small on the VPS), as in the QVM ranking.
   const mlCodes = rows.filter((r) => r.liquidity !== 'tipis').map((r) => r.code);
   if (mlCodes.length >= 30) void trainAndStoreMl(mlCodes);
+  // KSEI month-end ownership: fetches only months not stored yet (cheap after the first backfill).
+  void syncKsei();
 
   // Append a compact daily history record (score/RS/QVM/fundamentals) — the
   // foundation for trends & honest screener backtests over time.

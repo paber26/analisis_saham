@@ -3,11 +3,12 @@ import { normalizeSymbol, resolveDisplayName } from '../utils/symbol';
 import { fetchDailyBars } from '../utils/yahoo';
 import { analyzeTechnical } from '../utils/technical';
 import { SCREENING_UNIVERSE } from '../utils/universe';
-import { loadScreenSnapshot, loadMlSnapshot, type ScreenRow, type MlSnapshot } from '../utils/store';
+import { loadScreenSnapshot, loadMlSnapshot, loadKseiSnapshot, type ScreenRow, type MlSnapshot, type KseiSnapshot } from '../utils/store';
+import type { OwnershipSnapshot } from '../utils/ksei';
 import { computeFactors, type ScoredRow } from '../utils/factor';
 import { tradingDay, shortHash } from '../utils/cacheKey';
 
-type ScreenResult = ScoredRow & { mlScore: number | null };
+type ScreenResult = ScoredRow & { mlScore: number | null; own: OwnershipSnapshot | null };
 
 interface ScreenResponse {
   source: 'snapshot' | 'live';
@@ -17,15 +18,19 @@ interface ScreenResponse {
   results: ScreenResult[];
   /** Pooled ML ranking model: metadata + honest walk-forward evaluation (scores are per row). */
   ml: Omit<MlSnapshot, 'scores'> | null;
+  /** KSEI month-end ownership: data date + honest signal evaluation (shifts are per row). */
+  ownership: Omit<KseiSnapshot, 'latest'> | null;
 }
 
-async function withMl(rows: ScoredRow[]): Promise<{ results: ScreenResult[]; ml: ScreenResponse['ml'] }> {
-  const snap = await loadMlSnapshot();
-  const scores = snap?.scores || {};
-  const results = rows.map((r) => ({ ...r, mlScore: scores[r.code] ?? null }));
-  if (!snap) return { results, ml: null };
-  const { scores: _omit, ...meta } = snap;
-  return { results, ml: meta };
+/** Attach per-row ML score + KSEI ownership shifts, and their metadata. */
+async function withExtras(rows: ScoredRow[]): Promise<Pick<ScreenResponse, 'results' | 'ml' | 'ownership'>> {
+  const [ml, ksei] = await Promise.all([loadMlSnapshot(), loadKseiSnapshot()]);
+  const results = rows.map((r) => ({ ...r, mlScore: ml?.scores[r.code] ?? null, own: ksei?.latest[r.code] ?? null }));
+  let mlMeta: ScreenResponse['ml'] = null;
+  if (ml) { const { scores: _s, ...meta } = ml; mlMeta = meta; }
+  let ownership: ScreenResponse['ownership'] = null;
+  if (ksei) { const { latest: _l, ...meta } = ksei; ownership = meta; }
+  return { results, ml: mlMeta, ownership };
 }
 
 function parseSymbols(raw: string): string[] {
@@ -85,11 +90,11 @@ export default defineEventHandler(async (event): Promise<ScreenResponse> => {
   if (!symbolsParam) {
     const snap = await loadScreenSnapshot();
     if (snap && snap.rows.length) {
-      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, ...(await withMl(computeFactors(snap.rows))) };
+      return { source: 'snapshot', date: snap.date, generatedAt: snap.generatedAt, count: snap.count, ...(await withExtras(computeFactors(snap.rows))) };
     }
   }
 
   const codes = parseSymbols(symbolsParam);
   const results = await computeLive(codes);
-  return { source: 'live', count: results.length, ...(await withMl(computeFactors(results))) };
+  return { source: 'live', count: results.length, ...(await withExtras(computeFactors(results))) };
 });

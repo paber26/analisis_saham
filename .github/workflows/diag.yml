@@ -16,7 +16,7 @@ jobs:
           node-version: 22
       - name: F-Score dengan parser baru vs data Yahoo asli
         run: |
-          cat > /tmp/run.ts <<'TS'
+          cat > /tmp/run.mts <<'TS'
           import { TIMESERIES_QUERY_TYPES, parseTimeseries, computePiotroski } from '/home/runner/work/analisis_saham/analisis_saham/server/utils/piotroski.ts';
           const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
           const r0 = await fetch('https://fc.yahoo.com', { headers: { 'user-agent': UA }, redirect: 'manual' }).catch(() => null);
@@ -31,4 +31,4 @@ jobs:
             console.log(code.padEnd(5), p ? `${p.score}/${p.max} FY${p.fiscalYear.slice(0, 4)}  ` + p.signals.map((x) => `${x.key}:${x.pass == null ? '-' : x.pass ? '✓' : '✗'}`).join(' ') : 'null');
           }
           TS
-          npx -y tsx@4.19.2 /tmp/run.ts
+          npx -y tsx@4.19.2 /tmp/run.mts

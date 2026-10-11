@@ -15,31 +15,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Evaluasi sinyal kepemilikan KSEI 2020–2026
+      - name: syncKsei() end-to-end (store sementara)
         run: |
-          cat > /tmp/eval.mts <<'TS'
+          export DATA_STORE_DIR=$RUNNER_TEMP/store
+          cat > /tmp/run.mts <<'TS'
           const R = process.env.GITHUB_WORKSPACE;
-          const { fetchKseiMonth, monthsUntil } = await import(`${R}/server/utils/kseiFetch.ts`);
-          const { evaluateOwnership } = await import(`${R}/server/utils/ksei.ts`);
-          const months: any[] = [];
-          const missing: string[] = [];
-          for (const { year, month } of monthsUntil({ year: 2019, month: 12 })) {
-            const m = await fetchKseiMonth(year, month);
-            if (m) months.push(m); else missing.push(`${year}-${month}`);
-            await new Promise((r) => setTimeout(r, 300));
-          }
-          console.log(`bulan: ${months.length}, gagal: ${missing.join(' ') || '-'}; saham/bulan terakhir: ${Object.keys(months.at(-1)?.rows || {}).length}`);
-          const show = (title: string, ms: any[]) => {
-            const ev = evaluateOwnership(ms);
-            if (!ev) return console.log(title, 'tidak cukup data');
-            console.log(`\n== ${title}: ${ev.from} → ${ev.to}, rata-rata ${ev.avgStocks} saham/bulan`);
-            console.table(ev.signals.map(({ label, ...s }) => s));
-          };
-          show('Semua (mcap ≥ Rp0,5T)', months);
-          const half = Math.floor(months.length / 2);
-          show('Paruh 1', months.slice(0, half + 1));
-          show('Paruh 2', months.slice(half - 3));
-          const big = months.map((m) => ({ ...m, rows: Object.fromEntries(Object.entries(m.rows).filter(([, r]: any) => r.price * r.shares >= 5e12)) }));
-          show('Big cap saja (mcap ≥ Rp5T)', big);
+          const t0 = Date.now();
+          const { syncKsei } = await import(`${R}/server/utils/kseiSync.ts`);
+          const snap = await syncKsei();
+          console.log(`run 1: ${((Date.now() - t0) / 1000).toFixed(0)} s, bulan ${snap?.months}, data ${snap?.date}, saham ${Object.keys(snap?.latest || {}).length}`);
+          console.table(snap?.evaluation?.signals.map(({ label, ...s }: any) => s));
+          for (const c of ['BBCA', 'TLKM', 'ADRO', 'GOTO']) console.log(c, JSON.stringify(snap?.latest[c]));
+          const t1 = Date.now();
+          const again = await syncKsei();
+          console.log(`run 2 (tidak ada bulan baru): ${((Date.now() - t1) / 1000).toFixed(1)} s, bulan ${again?.months}`);
           TS
-          npx -y tsx@4.19.2 /tmp/eval.mts
+          npx -y tsx@4.19.2 /tmp/run.mts
+          du -sh $DATA_STORE_DIR/ksei; ls $DATA_STORE_DIR/ksei | head -2; ls $DATA_STORE_DIR/ksei | tail -2; ls -la $DATA_STORE_DIR/ksei-latest.json

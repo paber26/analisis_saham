@@ -9,12 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: VPS langsung (tanpa Cloudflare)
+      - name: Sertifikat HTTPS di VPS
         run: |
           IP=203.145.35.13
-          for proto in http https; do
-            echo "== $proto://cuan.bernaldo.id/api/screen -> $IP"
-            curl -sS -k -A 'Mozilla/5.0 (diag)' --max-time 30 --resolve "cuan.bernaldo.id:80:$IP" --resolve "cuan.bernaldo.id:443:$IP" \
-              -o "screen-$proto.json" -D - "$proto://cuan.bernaldo.id/api/screen" | grep -iE '^(HTTP|server|location|content-type|x-powered-by)' || echo "gagal"
-            node -e "try{const s=JSON.parse(require('fs').readFileSync('screen-$proto.json','utf8'));const R=s.results||[];const n=k=>R.filter(r=>r[k]!=null).length;console.log({source:s.source,date:s.date,generatedAt:s.generatedAt,count:s.count,ml:!!s.ml,fScore:n('fScore'),evEbitda:n('evEbitda'),sector:n('sector'),mlScore:n('mlScore')});if(s.ml)console.log(JSON.stringify(s.ml))}catch(e){console.log('bukan JSON:',require('fs').readFileSync('screen-$proto.json','utf8').slice(0,200))}" || true
-          done
+          curl -sS --max-time 20 --resolve "cuan.bernaldo.id:443:$IP" -o /dev/null -w "verifikasi ketat: %{http_code} ssl_verify=%{ssl_verify_result}\n" https://cuan.bernaldo.id/ || echo "verifikasi ketat GAGAL"
+          echo | openssl s_client -connect $IP:443 -servername cuan.bernaldo.id 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName 2>/dev/null || echo "tidak ada sertifikat"

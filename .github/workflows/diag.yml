@@ -9,13 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Uji endpoint IDX (data asing/broker)
+      - name: Uji KSEI Balancepos (kepemilikan asing/lokal per saham, bulanan)
         run: |
           UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
-          H=(-A "$UA" -H 'Accept: application/json, text/plain, */*' -H 'Referer: https://www.idx.co.id/id/data-pasar/ringkasan-perdagangan/ringkasan-saham/' -H 'Accept-Language: id-ID,id;q=0.9,en;q=0.8')
-          t() { echo "== $1"; curl -sS --compressed "${H[@]}" --max-time 30 -o out.bin -w "HTTP %{http_code} %{content_type} %{size_download}B\n" "$1" || echo gagal; head -c 600 out.bin | tr '\n' ' '; echo; echo; }
-          t "https://www.idx.co.id/primary/TradingSummary/GetStockSummary?length=9999&start=0&date=20261009"
-          t "https://www.idx.co.id/primary/TradingSummary/GetBrokerSummary?length=9999&start=0&date=20261009"
-          t "https://www.idx.co.id/primary/TradingSummary/GetForeignStockSummary?length=10&start=0&date=20261009"
-          t "https://www.idx.co.id/primary/TradingSummary/GetTradeSummary?length=10&start=0&date=20261009"
-          t "https://www.idx.co.id/primary/ListedCompany/GetTradingInfoSS?code=BBCA&length=5&start=0"
+          for d in 20260930 20260831 20260731; do
+            u="https://web.ksei.co.id/Download/Balancepos$d.zip"
+            echo "== $u"
+            curl -sS -L -A "$UA" --max-time 60 -o "bp-$d.zip" -w "HTTP %{http_code} %{content_type} %{size_download}B\n" "$u" || echo gagal
+            if unzip -l "bp-$d.zip" >/dev/null 2>&1; then
+              unzip -o -q "bp-$d.zip" -d "bp-$d"; ls -la "bp-$d"
+              f=$(ls "bp-$d"/* | head -1); echo "-- header + BBCA + TLKM:"; head -2 "$f"; grep -E '\|(BBCA|TLKM)\|' "$f" | head -2; echo "-- baris: $(wc -l < "$f")"
+              break
+            else head -c 200 "bp-$d.zip" | tr '\n' ' '; echo; fi
+          done

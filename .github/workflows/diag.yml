@@ -9,8 +9,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Sertifikat HTTPS di VPS
+      - name: cuan.bernaldo.id lewat Cloudflare
         run: |
-          IP=203.145.35.13
-          curl -sS --max-time 20 --resolve "cuan.bernaldo.id:443:$IP" -o /dev/null -w "verifikasi ketat: %{http_code} ssl_verify=%{ssl_verify_result}\n" https://cuan.bernaldo.id/ || echo "verifikasi ketat GAGAL"
-          echo | openssl s_client -connect $IP:443 -servername cuan.bernaldo.id 2>/dev/null | openssl x509 -noout -subject -issuer -dates -ext subjectAltName 2>/dev/null || echo "tidak ada sertifikat"
+          for p in / /api/screen; do
+            echo "== $p"
+            curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o "out.txt" -D - "https://cuan.bernaldo.id$p" | grep -iE '^(HTTP|server|x-vercel-id|cf-cache-status|content-type|location)' || echo gagal
+            head -c 300 out.txt | tr '\n' ' ' | grep -o '<title>[^<]*' || true
+          done
+          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o screen.json https://cuan.bernaldo.id/api/screen
+          node -e "try{const s=JSON.parse(require('fs').readFileSync('screen.json','utf8'));const R=s.results||[];const n=k=>R.filter(r=>r[k]!=null).length;console.log({source:s.source,generatedAt:s.generatedAt,count:s.count,ml:!!s.ml,fScore:n('fScore'),mlScore:n('mlScore')})}catch(e){console.log('bukan JSON:',require('fs').readFileSync('screen.json','utf8').slice(0,300))}"
+          echo "== handshake langsung ke origin (cipher/protokol)"
+          echo | openssl s_client -connect 203.145.35.13:443 -servername cuan.bernaldo.id 2>&1 | grep -E 'Protocol|Cipher|Verify return' | head -5
+          echo | openssl s_client -connect 203.145.35.13:443 2>&1 | grep -E 'subject=|Protocol|Cipher ' | head -3

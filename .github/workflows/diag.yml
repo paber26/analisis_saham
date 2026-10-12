@@ -7,12 +7,47 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
-      - name: Kepemilikan KSEI di cuan.bernaldo.id
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/backtest-idx-execution
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Backtest data asli — teoretis vs realistis IDX
         run: |
-          B=https://cuan.bernaldo.id
-          for s in BBCA GOTO; do curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 "$B/api/ownership?symbol=$s" | node -e "let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{const o=JSON.parse(d);console.log('$s', o.available, o.date, JSON.stringify(o.latest), 'seri:', (o.series||[]).length, 'bln')})"; done
-          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o screen.json "$B/api/screen"
-          node -e "const s=JSON.parse(require('fs').readFileSync('screen.json','utf8'));const R=s.results;console.log({source:s.source,count:s.count,own:R.filter(r=>r.own).length,ownDate:s.ownership?.date,months:s.ownership?.months,anySig:s.ownership?.evaluation?.signals.some(x=>x.significant)});const t=R.filter(r=>r.own?.dForeign3!=null&&r.liquidity!=='tipis').sort((a,b)=>b.own.dForeign3-a.own.dForeign3);console.log('Δ asing 3b terbesar (non-tipis):',t.slice(0,5).map(r=>r.code+' '+r.own.dForeign3).join(', '));console.log('terkecil:',t.slice(-5).map(r=>r.code+' '+r.own.dForeign3).join(', '))"
-          curl -sS -A 'Mozilla/5.0 (diag)' --max-time 60 -o page.html -w "/analisa/BBCA HTTP %{http_code}\n" "$B/analisa/BBCA"; grep -o 'Kepemilikan Saham (KSEI)' page.html | head -1 || echo "kartu belum di SSR (dimuat lazy di browser)"
+          cat > /tmp/bt.mts <<'TS'
+          (globalThis as any).$fetch = async (url: string, o: any = {}) => { const r = await fetch(url, { headers: o.headers }); if (!r.ok) throw new Error(String(r.status)); return r.json(); };
+          const R = process.env.GITHUB_WORKSPACE;
+          const { fetchLabBars, runSweep } = await import(`${R}/server/utils/backtestLab.ts`);
+          const { runBacktest, signalFor, FRICTIONLESS, IDX_EXECUTION } = await import(`${R}/server/utils/backtest.ts`);
+          const t0 = Date.now();
+          const { barsBySymbol, ihsgBars } = await fetchLabBars();
+          console.log(`data: ${barsBySymbol.size} saham, IHSG ${ihsgBars.length} bar, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+          const rows: any[] = [];
+          for (const [name, sig, cadence] of [['Skor≥70 bln', signalFor('score', 70), 'monthly'], ['MA200 bln', signalFor('ma200'), 'monthly'], ['Golden bln', signalFor('golden'), 'monthly'], ['MA200 mgg', signalFor('ma200'), 'weekly']] as const) {
+            const ideal = runBacktest(barsBySymbol, ihsgBars, sig, { execution: FRICTIONLESS, cadence });
+            const noLim = runBacktest(barsBySymbol, ihsgBars, sig, { execution: { ...IDX_EXECUTION, autoReject: false }, cadence });
+            const real = runBacktest(barsBySymbol, ihsgBars, sig, { cadence });
+            rows.push({ strategi: name, cagrTeoretis: ideal?.metrics.cagrPct, cagrTanpaBatas: noLim?.metrics.cagrPct, cagrRealistis: real?.metrics.cagrPct, ihsg: real?.benchmark.cagrPct, biayaThn: real?.trading.costPctPerYear, turnoverThn: real?.trading.turnoverPctPerYear, beliGagalARA: real?.trading.blockedBuys, jualTundaARB: real?.trading.delayedSells, tunda: real?.trading.avgDelayDays, mddReal: real?.metrics.maxDrawdownPct });
+          }
+          console.table(rows);
+          // Yahoo open sanity: share of bars with open==prev close, open outside [low,high]
+          let n = 0, eqPrev = 0, outside = 0, ara = 0, arb = 0;
+          const { buyBlocked, sellBlocked } = await import(`${R}/server/utils/idxMarket.ts`);
+          for (const bars of barsBySymbol.values()) for (let i = 1; i < bars.length; i++) {
+            const b = bars[i]; n++;
+            if (b.open === bars[i - 1].close) eqPrev++;
+            if (b.open > b.high * 1.0001 || b.open < b.low * 0.9999) outside++;
+            if (buyBlocked(b, bars[i - 1].close, true)) ara++;
+            if (sellBlocked(b, bars[i - 1].close)) arb++;
+          }
+          console.log(`bar: ${n}; open==close kemarin ${(eqPrev / n * 100).toFixed(1)}%; open di luar [low,high] ${outside}; hari buka-ARA ${ara}; hari terkunci-ARB ${arb}`);
+          const t1 = Date.now();
+          const s = runSweep(barsBySymbol, ihsgBars);
+          console.log(`sweep 500: ${((Date.now() - t1) / 1000).toFixed(1)} s, menang ${s.beatsCount}/${s.executed}, alpha terbaik ${s.bestAlphaPct}, median ${s.medianAlphaPct}`);
+          const s0 = runSweep(barsBySymbol, ihsgBars, { execution: FRICTIONLESS });
+          console.log(`sweep 500 teoretis: menang ${s0.beatsCount}/${s0.executed}, alpha terbaik ${s0.bestAlphaPct}, median ${s0.medianAlphaPct}`);
+          TS
+          npx -y tsx@4.19.2 /tmp/bt.mts

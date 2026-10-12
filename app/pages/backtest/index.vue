@@ -232,7 +232,7 @@ const chartOption = computed(() => {
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4 text-xs">
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
               <p class="text-[10px] text-slate-500">CAGR teoretis → realistis</p>
-              <p class="text-base font-extrabold text-slate-100">{{ ideal ? fmtPct(ideal.metrics.cagrPct) : '—' }} → {{ fmtPct(m.cagrPct) }}</p>
+              <p class="text-sm font-extrabold text-slate-100 whitespace-nowrap">{{ ideal ? fmtPct(ideal.metrics.cagrPct) : '—' }} → {{ fmtPct(m.cagrPct) }}</p>
             </div>
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
               <p class="text-[10px] text-slate-500">Fee + spread / tahun</p>

@@ -65,7 +65,9 @@ describe('runBacktest — strategi ma200 pada universe terdefinisi', () => {
     expect(r.months).toBeGreaterThanOrEqual(6);
     expect(r.equity).toHaveLength(r.months + 1);
     expect(r.metrics.sharpe).toBeGreaterThan(0);
-    expect(r.costPerRebalancePct).toBe(0.15);
+    expect(r.execution.nextOpen).toBe(true); // default: model eksekusi IDX
+    expect(r.trading.buys).toBeGreaterThan(0);
+    expect(r.trading.costPctPerYear).toBeGreaterThan(0);
   });
 
   it('kurva ekuitas tak menurun utk strategi win-rate 100%', () => {

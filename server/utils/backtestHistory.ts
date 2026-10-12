@@ -33,6 +33,8 @@ export interface LabSweep {
   bestAlphaPct: number | null;
   medianAlphaPct: number | null;
   ihsgCagrPct: number | null; // benchmark CAGR dari run pertama yang sukses
+  /** 'idx' = eksekusi realistis IDX (fee, spread, open H+1, ARA/ARB); kosong = model lama (0,15%/rebalance di close). */
+  costModel?: 'idx';
   runs: LabRunRecord[];       // urut alpha desc
 }
 
@@ -91,6 +93,7 @@ export function sweepFromSummary(summary: SweepSummary): LabSweep {
     bestAlphaPct: summary.bestAlphaPct,
     medianAlphaPct: summary.medianAlphaPct,
     ihsgCagrPct: runs.length ? runs[0]!.bench.cagrPct : null,
+    costModel: 'idx',
     runs
   };
 }
@@ -103,14 +106,14 @@ export async function saveSweep(sweep: LabSweep, opts?: HistoryOpts): Promise<vo
 }
 
 /** Daftar ringkas semua sweep tersimpan (terbaru dulu) — untuk dropdown UI. */
-export type SweepListItem = Pick<LabSweep, 'id' | 'createdAt' | 'periodStart' | 'periodEnd' | 'beatsCount' | 'bestAlphaPct' | 'executed'>;
+export type SweepListItem = Pick<LabSweep, 'id' | 'createdAt' | 'periodStart' | 'periodEnd' | 'beatsCount' | 'bestAlphaPct' | 'executed' | 'costModel'>;
 
 export async function listSweepSummaries(opts?: HistoryOpts): Promise<SweepListItem[]> {
   const h = await readHistory(opts);
   return h.sweeps.map((s) => ({
     id: s.id, createdAt: s.createdAt, periodStart: s.periodStart,
     periodEnd: s.periodEnd, beatsCount: s.beatsCount, bestAlphaPct: s.bestAlphaPct,
-    executed: s.executed
+    executed: s.executed, costModel: s.costModel
   }));
 }
 

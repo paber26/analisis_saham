@@ -9,7 +9,8 @@ export interface PriceBar { date: string; open: number; high: number; low: numbe
 export interface PriceSeries { code: string; bars: PriceBar[] }
 export interface PricesResponse { from: string; to: string; series: PriceSeries[]; ihsgSeries: PriceSeries }
 
-// OHLC series per stock over [from, to] for the playback animation. The server
+// OHLC series per stock over [from, to] (plus the session before `from`) for
+// the playback animation. The server
 // legitimately holds the "future" here — the client only reveals it bar-by-bar
 // as the user steps the simulation forward.
 const cachedSeries = defineCachedFunction(
@@ -18,15 +19,18 @@ const cachedSeries = defineCachedFunction(
     const yearsBack = (Date.now() - new Date(from).getTime()) / (365.25 * 24 * 3600 * 1000);
     const range = yearsBack <= 1.8 ? '2y' : yearsBack <= 4.8 ? '5y' : '10y';
     const fetched = await fetchDailyBars(symbol, range, false);
-    const bars = (fetched?.bars || [])
-      .filter((b) => b.date >= from && b.date <= to)
+    const all = (fetched?.bars || []).filter((b) => b.date <= to);
+    // Keep the last session before `from` too: its close is the reference price
+    // for the first day's auto-reject (ARA/ARB) check.
+    const first = all.findIndex((b) => b.date >= from);
+    const bars = (first < 0 ? [] : all.slice(Math.max(0, first - 1)))
       .map((b) => ({ date: b.date, open: b.open, high: b.high, low: b.low, close: b.close, volume: b.volume }));
     return { code: code.replace('.JK', ''), bars };
   },
   {
     maxAge: 60 * 60 * 24 * 7,
     swr: true,
-    name: 'sim-prices',
+    name: 'sim-prices-v2', // v2: includes the session before `from`
     getKey: (code: string, from: string, to: string) => `${code}:${from}:${to}:${tradingDay()}`
   }
 );

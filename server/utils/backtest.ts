@@ -12,7 +12,7 @@
 
 import type { DailyBar } from './yahoo';
 import { analyzeTechnical, type Bar } from './technical';
-import { halfSpread, buyBlocked, sellBlocked } from './idxMarket';
+import { halfSpread, buyBlocked, sellBlocked } from '../../shared/utils/idxMarket';
 
 export type SignalFn = (bars: Bar[]) => boolean;
 

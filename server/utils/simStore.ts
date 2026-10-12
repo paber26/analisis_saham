@@ -42,6 +42,11 @@ export interface SimResult {
   realizedPnl: number;
   perStock: SimPerStock[];
   regression: RegressionResult | null;
+  /** IDX costs (fee + spread) paid; absent on sessions saved before costs were modelled. */
+  feesPaid?: number;
+  feesPct?: number;
+  blockedOrders?: number;
+  costModel?: 'idx';
 }
 
 export interface SimSession {

@@ -16,6 +16,10 @@ const sim = useSimulationEngine();
             <span class="text-xs px-2.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">{{ sim.timeline[sim.cursor] }}</span>
           </h3>
           <p class="text-xs text-slate-400 mt-1">Evaluasi indikator &amp; alokasikan modal ke saham eksisting atau saham prospektif baru pada tanggal ini.</p>
+          <p class="text-[10px] text-slate-500 mt-1">
+            Order terisi di harga penutupan (sesi pre-closing) dengan fee beli {{ sim.feeLabel.buy }} / jual {{ sim.feeLabel.sell }} + spread ½ fraksi.
+            Beli ditolak bila saham ditutup di ARA; jual ditolak bila terkunci di ARB.
+          </p>
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right bg-slate-950/80 border border-slate-800 rounded-xl px-3 py-1.5 shrink-0">
@@ -143,7 +147,7 @@ const sim = useSimulationEngine();
                     v-model.number="d.avgDownLots"
                     type="number"
                     min="1"
-                    :max="Math.max(1, Math.floor(sim.cash / (d.price * 100)))"
+                    :max="Math.max(1, sim.maxLots(sim.cash, d.price))"
                     class="w-20 bg-slate-950 border border-amber-500/50 rounded-lg px-2.5 py-1 text-right font-bold text-amber-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                   />
                   <span class="font-bold text-amber-200">lot</span>
@@ -152,8 +156,8 @@ const sim = useSimulationEngine();
 
               <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] bg-slate-950/60 p-2.5 rounded-lg border border-amber-500/20">
                 <div>
-                  <div class="text-slate-500">Biaya Pembelian</div>
-                  <div class="font-bold text-slate-100 mt-0.5">{{ fmtIDR((d.avgDownLots || 0) * 100 * d.price) }}</div>
+                  <div class="text-slate-500">Biaya Pembelian (incl. fee)</div>
+                  <div class="font-bold text-slate-100 mt-0.5">{{ fmtIDR(sim.buyTotal(d.price, d.avgDownLots || 0)) }}</div>
                 </div>
                 <div>
                   <div class="text-slate-500">Total Posisi Baru</div>
@@ -161,16 +165,16 @@ const sim = useSimulationEngine();
                 </div>
                 <div>
                   <div class="text-slate-500">Avg Price Baru</div>
-                  <div class="font-bold text-emerald-400 mt-0.5">Rp {{ Math.round((d.avgPrice * d.lots + d.price * (d.avgDownLots || 0)) / (d.lots + (d.avgDownLots || 0))).toLocaleString('id-ID') }}</div>
+                  <div class="font-bold text-emerald-400 mt-0.5">Rp {{ Math.round((d.avgPrice * d.lots * 100 + sim.buyTotal(d.price, d.avgDownLots || 0)) / ((d.lots + (d.avgDownLots || 0)) * 100)).toLocaleString('id-ID') }}</div>
                 </div>
                 <div>
                   <div class="text-slate-500">Sisa Kas</div>
-                  <div class="font-bold mt-0.5" :class="sim.cash >= (d.avgDownLots || 0) * 100 * d.price ? 'text-slate-100' : 'text-rose-400'">{{ fmtIDR(sim.cash - (d.avgDownLots || 0) * 100 * d.price) }}</div>
+                  <div class="font-bold mt-0.5" :class="sim.cash >= sim.buyTotal(d.price, d.avgDownLots || 0) ? 'text-slate-100' : 'text-rose-400'">{{ fmtIDR(sim.cash - sim.buyTotal(d.price, d.avgDownLots || 0)) }}</div>
                 </div>
               </div>
 
-              <p v-if="sim.cash < (d.avgDownLots || 0) * 100 * d.price" class="text-[11px] text-rose-400 font-semibold">
-                ⚠️ Kas tidak mencukupi untuk membeli {{ d.avgDownLots }} lot (Maksimal yang dapat dibeli: {{ Math.floor(sim.cash / (d.price * 100)) }} lot).
+              <p v-if="sim.cash < sim.buyTotal(d.price, d.avgDownLots || 0)" class="text-[11px] text-rose-400 font-semibold">
+                ⚠️ Kas tidak mencukupi untuk membeli {{ d.avgDownLots }} lot (Maksimal yang dapat dibeli: {{ sim.maxLots(sim.cash, d.price) }} lot, sudah termasuk biaya).
               </p>
             </div>
 
@@ -178,7 +182,7 @@ const sim = useSimulationEngine();
             <div v-else-if="d.action === 'SELL_50'" class="p-3 rounded-xl bg-sky-500/[0.08] border border-sky-500/30 text-xs">
               <div class="flex items-center justify-between text-[11px] text-slate-300">
                 <span>Jual parsial (50%): <strong class="text-sky-300">{{ Math.ceil(d.lots / 2) }} lot</strong> @ {{ fmtIDR(d.price) }}</span>
-                <span>Hasil Penjualan: <strong class="text-emerald-400">+{{ fmtIDR(Math.ceil(d.lots / 2) * 100 * d.price) }}</strong></span>
+                <span>Hasil Penjualan (setelah biaya): <strong class="text-emerald-400">+{{ fmtIDR(sim.sellNet(d.price, Math.ceil(d.lots / 2))) }}</strong></span>
               </div>
             </div>
 
@@ -186,7 +190,7 @@ const sim = useSimulationEngine();
             <div v-else-if="d.action === 'SELL'" class="p-3 rounded-xl bg-rose-500/[0.08] border border-rose-500/30 text-xs">
               <div class="flex items-center justify-between text-[11px] text-slate-300">
                 <span>Jual seluruh posisi: <strong class="text-rose-300">{{ d.lots }} lot</strong> @ {{ fmtIDR(d.price) }}</span>
-                <span>Hasil Penjualan: <strong class="text-emerald-400">+{{ fmtIDR(d.lots * 100 * d.price) }}</strong></span>
+                <span>Hasil Penjualan (setelah biaya): <strong class="text-emerald-400">+{{ fmtIDR(sim.sellNet(d.price, d.lots)) }}</strong></span>
               </div>
             </div>
           </div>
@@ -327,7 +331,7 @@ const sim = useSimulationEngine();
                     <button type="button" @click="sim.newStockBuyNominal[r.code] = sim.cash" title="Pakai semua kas" class="px-1.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-slate-300 font-bold">Max</button>
                   </div>
                   <div class="text-[10px] mt-0.5" :class="sim.lotsFromNominal(r) >= 1 ? 'text-emerald-400' : 'text-rose-400'">
-                    ≈ {{ sim.lotsFromNominal(r) }} lot · {{ fmtIDR(sim.lotsFromNominal(r) * 100 * r.price) }}
+                    ≈ {{ sim.lotsFromNominal(r) }} lot · {{ fmtIDR(sim.buyTotal(r.price, sim.lotsFromNominal(r))) }} incl. biaya
                   </div>
                 </td>
                 <td class="px-3 py-2.5 text-center">

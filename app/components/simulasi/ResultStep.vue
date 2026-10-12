@@ -62,6 +62,12 @@ const sim = useSimulationEngine();
       <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(sim.result.winRate, 0) }}%</div></div>
     </div>
 
+    <p class="text-[11px] text-slate-400">
+      Sudah termasuk biaya transaksi <strong class="text-slate-200">{{ fmtIDR(sim.result.feesPaid) }}</strong>
+      ({{ fmtNum(sim.result.feesPct, 2) }}% dari modal: fee beli {{ sim.feeLabel.buy }} / jual {{ sim.feeLabel.sell }} + spread ½ fraksi)<template v-if="sim.result.blockedOrders">
+      · <span class="text-amber-300">{{ sim.result.blockedOrders }} order tidak terisi (ARA/ARB/tidak diperdagangkan)</span></template>.
+    </p>
+
     <div class="h-56 rounded-2xl bg-slate-900/60 border border-slate-800 p-4"><VChart :option="sim.equityOption" class="w-full h-full" autoresize /></div>
 
     <div class="grid lg:grid-cols-2 gap-4">

@@ -2,6 +2,10 @@
 // time-machine playback with regime-aware cut-loss suggestions, mid-simulation
 // re-screening/buying, results & saved sessions.
 //
+// Trading is IDX-realistic: orders fill at the decision day's close (the
+// pre-closing session), pay the buy/sell fee plus half a tick of spread, and
+// are rejected when the stock closes at ARA (buy) or is locked at ARB (sell).
+//
 // REFACTOR NOTE (C2): this is the former <script setup> of pages/simulasi/
 // index.vue moved VERBATIM into a factory. The page creates exactly ONE
 // instance and provides it via SIM_KEY; child components inject it. No logic
@@ -10,6 +14,7 @@
 import { ref, computed, reactive, inject, onBeforeUnmount, type InjectionKey } from 'vue';
 import type { AsOfRow, PriceBar, BasketItem, Decision, DecRow, SimStep, SortKey, SortOrder, RecoNote } from '~/types/sim';
 import { fmtIDR } from '~/utils/simFormat';
+import { buyCost, sellProceeds, maxLots, tradeBlockReason, IDX_FEES } from '#shared/utils/idxMarket';
 import type { SimUi } from './useSimUi';
 
 export function createSimulationEngine(ui: SimUi) {
@@ -178,7 +183,7 @@ export function createSimulationEngine(ui: SimUi) {
   function recomputeLots() {
     for (const b of basket.value) {
       const alloc = initialCapital.value * (b.weightPct / 100);
-      b.lots = Math.max(0, Math.floor(alloc / (b.entryPrice * 100)));
+      b.lots = maxLots(alloc, b.entryPrice);
     }
   }
   const totalWeight = computed(() => basket.value.reduce((s, b) => s + b.weightPct, 0));
@@ -205,6 +210,32 @@ export function createSimulationEngine(ui: SimUi) {
   const decisions = ref<Decision[]>([]);
   const equityCurve = ref<{ date: string; value: number }[]>([]);
   const loadingPrices = ref(false);
+  const feesPaid = ref(0);      // fee + spread paid so far (Rp)
+  const blockedOrders = ref(0); // orders rejected by ARA/ARB or no trading
+
+  // Raw sessions per code (incl. the one before the start) for ARA/ARB checks.
+  // Not reactive: only read when an order is placed.
+  const sessionsByCode: Record<string, { bars: PriceBar[]; byDate: Map<string, number> }> = {};
+  function storeSessions(code: string, bars: PriceBar[]) {
+    sessionsByCode[code] = { bars, byDate: new Map(bars.map((b, i) => [b.date, i])) };
+  }
+  /** Why an order for `code` at the close of timeline day `idx` would not fill (null = fills). */
+  function blockReason(side: 'buy' | 'sell', code: string, idx: number): string | null {
+    const s = sessionsByCode[code];
+    if (!s) return null;
+    const i = s.byDate.get(timeline.value[idx]!);
+    if (i == null) return tradeBlockReason(side, null, null);
+    return tradeBlockReason(side, s.bars[i]!, i > 0 ? s.bars[i - 1]!.close : null);
+  }
+  /** Cash a buy of `lots` at `price` needs, fee + spread included. */
+  const buyTotal = (price: number, lots: number) => buyCost(price, lots * 100).total;
+  /** Cash a sale of `lots` at `price` brings in, after fee + spread. */
+  const sellNet = (price: number, lots: number) => sellProceeds(price, lots * 100).net;
+  /** Fee rates for display, Indonesian formatting ("0,15%"). */
+  const feeLabel = {
+    buy: `${IDX_FEES.buyPct.toLocaleString('id-ID')}%`,
+    sell: `${IDX_FEES.sellPct.toLocaleString('id-ID')}%`
+  };
 
   function alignForwardFill(bars: PriceBar[], dates: string[]): number[] {
     const map = new Map(bars.map((b) => [b.date, b.close]));
@@ -266,7 +297,7 @@ export function createSimulationEngine(ui: SimUi) {
       timeline.value = allDates.slice(0, horizonDays.value + 1);
       if (timeline.value.length < 2) { errorMsg.value = 'Data harga tidak cukup untuk periode ini.'; return; }
 
-      for (const s of res.series) closesByCode[s.code] = alignForwardFill(s.bars, timeline.value);
+      for (const s of res.series) { closesByCode[s.code] = alignForwardFill(s.bars, timeline.value); storeSessions(s.code, s.bars); }
       if (res.ihsgSeries?.bars?.length) {
         ihsgCloses.value = alignForwardFill(res.ihsgSeries.bars, timeline.value);
       } else {
@@ -277,10 +308,24 @@ export function createSimulationEngine(ui: SimUi) {
       for (const b of basket.value) { const c0 = closesByCode[b.code]?.[0]; if (c0) b.entryPrice = c0; }
       recomputeLots();
 
-      // Open positions, leftover → cash.
+      // Open positions at the first close (fee + spread in the cost basis), leftover → cash.
       let spent = 0;
+      feesPaid.value = 0;
+      blockedOrders.value = 0;
       for (const k of Object.keys(positions)) delete positions[k];
-      for (const b of basket.value) { positions[b.code] = { lots: b.lots, avgPrice: b.entryPrice }; spent += b.lots * 100 * b.entryPrice; }
+      for (const b of basket.value) {
+        const why = b.lots > 0 ? blockReason('buy', b.code, 0) : null;
+        if (why) {
+          blockedOrders.value++;
+          b.lots = 0;
+          b.blockedReason = why;
+          notify(`${b.code} tidak terbeli di hari pertama: ${why}. Porsinya tetap kas.`, 'error');
+        }
+        const { total, costs } = buyCost(b.entryPrice, b.lots * 100);
+        positions[b.code] = { lots: b.lots, avgPrice: b.lots ? total / (b.lots * 100) : b.entryPrice };
+        spent += total;
+        feesPaid.value += costs;
+      }
       cash.value = initialCapital.value - spent;
       decisions.value = [];
       cursor.value = 0;
@@ -325,10 +370,7 @@ export function createSimulationEngine(ui: SimUi) {
   // the nominal buys, capped by available cash.
   const newStockBuyNominal = reactive<Record<string, number>>({});
   function lotsFromNominal(r: AsOfRow): number {
-    const lotPrice = r.price * 100;
-    const byNominal = Math.floor((Number(newStockBuyNominal[r.code]) || 0) / lotPrice);
-    const byCash = Math.floor(cash.value / lotPrice);
-    return Math.max(0, Math.min(byNominal, byCash));
+    return Math.min(maxLots(Number(newStockBuyNominal[r.code]) || 0, r.price), maxLots(cash.value, r.price));
   }
 
   const decisionRows = ref<DecRow[]>([]);
@@ -337,10 +379,8 @@ export function createSimulationEngine(ui: SimUi) {
     const b = basket.value.find((x) => x.code === code);
     const weightPct = b?.weightPct ?? (100 / (basket.value.length || 1));
     const budget = initialCapital.value * (weightPct / 100);
-    const lotPrice = currentPrice * 100;
-    const targetAdd = Math.max(1, Math.floor(budget / lotPrice));
-    const maxAffordable = Math.floor(cash.value / lotPrice);
-    return Math.min(targetAdd, maxAffordable);
+    const targetAdd = Math.max(1, maxLots(budget, currentPrice));
+    return Math.min(targetAdd, maxLots(cash.value, currentPrice));
   }
 
   async function fetchMidScreening(dateStr: string) {
@@ -350,10 +390,8 @@ export function createSimulationEngine(ui: SimUi) {
       midScreenRows.value = res.results;
       for (const r of res.results) {
         if (!newStockBuyNominal[r.code]) {
-          const lotPrice = r.price * 100;
-          const maxAffordable = Math.floor(cash.value / lotPrice);
-          const defaultLots = Math.min(5, Math.max(1, Math.floor(maxAffordable / 3)));
-          newStockBuyNominal[r.code] = defaultLots * lotPrice; // nominal awal ≈ beberapa lot
+          const defaultLots = Math.min(5, Math.max(1, Math.floor(maxLots(cash.value, r.price) / 3)));
+          newStockBuyNominal[r.code] = Math.ceil(buyTotal(r.price, defaultLots)); // nominal awal ≈ beberapa lot
         }
       }
     } catch {
@@ -366,10 +404,9 @@ export function createSimulationEngine(ui: SimUi) {
   async function buyNewStockMidSim(r: AsOfRow) {
     const requestedLots = lotsFromNominal(r);
     if (requestedLots < 1) {
-      notify(`Nominal terlalu kecil / kas tak cukup untuk 1 lot ${r.code} (${fmtIDR(r.price * 100)}/lot). Sisa kas: ${fmtIDR(cash.value)}`, 'error');
+      notify(`Nominal terlalu kecil / kas tak cukup untuk 1 lot ${r.code} (${fmtIDR(buyTotal(r.price, 1))}/lot termasuk biaya). Sisa kas: ${fmtIDR(cash.value)}`, 'error');
       return;
     }
-    const cost = requestedLots * 100 * r.price;
 
     // Ensure price series for new symbol is loaded
     if (!closesByCode[r.code] || !closesByCode[r.code]?.length) {
@@ -381,6 +418,7 @@ export function createSimulationEngine(ui: SimUi) {
         const res = await $fetch<{ series: { code: string; bars: PriceBar[] }[] }>('/api/sim/prices', { params: { codes: r.code, from, to } });
         if (res.series?.[0]) {
           closesByCode[r.code] = alignForwardFill(res.series[0].bars, timeline.value);
+          storeSessions(r.code, res.series[0].bars);
         }
       } catch {
         notify(`Gagal memuat serial harga ${r.code}`, 'error');
@@ -388,14 +426,23 @@ export function createSimulationEngine(ui: SimUi) {
       }
     }
 
-    // Deduct cash & update position
-    cash.value -= cost;
+    const why = blockReason('buy', r.code, cursor.value);
+    if (why) {
+      blockedOrders.value++;
+      notify(`Order beli ${r.code} tidak terisi: ${why}.`, 'error');
+      return;
+    }
+
+    // Deduct cash (fee + spread included) & update position; cost basis includes the costs.
+    const { total, costs } = buyCost(r.price, requestedLots * 100);
+    cash.value -= total;
+    feesPaid.value += costs;
     if (!positions[r.code]) {
-      positions[r.code] = { lots: requestedLots, avgPrice: r.price };
+      positions[r.code] = { lots: requestedLots, avgPrice: total / (requestedLots * 100) };
     } else {
       const p = positions[r.code]!;
       const newLots = p.lots + requestedLots;
-      p.avgPrice = (p.avgPrice * p.lots + r.price * requestedLots) / newLots;
+      p.avgPrice = (p.avgPrice * p.lots * 100 + total) / (newLots * 100);
       p.lots = newLots;
     }
 
@@ -440,7 +487,7 @@ export function createSimulationEngine(ui: SimUi) {
         code: r.code,
         name: r.name,
         price: r.price,
-        avgPrice: r.price,
+        avgPrice: positions[r.code]!.avgPrice,
         plPct: 0,
         lots: requestedLots,
         rating: r.rating,
@@ -453,7 +500,7 @@ export function createSimulationEngine(ui: SimUi) {
       });
     }
 
-    notify(`✨ Berhasil membeli ${requestedLots} lot ${r.code} pada harga ${fmtIDR(r.price)}!`, 'success');
+    notify(`✨ Berhasil membeli ${requestedLots} lot ${r.code} pada harga ${fmtIDR(r.price)} (biaya ${fmtIDR(costs)})!`, 'success');
   }
 
   function openDecision() {
@@ -488,27 +535,35 @@ export function createSimulationEngine(ui: SimUi) {
 
   function applyDecisions() {
     const date = timeline.value[cursor.value]!;
+    const rejected = (d: DecRow, side: 'buy' | 'sell'): boolean => {
+      const why = blockReason(side, d.code, cursor.value);
+      if (!why) return false;
+      blockedOrders.value++;
+      notify(`Order ${side === 'sell' ? 'jual' : 'beli'} ${d.code} tidak terisi: ${why}. Posisi tidak berubah.`, 'error');
+      decisions.value.push({ date, code: d.code, action: 'HOLD', lots: 0, price: d.price, unrealizedPct: d.plPct, rating: d.rating, note: `${side === 'sell' ? 'Jual' : 'Beli'} gagal: ${why}` });
+      return true;
+    };
     for (const d of decisionRows.value) {
       const pos = positions[d.code]; if (!pos) continue;
-      if (d.action === 'SELL' && pos.lots > 0) {
-        cash.value += pos.lots * 100 * d.price;
-        decisions.value.push({ date, code: d.code, action: 'SELL', lots: pos.lots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
-        pos.lots = 0;
-      } else if (d.action === 'SELL_50' && pos.lots > 0) {
-        const sellLots = Math.ceil(pos.lots / 2);
-        cash.value += sellLots * 100 * d.price;
+      if ((d.action === 'SELL' || d.action === 'SELL_50') && pos.lots > 0) {
+        if (rejected(d, 'sell')) continue;
+        const sellLots = d.action === 'SELL' ? pos.lots : Math.ceil(pos.lots / 2);
+        const { net, costs } = sellProceeds(d.price, sellLots * 100);
+        cash.value += net;
+        feesPaid.value += costs;
         pos.lots -= sellLots;
         decisions.value.push({ date, code: d.code, action: 'SELL', lots: sellLots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
       } else if (d.action === 'AVERAGE_DOWN') {
         const requestedLots = Math.max(1, Number(d.avgDownLots) || 1);
-        const maxAffordable = Math.floor(cash.value / (d.price * 100));
-        const addLots = Math.min(requestedLots, maxAffordable);
+        const addLots = Math.min(requestedLots, maxLots(cash.value, d.price));
         if (addLots > 0) {
-          const cost = addLots * 100 * d.price;
+          if (rejected(d, 'buy')) continue;
+          const { total, costs } = buyCost(d.price, addLots * 100);
           const newLots = pos.lots + addLots;
-          pos.avgPrice = (pos.avgPrice * pos.lots + d.price * addLots) / newLots;
+          pos.avgPrice = (pos.avgPrice * pos.lots * 100 + total) / (newLots * 100);
           pos.lots = newLots;
-          cash.value -= cost;
+          cash.value -= total;
+          feesPaid.value += costs;
           decisions.value.push({ date, code: d.code, action: 'AVERAGE_DOWN', lots: addLots, price: d.price, unrealizedPct: d.plPct, rating: d.rating });
         }
       } else {
@@ -531,6 +586,10 @@ export function createSimulationEngine(ui: SimUi) {
     winRate: number;
     realizedPnl: number;
     perStock: { code: string; returnPct: number; contributionPct: number }[];
+    feesPaid: number;
+    feesPct: number;       // of initial capital
+    blockedOrders: number;
+    costModel: 'idx';
   }>(null);
   const regression = ref<any>(null);
   const loadingReg = ref(false);
@@ -545,7 +604,7 @@ export function createSimulationEngine(ui: SimUi) {
 
     let peak = -Infinity, maxDd = 0;
     for (const e of equityCurve.value) { peak = Math.max(peak, e.value); maxDd = Math.min(maxDd, (e.value / peak - 1) * 100); }
-    const perStock = basket.value.map((b) => {
+    const perStock = basket.value.filter((b) => !b.blockedReason).map((b) => {
       const finalPrice = priceAt(b.code, lastIdx);
       const returnPct = (finalPrice / b.entryPrice - 1) * 100;
       const contributionPct = (b.weightPct / 100) * returnPct;
@@ -560,7 +619,11 @@ export function createSimulationEngine(ui: SimUi) {
       maxDrawdownPct: maxDd,
       winRate,
       realizedPnl: finalValue - initialCapital.value,
-      perStock
+      perStock,
+      feesPaid: feesPaid.value,
+      feesPct: initialCapital.value > 0 ? (feesPaid.value / initialCapital.value) * 100 : 0,
+      blockedOrders: blockedOrders.value,
+      costModel: 'idx'
     };
     step.value = 'result';
     loadRegression();
@@ -684,6 +747,7 @@ export function createSimulationEngine(ui: SimUi) {
     basket, buildBasket, recomputeLots, totalWeight, equalizeWeights, startSimulation,
     // playback
     closesByCode, timeline, cursor, playing, speed, positions, cash, decisions, equityCurve, loadingPrices,
+    feesPaid, blockedOrders, buyTotal, sellNet, maxLots, feeLabel,
     play, pause, stepOnce, priceAt, currentValue, currentReturnPct, currentIhsgReturnPct, currentAlphaPct,
     progressPct, equityOption, regimeInfo, regimeBadgeClass, regimeEmoji, regimeTextClass,
     ihsgReturnPctAt,

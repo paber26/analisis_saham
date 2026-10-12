@@ -56,6 +56,8 @@ const sim = useSimulationEngine();
             </div>
           </div>
           <div class="flex items-center justify-between text-xs px-3 pt-1 text-slate-500"><span>Kas</span><span class="tabular-nums">{{ fmtIDR(sim.cash) }}</span></div>
+          <div class="flex items-center justify-between text-xs px-3 pt-1 text-slate-500" title="Fee broker + pajak jual + spread ½ fraksi yang sudah dibayar"><span>Biaya transaksi</span><span class="tabular-nums">{{ fmtIDR(sim.feesPaid) }}</span></div>
+          <div v-if="sim.blockedOrders" class="flex items-center justify-between text-xs px-3 pt-1 text-amber-400/80" title="Order yang ditolak karena ARA/ARB atau saham tidak diperdagangkan"><span>Order tidak terisi</span><span class="tabular-nums">{{ sim.blockedOrders }}×</span></div>
         </div>
       </div>
     </div>

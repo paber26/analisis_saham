@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { tickSize, araPct, arbPct, halfSpread, buyBlocked, sellBlocked } from '../server/utils/idxMarket';
+import { tickSize, araPct, arbPct, halfSpread, buyBlocked, sellBlocked } from '../shared/utils/idxMarket';
 import { runBacktest, rebalanceIndices, signalFor, FRICTIONLESS, IDX_EXECUTION, type SignalMatrix } from '../server/utils/backtest';
 import type { DailyBar } from '../server/utils/yahoo';
 import { bars, dates, geometric } from './helpers';

@@ -35,6 +35,10 @@ const sim = useSimulationEngine();
         <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Max Drawdown</div><div class="text-xl font-extrabold text-rose-400">{{ fmtPct(sim.reviewData.result.maxDrawdownPct) }}</div></div>
         <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-4"><div class="text-[10px] text-slate-500 uppercase font-bold">Win Rate</div><div class="text-xl font-extrabold text-slate-100">{{ fmtNum(sim.reviewData.result.winRate, 0) }}%</div></div>
       </div>
+      <p class="text-[11px] text-slate-400">
+        <template v-if="sim.reviewData.result.costModel === 'idx'">Sudah termasuk biaya transaksi {{ fmtIDR(sim.reviewData.result.feesPaid ?? 0) }} ({{ fmtNum(sim.reviewData.result.feesPct ?? 0, 2) }}% modal)<template v-if="sim.reviewData.result.blockedOrders"> · {{ sim.reviewData.result.blockedOrders }} order tidak terisi (ARA/ARB)</template>.</template>
+        <template v-else>Sesi lama: dihitung tanpa biaya transaksi &amp; tanpa ARA/ARB — hasilnya sedikit lebih optimistis.</template>
+      </p>
     </div>
 
     <div class="grid lg:grid-cols-2 gap-4">
@@ -66,6 +70,7 @@ const sim = useSimulationEngine();
               <span class="px-1.5 py-0.5 rounded-full border text-[10px] font-bold shrink-0" :class="ratingClass(d.rating)">{{ d.rating }}</span>
             </div>
             <div class="flex items-center gap-2 shrink-0">
+              <span v-if="d.note" class="text-[10px] text-amber-300/90 truncate max-w-[180px]" :title="d.note">⚠ {{ d.note }}</span>
               <span class="px-2 py-0.5 rounded text-[10px] font-bold" :class="d.action === 'SELL' ? 'bg-rose-500/15 text-rose-300' : d.action === 'AVERAGE_DOWN' ? 'bg-amber-500/15 text-amber-300' : 'bg-slate-700 text-slate-300'">{{ actionLabel(d.action) }}</span>
               <span class="tabular-nums" :class="d.unrealizedPct >= 0 ? 'text-emerald-400' : 'text-rose-400'">{{ fmtPct(d.unrealizedPct) }}</span>
             </div>

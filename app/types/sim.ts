@@ -20,9 +20,11 @@ export interface BasketItem {
   pctFromHigh?: number | null;
   weightPct: number;
   lots: number;
+  /** Set when the opening buy could not fill (ARA / no trading). */
+  blockedReason?: string;
 }
 
-export interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' | 'BUY'; lots: number; price: number; unrealizedPct: number; rating: string }
+export interface Decision { date: string; code: string; action: 'HOLD' | 'SELL' | 'AVERAGE_DOWN' | 'BUY'; lots: number; price: number; unrealizedPct: number; rating: string; note?: string }
 
 export interface DecRow {
   code: string;

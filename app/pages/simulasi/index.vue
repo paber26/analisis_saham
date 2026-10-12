@@ -2,6 +2,15 @@
 import { provide } from 'vue';
 import { createSimulationEngine, SIM_KEY } from '~/composables/useSimulationEngine';
 import { createSimUi, SIM_UI_KEY } from '~/composables/useSimUi';
+// Explicit imports: Nuxt auto-registers these as Simulasi* (folder prefix), so the
+// short tags below would otherwise render nothing.
+import SetupStep from '~/components/simulasi/SetupStep.vue';
+import ScreeningStep from '~/components/simulasi/ScreeningStep.vue';
+import BasketEditor from '~/components/simulasi/BasketEditor.vue';
+import PlaybackPanel from '~/components/simulasi/PlaybackPanel.vue';
+import DecisionModal from '~/components/simulasi/DecisionModal.vue';
+import ResultStep from '~/components/simulasi/ResultStep.vue';
+import ReviewStep from '~/components/simulasi/ReviewStep.vue';
 
 definePageMeta({ layout: 'simulasi' });
 useHead({ title: 'Simulasi Mesin Waktu — Reksa Dana Masa Lampau | Saham IDX' });

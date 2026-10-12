@@ -351,7 +351,7 @@ interface RegressionResult {
           { t: 'Lookahead bias', d: 'Diatasi dengan memotong bar ≤ T. Fundamental point-in-time tak tersedia → dinonaktifkan/ditandai di mode historis.' },
           { t: 'Survivorship bias', d: 'Saham delisting hilang dari universe kini. Idealnya pakai daftar konstituen historis; tahap awal diberi disclaimer.' },
           { t: 'Corporate action', d: 'Stock split/dividen. Pakai harga adjusted konsisten agar return tak bias.' },
-          { t: 'Biaya transaksi', d: 'Fee beli/jual & slippage. Sediakan parameter biaya agar hasil realistis.' },
+          { t: 'Biaya transaksi & ARA/ARB', d: 'Diterapkan: fee beli 0,15% / jual 0,25% (termasuk PPh final 0,1%) + spread ½ fraksi harga di setiap order; beli ditolak bila saham ditutup di ARA, jual ditolak bila terkunci di ARB. Order terisi di harga penutupan (sesi pre-closing).' },
           { t: 'Overfitting regresi', d: 'Sampel kecil → banyak faktor menyesatkan. Batasi jumlah faktor, laporkan adj-R² & p-value.' },
           { t: 'Likuiditas', d: 'Saham tipis sulit dieksekusi pada harga close. Beri flag likuiditas pada screening as-of.' }
         ]" :key="i" class="rounded-xl bg-slate-900/60 border border-slate-800 p-4">

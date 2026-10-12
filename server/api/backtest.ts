@@ -1,7 +1,7 @@
 import { getQuery, createError } from 'h3';
 import { normalizeSymbol } from '../utils/symbol';
 import { fetchDailyBars, type DailyBar } from '../utils/yahoo';
-import { runBacktest, signalFor } from '../utils/backtest';
+import { runBacktest, signalFor, FRICTIONLESS } from '../utils/backtest';
 import { LAB_UNIVERSE } from '../utils/backtestLab';
 import { tradingDay } from '../utils/cacheKey';
 
@@ -43,12 +43,18 @@ export default defineCachedEventHandler(async (event) => {
   const signal = signalFor(strategy, threshold);
   const result = runBacktest(barsBySymbol, ihsg.bars, signal);
   if (!result) throw createError({ statusCode: 422, statusMessage: 'Backtest gagal dihitung.' });
+  // Same strategy without fees, spread or auto-reject, executed at the signal close:
+  // the gap is what real execution costs.
+  const ideal = runBacktest(barsBySymbol, ihsg.bars, signal, { execution: FRICTIONLESS });
 
-  return { strategy, threshold, universeSize: barsBySymbol.size, ...result };
+  return {
+    strategy, threshold, universeSize: barsBySymbol.size, ...result,
+    frictionless: ideal ? { metrics: ideal.metrics, benchmark: ideal.benchmark, equity: ideal.equity.map((e) => e.strat) } : null
+  };
 }, {
   maxAge: 60 * 60 * 24,
   swr: true,
-  name: 'backtest',
+  name: 'backtest-v2', // v2: IDX execution model (fees, spread, next open, ARA/ARB)
   getKey: (event) => {
     const q = getQuery(event);
     return `${q.strategy || 'score'}:${q.threshold || 70}:${tradingDay()}`;

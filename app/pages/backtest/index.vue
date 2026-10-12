@@ -29,6 +29,9 @@ const STRATS = [
 
 const m = computed(() => data.value?.metrics || null);
 const bench = computed(() => data.value?.benchmark || null);
+const trading = computed(() => data.value?.trading || null);
+const ideal = computed(() => data.value?.frictionless || null);
+const costDrag = computed(() => (ideal.value && m.value ? Math.round((ideal.value.metrics.cagrPct - m.value.cagrPct) * 100) / 100 : null));
 const beatsIhsg = computed(() => bench.value && bench.value.alphaCagrPct > 0);
 
 const fmtPct = (n: number | null | undefined) => (n == null ? '—' : (n >= 0 ? '+' : '') + n + '%');
@@ -44,12 +47,13 @@ interface LabSweep {
   id: string; createdAt: string; periodStart: string | null; periodEnd: string | null;
   universeSize: number; executed: number; failed: number; beatsCount: number;
   bestAlphaPct: number | null; medianAlphaPct: number | null; ihsgCagrPct: number | null;
+  costModel?: 'idx';
   runs: LabRun[];
 }
 const labRunning = ref(false);
 const labError = ref('');
 const labSweep = ref<LabSweep | null>(null);
-const labSweeps = ref<{ id: string; createdAt: string; periodStart: string | null; bestAlphaPct: number | null; beatsCount: number; executed?: number }[]>([]);
+const labSweeps = ref<{ id: string; createdAt: string; periodStart: string | null; bestAlphaPct: number | null; beatsCount: number; executed?: number; costModel?: 'idx' }[]>([]);
 
 async function loadLabHistory() {
   try {
@@ -125,12 +129,13 @@ const chartOption = computed(() => {
     backgroundColor: 'transparent',
     animation: false,
     tooltip: { trigger: 'axis', backgroundColor: '#0f172a', borderColor: '#334155', textStyle: { color: '#f8fafc', fontSize: 11 }, valueFormatter: (v: number) => v?.toFixed(1) },
-    legend: { data: ['Strategi', 'IHSG (buy & hold)'], textStyle: { color: '#94a3b8', fontSize: 11 }, top: 0 },
+    legend: { data: ['Strategi', 'Teoretis (tanpa biaya & batas)', 'IHSG (buy & hold)'], textStyle: { color: '#94a3b8', fontSize: 11 }, top: 0 },
     grid: { left: 8, right: 12, top: 34, bottom: 30, containLabel: true },
     xAxis: { type: 'category', data: dates, axisLine: { lineStyle: { color: '#1e293b' } }, axisLabel: { color: '#64748b', fontSize: 9, formatter: (v: string) => v?.slice(0, 7) } },
     yAxis: { scale: true, axisLabel: { color: '#64748b', fontSize: 9 }, splitLine: { lineStyle: { color: '#0f172a' } } },
     series: [
       { name: 'Strategi', type: 'line', data: d.equity.map((e: any) => e.strat), smooth: true, showSymbol: false, lineStyle: { color: '#34d399', width: 2 } },
+      ...(d.frictionless ? [{ name: 'Teoretis (tanpa biaya & batas)', type: 'line', data: d.frictionless.equity, smooth: true, showSymbol: false, lineStyle: { color: '#34d399', width: 1, type: 'dotted', opacity: 0.6 } }] : []),
       { name: 'IHSG (buy & hold)', type: 'line', data: d.equity.map((e: any) => e.ihsg), smooth: true, showSymbol: false, lineStyle: { color: '#64748b', width: 1.5, type: 'dashed' } }
     ]
   };
@@ -145,8 +150,10 @@ const chartOption = computed(() => {
         <h2 class="text-lg font-bold text-slate-50">Backtest Strategi</h2>
         <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
           Menguji strategi pada ~45 saham likuid, <strong class="text-slate-300">rebalance bulanan equal-weight</strong>,
-          <strong class="text-slate-300">tanpa look-ahead</strong> (sinyal hari-t hanya pakai data ≤ t), sudah dipotong
-          biaya transaksi, lalu dibandingkan <strong class="text-slate-300">buy &amp; hold IHSG</strong>.
+          <strong class="text-slate-300">tanpa look-ahead</strong> (sinyal dari penutupan hari-t, order dieksekusi di
+          <strong class="text-slate-300">harga pembukaan hari bursa berikutnya</strong>), dengan fee beli 0,15% / jual 0,25%
+          (termasuk PPh final 0,1%), spread ½ fraksi harga, dan batas <strong class="text-slate-300">ARA/ARB</strong>,
+          lalu dibandingkan <strong class="text-slate-300">buy &amp; hold IHSG</strong>.
         </p>
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-5 items-end">
           <div>
@@ -193,7 +200,7 @@ const chartOption = computed(() => {
               <template #fallback><div class="h-full flex items-center justify-center text-slate-500 text-sm">Memuat kurva…</div></template>
             </ClientOnly>
           </div>
-          <p class="text-[10px] text-slate-500 text-center">Pertumbuhan Rp 100 (equal-weight, sudah termasuk biaya {{ data.costPerRebalancePct }}%/rebalance).</p>
+          <p class="text-[10px] text-slate-500 text-center">Pertumbuhan Rp 100 (equal-weight, sudah termasuk fee, spread, dan batas ARA/ARB). Garis titik-titik = strategi yang sama tanpa biaya, dieksekusi di harga penutupan.</p>
         </section>
 
         <!-- Metrics -->
@@ -207,10 +214,53 @@ const chartOption = computed(() => {
         </section>
         <p class="text-[11px] text-slate-500 text-center">Rata-rata {{ m.avgHoldings }} saham dipegang tiap bulan. Sharpe/Sortino disetahunkan (risk-free 0%).</p>
 
+        <!-- Execution realism -->
+        <section v-if="trading" class="glow-card rounded-2xl p-5">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h3 class="text-sm font-bold text-slate-100">Realisme eksekusi</h3>
+              <p class="text-[11px] text-slate-400 mt-1 max-w-3xl">
+                Order dari sinyal penutupan dieksekusi di harga pembukaan esok hari. Saham yang dibuka di ARA tidak bisa dibeli (porsinya tetap kas);
+                saham yang terkunci di ARB sepanjang sesi baru bisa dijual di hari pertama yang tidak terkunci.
+              </p>
+            </div>
+            <span v-if="costDrag != null" class="text-[10px] font-bold px-2.5 py-1 rounded-full border text-amber-300 bg-amber-500/10 border-amber-500/30"
+              title="CAGR teoretis (tanpa biaya, eksekusi di close) dikurangi CAGR realistis">
+              Biaya eksekusi ≈ {{ costDrag }}%/tahun dari CAGR
+            </span>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4 text-xs">
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500">CAGR teoretis → realistis</p>
+              <p class="text-base font-extrabold text-slate-100">{{ ideal ? fmtPct(ideal.metrics.cagrPct) : '—' }} → {{ fmtPct(m.cagrPct) }}</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500">Fee + spread / tahun</p>
+              <p class="text-base font-extrabold text-slate-100">{{ trading.costPctPerYear }}%</p>
+              <p class="text-[10px] text-slate-500">dari rata-rata modal</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500">Perputaran / tahun</p>
+              <p class="text-base font-extrabold text-slate-100">{{ trading.turnoverPctPerYear }}%</p>
+              <p class="text-[10px] text-slate-500">{{ trading.buys }} beli · {{ trading.sells }} jual</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500">Beli gagal (dibuka di ARA)</p>
+              <p class="text-base font-extrabold" :class="trading.blockedBuys ? 'text-amber-300' : 'text-slate-100'">{{ trading.blockedBuys }}×</p>
+            </div>
+            <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3">
+              <p class="text-[10px] text-slate-500">Jual tertunda (terkunci ARB)</p>
+              <p class="text-base font-extrabold" :class="trading.delayedSells ? 'text-amber-300' : 'text-slate-100'">{{ trading.delayedSells }}×</p>
+              <p v-if="trading.delayedSells" class="text-[10px] text-slate-500">rata-rata {{ trading.avgDelayDays }} hari bursa</p>
+            </div>
+          </div>
+        </section>
+
         <footer class="p-5 rounded-2xl bg-rose-500/5 border border-rose-500/10">
           <p class="text-[11px] leading-relaxed text-slate-400">
             ⚠ Keterbatasan: memakai <strong class="text-slate-300">universe likuid saat ini</strong> (ada survivorship bias — saham yang delisting/bermasalah tak masuk),
-            eksekusi pada harga penutupan bulanan, dan biaya disederhanakan. Hasil masa lalu <strong class="text-slate-300">bukan jaminan</strong> masa depan.
+            satuan lot (100 lembar) dan dampak harga untuk order besar tidak dimodelkan, dan dividen tidak dihitung (IHSG juga indeks harga).
+            Hasil masa lalu <strong class="text-slate-300">bukan jaminan</strong> masa depan.
             Backtest untuk memvalidasi logika, bukan janji imbal hasil.
           </p>
         </footer>
@@ -223,7 +273,7 @@ const chartOption = computed(() => {
             <h2 class="text-lg font-bold text-slate-50">🧪 Strategi Lab — 50 Kombinasi Parameter</h2>
             <p class="text-xs text-slate-400 mt-1 max-w-3xl leading-relaxed">
               Sweep sistematis: strategi × ambang × top-K × kadensi bulanan/mingguan pada data yang sama,
-              tanpa look-ahead, biaya transaksi terpotong. Setiap sweep tersimpan ke
+              tanpa look-ahead, dengan model eksekusi IDX yang sama (fee, spread, open H+1, ARA/ARB). Setiap sweep tersimpan ke
               <strong class="text-slate-300">histori</strong> agar bisa dicek: apakah "juara" dulu tetap juara?
             </p>
           </div>
@@ -237,7 +287,7 @@ const chartOption = computed(() => {
               @change="selectSweep(($event.target as HTMLSelectElement).value)">
               <option value="">📚 Histori sweep ({{ labSweeps.length }})…</option>
               <option v-for="s in labSweeps" :key="s.id" :value="s.id">
-                {{ s.createdAt.slice(0, 16).replace('T', ' ') }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/{{ s.executed ?? 500 }} menang
+                {{ s.createdAt.slice(0, 16).replace('T', ' ') }}{{ s.costModel ? '' : ' (model lama)' }} · best {{ s.bestAlphaPct != null ? fmtPct(s.bestAlphaPct) : '—' }} · {{ s.beatsCount }}/{{ s.executed ?? 500 }} menang
               </option>
             </select>
           </div>
@@ -246,6 +296,10 @@ const chartOption = computed(() => {
         <p v-if="labError" class="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/25 rounded-xl px-3 py-2">{{ labError }}</p>
 
         <template v-if="labSweep">
+          <p v-if="!labSweep.costModel" class="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2">
+            Sweep ini dihitung dengan model biaya lama (0,15%/rebalance, eksekusi di harga penutupan, tanpa ARA/ARB) — angkanya lebih optimistis
+            dan tidak sebanding langsung dengan sweep baru.
+          </p>
           <!-- Ringkasan -->
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div class="rounded-xl bg-slate-900/60 border border-slate-800 p-3.5">

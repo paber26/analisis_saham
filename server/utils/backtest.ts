@@ -4,13 +4,15 @@
 // - No look-ahead: the signal at rebalance date t is computed ONLY from bars up
 //   to and including t (analyzeTechnical on a slice), and returns are realised
 //   from t to the next rebalance.
-// - Transaction costs modelled on turnover each rebalance.
+// - Executable trades: next-open fills, IDX fees + tick spread on every trade,
+//   and auto-reject limits (no buy at an ARA open, no sell while locked at ARB).
 // - Always benchmarked against IHSG buy & hold.
 // Known limitation: uses today's liquid universe (survivorship bias) and
 // current constituents — treat results as indicative, not a promise.
 
 import type { DailyBar } from './yahoo';
 import { analyzeTechnical, type Bar } from './technical';
+import { halfSpread, buyBlocked, sellBlocked } from './idxMarket';
 
 export type SignalFn = (bars: Bar[]) => boolean;
 
@@ -35,7 +37,20 @@ export interface BacktestResult {
   equity: { date: string; strat: number; ihsg: number }[];
   metrics: BacktestMetrics;
   benchmark: { totalReturnPct: number; cagrPct: number; maxDrawdownPct: number; alphaCagrPct: number };
-  costPerRebalancePct: number;
+  execution: ExecutionModel;
+  trading: {
+    buys: number;
+    sells: number;
+    /** Fees + spread paid, % of average equity per year. */
+    costPctPerYear: number;
+    /** One-way turnover, % of average equity per year. */
+    turnoverPctPerYear: number;
+    /** New entries skipped because the stock opened at ARA. */
+    blockedBuys: number;
+    /** Exits that had to wait while the stock was locked at ARB. */
+    delayedSells: number;
+    avgDelayDays: number;
+  };
 }
 
 const mean = (v: number[]) => (v.length ? v.reduce((a, b) => a + b, 0) / v.length : 0);
@@ -175,8 +190,30 @@ export function evaluateFamily(family: FamilyKey, bars: Bar[]): MatrixCell | nul
   return { ok: true, rank: t.score };
 }
 
+/**
+ * How trades are executed. The default (IDX_EXECUTION) is what a retail
+ * account on IDX actually gets; FRICTIONLESS reproduces the textbook
+ * close-to-close, cost-free backtest for comparison.
+ */
+export interface ExecutionModel {
+  /** Broker commission + levies on buys, % of traded value. */
+  buyFeePct: number;
+  /** Broker commission + levies + 0.1% final income tax on sells, %. */
+  sellFeePct: number;
+  /** Cross half the minimum tick (fraksi harga) on every trade. */
+  spread: boolean;
+  /** Trade at the next session's open (signal is computed at the close). */
+  nextOpen: boolean;
+  /** No buys at a limit-up (ARA) open; no sells while locked limit-down (ARB). */
+  autoReject: boolean;
+}
+
+export const IDX_EXECUTION: ExecutionModel = { buyFeePct: 0.15, sellFeePct: 0.25, spread: true, nextOpen: true, autoReject: true };
+export const FRICTIONLESS: ExecutionModel = { buyFeePct: 0, sellFeePct: 0, spread: false, nextOpen: false, autoReject: false };
+
 export interface RunOptions {
-  costPct?: number;
+  /** Defaults to IDX_EXECUTION. */
+  execution?: ExecutionModel;
   cadence?: Cadence;
   /** Batasi jumlah nama dipilih per rebalance — top-K by `rank` desc. */
   maxNames?: number | null;
@@ -186,6 +223,29 @@ export interface RunOptions {
   signals?: SignalMatrix;
 }
 
+/** Last bar index with date ≤ `date` (bars ascending), or -1. */
+function indexOnOrBefore(bars: DailyBar[], date: string): number {
+  let lo = 0;
+  let hi = bars.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (bars[mid]!.date <= date) { ans = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return ans;
+}
+
+/**
+ * Equal-weight, periodically rebalanced portfolio, simulated position by
+ * position: cash and fractional shares, fees and spread on every trade, and
+ * IDX auto-reject limits deciding whether an order fills.
+ *
+ * At each rebalance the signal uses bars up to the close of date t only; the
+ * trades execute at the next open (or that close, if `nextOpen` is off).
+ * A blocked buy leaves its slice in cash for the period; a blocked sell is
+ * retried at each following open until the next rebalance, and the proceeds
+ * stay in cash. The equity curve is marked at each rebalance's execution price.
+ */
 export function runBacktest(
   barsBySymbol: Map<string, DailyBar[]>,
   ihsgBars: DailyBar[],
@@ -193,121 +253,202 @@ export function runBacktest(
   opts: RunOptions = {}
 ): BacktestResult | null {
   if (ihsgBars.length < 260) return null;
-  const cost = opts.costPct ?? 0.15; // % of turnover per rebalance
+  const ex = opts.execution ?? IDX_EXECUTION;
   const cadence = opts.cadence ?? 'monthly';
   const maxNames = opts.maxNames ?? null;
   const minRank = opts.minRank ?? null;
   const matrix = opts.signals ?? null;
+  const buyFee = ex.buyFeePct / 100;
+  const sellFee = ex.sellFeePct / 100;
+  const spreadOf = (price: number) => (ex.spread ? halfSpread(price) : 0);
 
   const timeline = ihsgBars.map((b) => b.date);
   const ihsgClose = new Map(ihsgBars.map((b) => [b.date, b.close]));
-
-  // Per-stock date -> index (for slicing without look-ahead) and date -> close
   const idxMaps = new Map<string, Map<string, number>>();
-  for (const [sym, bars] of barsBySymbol) {
-    idxMaps.set(sym, new Map(bars.map((b, i) => [b.date, i])));
-  }
+  for (const [sym, bars] of barsBySymbol) idxMaps.set(sym, new Map(bars.map((b, i) => [b.date, i])));
 
   // Rebalance points: period-ends where IHSG has >=200 prior bars (MA200 warm-up)
-  const allEnds = rebalanceIndices(ihsgBars, cadence);
-  const rebal = allEnds.filter((i) => i >= 200);
+  const rebal = rebalanceIndices(ihsgBars, cadence).filter((i) => i >= 200);
   if (rebal.length < 6) return null;
 
-  let equity = 100;
+  /** Execution bar for a trade decided at the close of `date` (null if not traded that day). */
+  const execIndex = (sym: string, date: string): number | null => {
+    const idx = idxMaps.get(sym)!.get(date);
+    if (idx == null) return null;
+    const bars = barsBySymbol.get(sym)!;
+    return ex.nextOpen && idx + 1 < bars.length ? idx + 1 : idx;
+  };
+  const priceAt = (bars: DailyBar[], i: number, decidedAt: number) =>
+    ex.nextOpen && i > decidedAt ? bars[i]!.open : bars[i]!.close;
+
+  let cash = 100;
+  const shares = new Map<string, number>();
   let ihsgEq = 100;
-  const stratCurve: number[] = [100];
-  const ihsgCurve: number[] = [100];
-  const monthlyRets: number[] = [];
+  const stratCurve: number[] = [];
+  const ihsgCurve: number[] = [];
+  const periodRets: number[] = [];
   const holdingsCount: number[] = [];
-  let prev = new Set<string>();
+  let costPaid = 0;
+  let traded = 0;
+  let buys = 0;
+  let sells = 0;
+  let blockedBuys = 0;
+  let delayedSells = 0;
+  let delayDays = 0;
+  let prevValue = 100;
 
-  for (let k = 0; k < rebal.length - 1; k++) {
-    const t = rebal[k]!;
-    const tNext = rebal[k + 1]!;
-    const dateT = timeline[t]!;
-    const dateNext = timeline[tNext]!;
+  for (let k = 0; k < rebal.length; k++) {
+    const dateT = timeline[rebal[k]!]!;
+    const last = k === rebal.length - 1;
 
-    const candidates: { sym: string; ret: number; rank: number }[] = [];
+    // 1) Mark every position at this rebalance's execution price.
+    const mark = new Map<string, { i: number | null; price: number }>();
+    let value = cash;
+    for (const [sym, n] of shares) {
+      const bars = barsBySymbol.get(sym)!;
+      const e = execIndex(sym, dateT);
+      const idxT = idxMaps.get(sym)!.get(dateT);
+      const price = e != null ? priceAt(bars, e, idxT!) : bars[Math.max(0, indexOnOrBefore(bars, dateT))]!.close;
+      mark.set(sym, { i: e, price });
+      value += n * price;
+    }
+    if (k > 0) {
+      periodRets.push(value / prevValue - 1);
+      ihsgEq *= ihsgClose.get(dateT)! / ihsgClose.get(timeline[rebal[k - 1]!]!)!;
+    }
+    stratCurve.push(value);
+    ihsgCurve.push(ihsgEq);
+    prevValue = value;
+    if (last) break;
+
+    // 2) Select (signal on bars ≤ close of t only).
+    const candidates: { sym: string; rank: number }[] = [];
     for (const [sym, bars] of barsBySymbol) {
-      const im = idxMaps.get(sym)!;
-      const idx = im.get(dateT);
-      const idxNext = im.get(dateNext);
-      if (idx == null || idxNext == null || idx < 30) continue;
-      let pass: boolean;
+      const idx = idxMaps.get(sym)!.get(dateT);
+      if (idx == null || idx < 30 || execIndex(sym, dateT) == null) continue;
       let rank = 0;
       if (matrix) {
         const cell = matrix.get(sym)?.get(dateT);
         if (!cell || !cell.ok) continue;
-        pass = true;
         rank = cell.rank;
         if (minRank != null && rank < minRank) continue;
-      } else {
-        pass = signal(bars.slice(0, idx + 1));
-      }
-      if (!pass) continue;
-      candidates.push({ sym, ret: bars[idxNext]!.close / bars[idx]!.close - 1, rank });
+      } else if (!signal(bars.slice(0, idx + 1))) continue;
+      candidates.push({ sym, rank });
     }
-
-    // Top-K by rank (stable: ties keep insertion order)
     let chosen = candidates;
     if (maxNames != null && candidates.length > maxNames) {
       chosen = [...candidates].sort((a, b) => b.rank - a.rank).slice(0, maxNames);
     }
+    const target = new Set(chosen.map((c) => c.sym));
 
-    const holdings = new Set(chosen.map((s) => s.sym));
-    holdingsCount.push(holdings.size);
+    const sellValue = (sym: string, n: number, price: number) => {
+      const gross = n * price;
+      const net = gross * (1 - spreadOf(price)) * (1 - sellFee);
+      costPaid += gross - net;
+      traded += gross;
+      sells++;
+      return net;
+    };
+    const blockedSell = (sym: string, i: number) => {
+      const bars = barsBySymbol.get(sym)!;
+      return ex.autoReject && i > 0 && sellBlocked(bars[i]!, bars[i - 1]!.close);
+    };
+    const blockedBuy = (sym: string, i: number) => {
+      const bars = barsBySymbol.get(sym)!;
+      const idxT = idxMaps.get(sym)!.get(dateT)!;
+      return ex.autoReject && i > 0 && buyBlocked(bars[i]!, bars[i - 1]!.close, ex.nextOpen && i > idxT);
+    };
 
-    // Equal-weight portfolio return (cash = 0% when nothing selected)
-    let pr = chosen.length ? mean(chosen.map((s) => s.ret)) : 0;
+    // 3) Exits. A locked (ARB) exit is retried at the next opens until the
+    //    next rebalance; its proceeds cannot fund this rebalance's buys.
+    let deferred = 0;    // proceeds of delayed exits (arrive after this rebalance)
+    let delayedMark = 0; // their marked value, not investable now
+    const stuck = new Set<string>();
+    const nextDate = timeline[rebal[k + 1]!]!;
+    for (const [sym, n] of [...shares]) {
+      if (target.has(sym)) continue;
+      const m = mark.get(sym)!;
+      if (m.i == null) { stuck.add(sym); continue; } // not traded today (suspended)
+      if (!blockedSell(sym, m.i)) {
+        cash += sellValue(sym, n, m.price);
+        shares.delete(sym);
+        continue;
+      }
+      const bars = barsBySymbol.get(sym)!;
+      let j = m.i + 1;
+      while (j < bars.length && bars[j]!.date < nextDate && blockedSell(sym, j)) j++;
+      if (j < bars.length && bars[j]!.date < nextDate) {
+        deferred += sellValue(sym, n, ex.nextOpen ? bars[j]!.open : bars[j]!.close);
+        delayedMark += n * m.price;
+        delayedSells++;
+        delayDays += j - m.i;
+        shares.delete(sym);
+      } else {
+        stuck.add(sym); // still locked: carried into the next period
+      }
+    }
 
-    // Turnover cost: fraction of names that changed vs previous holdings
-    const union = new Set([...prev, ...holdings]);
-    let changed = 0;
-    for (const s of union) if (prev.has(s) !== holdings.has(s)) changed++;
-    const turnover = union.size ? changed / union.size : 0;
-    pr -= (cost / 100) * turnover;
-    prev = holdings;
-
-    equity *= 1 + pr;
-    const ic0 = ihsgClose.get(dateT)!;
-    const ic1 = ihsgClose.get(dateNext)!;
-    ihsgEq *= ic1 / ic0;
-
-    monthlyRets.push(pr);
-    stratCurve.push(equity);
-    ihsgCurve.push(ihsgEq);
+    // 4) Resize kept names and buy new ones to an equal slice of what can be invested.
+    let stuckValue = 0;
+    for (const sym of stuck) stuckValue += shares.get(sym)! * mark.get(sym)!.price;
+    const slice = target.size ? (value - stuckValue - delayedMark) / target.size : 0;
+    const orders: { sym: string; i: number; price: number; delta: number }[] = [];
+    for (const sym of target) {
+      const i = execIndex(sym, dateT)!;
+      const price = mark.get(sym)?.price ?? priceAt(barsBySymbol.get(sym)!, i, idxMaps.get(sym)!.get(dateT)!);
+      const delta = slice - (shares.get(sym) ?? 0) * price;
+      orders.push({ sym, i, price, delta });
+    }
+    for (const o of orders) { // trims first, to raise cash
+      if (o.delta >= 0 || blockedSell(o.sym, o.i)) continue;
+      cash += sellValue(o.sym, -o.delta / o.price, o.price);
+      shares.set(o.sym, shares.get(o.sym)! + o.delta / o.price);
+    }
+    const wanted = orders.filter((o) => {
+      if (o.delta <= 0) return false;
+      if (!blockedBuy(o.sym, o.i)) return true;
+      if (!shares.has(o.sym)) blockedBuys++;
+      return false;
+    });
+    const need = wanted.reduce((t, o) => t + o.delta * (1 + spreadOf(o.price)) * (1 + buyFee), 0);
+    const scale = need > cash ? cash / need : 1; // fees can leave a hair too little cash
+    for (const o of wanted) {
+      const spend = o.delta * (1 + spreadOf(o.price)) * (1 + buyFee) * scale;
+      const gross = o.delta * scale;
+      cash -= spend;
+      costPaid += spend - gross;
+      traded += gross;
+      buys++;
+      shares.set(o.sym, (shares.get(o.sym) ?? 0) + gross / o.price);
+    }
+    cash += deferred;
+    holdingsCount.push(shares.size);
   }
 
-  const periods = monthlyRets.length;
+  const periods = periodRets.length;
   const perYear = cadence === 'weekly' ? 52 : cadence === 'biweekly' ? 26 : 12;
   const annFactor = Math.sqrt(perYear);
   const years = periods / perYear;
+  const equity = stratCurve[stratCurve.length - 1]!;
   const totalReturn = equity / 100 - 1;
-  const cagr = years > 0 ? Math.pow(equity / 100, 1 / years) - 1 : 0;
-  const winRate = periods ? monthlyRets.filter((r) => r > 0).length / periods : 0;
-  const mMean = mean(monthlyRets);
-  const mStd = std(monthlyRets);
-  const downside = std(monthlyRets.filter((r) => r < 0).map((r) => r));
+  const cagr = years > 0 && equity > 0 ? Math.pow(equity / 100, 1 / years) - 1 : 0;
+  const winRate = periods ? periodRets.filter((r) => r > 0).length / periods : 0;
+  const mMean = mean(periodRets);
+  const mStd = std(periodRets);
+  const downside = std(periodRets.filter((r) => r < 0));
   const sharpe = mStd > 0 ? (mMean / mStd) * annFactor : 0;
   const sortino = downside > 0 ? (mMean / downside) * annFactor : 0;
-
   const ihsgTotal = ihsgEq / 100 - 1;
   const ihsgCagr = years > 0 ? Math.pow(ihsgEq / 100, 1 / years) - 1 : 0;
+  const avgEquity = mean(stratCurve);
 
-  // equity curve points (align to rebalance dates)
-  const curveDates = [timeline[rebal[0]!]!, ...rebal.slice(1).map((i) => timeline[i]!)];
-  const equityPoints = curveDates.map((d, i) => ({
-    date: d,
-    strat: r2(stratCurve[i] ?? 100),
-    ihsg: r2(ihsgCurve[i] ?? 100)
-  }));
-
+  const curveDates = rebal.map((i) => timeline[i]!);
   return {
     start: curveDates[0]!,
     end: curveDates[curveDates.length - 1]!,
     months: periods,
     cadence,
-    equity: equityPoints,
+    equity: curveDates.map((d, i) => ({ date: d, strat: r2(stratCurve[i]!), ihsg: r2(ihsgCurve[i]!) })),
     metrics: {
       totalReturnPct: r2(totalReturn * 100),
       cagrPct: r2(cagr * 100),
@@ -323,6 +464,15 @@ export function runBacktest(
       maxDrawdownPct: r2(maxDrawdown(ihsgCurve) * 100),
       alphaCagrPct: r2((cagr - ihsgCagr) * 100)
     },
-    costPerRebalancePct: cost
+    execution: ex,
+    trading: {
+      buys,
+      sells,
+      costPctPerYear: years > 0 && avgEquity > 0 ? r2((costPaid / avgEquity / years) * 100) : 0,
+      turnoverPctPerYear: years > 0 && avgEquity > 0 ? r2((traded / 2 / avgEquity / years) * 100) : 0,
+      blockedBuys,
+      delayedSells,
+      avgDelayDays: delayedSells ? r2(delayDays / delayedSells) : 0
+    }
   };
 }

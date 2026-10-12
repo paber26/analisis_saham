@@ -11,7 +11,7 @@ import { normalizeSymbol } from './symbol';
 import { fetchDailyBars } from './yahoo';
 import {
   runBacktest, rebalanceIndices, evaluateFamily,
-  type BacktestResult, type Cadence, type FamilyKey, type SignalMatrix
+  type BacktestResult, type Cadence, type FamilyKey, type SignalMatrix, type ExecutionModel
 } from './backtest';
 
 /** Universe likuid utk backtest & lab (survivorship bias diakui di UI). */
@@ -245,7 +245,7 @@ function median(v: number[]): number {
 export function runSweep(
   barsBySymbol: Map<string, DailyBar[]>,
   ihsgBars: DailyBar[],
-  opts: { costPct?: number } = {}
+  opts: { execution?: ExecutionModel } = {}
 ): SweepSummary {
   const grid = buildLabGrid();
   const matrixCache = new Map<string, SignalMatrix>();
